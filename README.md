@@ -28,19 +28,21 @@ Ventage 是一个 AI 驱动的金融仪表盘，整合多维度市场信号，�
 
 ```
 ventage/
-├── docs/                    # 架构文档
-│   ├── ARCHITECTURE.md
-│   └── ARCHITECTURE-v1.1.md
-├── database/                # 数据库脚本
-│   └── schema.sql
-├── python/                  # Python 后端
-│   ├── agents/              # AI Agents
-│   ├── alerting/            # 警报系统
-│   ├── etl/                 # 数据管道
-│   ├── api/                 # FastAPI
-│   └── scheduler/           # 任务调度
-├── frontend/                # Next.js 前端
-└── .github/workflows/       # CI/CD
+├── README.md              # 项目说明
+├── .gitignore
+├── .env.example           # 环境变量模板
+├── docs/
+│   └── ARCHITECTURE.md    # 完整架构文档 (v1.1)
+├── database/
+│   └── schema.sql         # 数据库脚本
+├── python/                # Python 后端
+│   ├── agents/            # AI Agents
+│   ├── alerting/          # 警报系统
+│   ├── etl/               # 数据管道
+│   ├── api/               # FastAPI
+│   └── scheduler/         # 任务调度
+├── frontend/              # Next.js 前端
+└── .github/workflows/     # CI/CD
 ```
 
 ## 🚀 Getting Started
@@ -71,8 +73,7 @@ npm run dev
 
 ## 📖 Documentation
 
-- [Architecture Overview](docs/ARCHITECTURE.md)
-- [Production Optimizations](docs/ARCHITECTURE-v1.1.md)
+- [Architecture Overview (v1.1)](docs/ARCHITECTURE.md) - 完整架构设计 + 生产优化
 
 ## 🔒 Security
 
