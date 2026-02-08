@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface MarketSignal {
     id: string;
@@ -20,7 +20,7 @@ export function useMarketSignals(limit: number = 50) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
-    const supabase = createBrowserClient();
+    const supabase = createSupabaseBrowserClient();
 
     useEffect(() => {
         // Initial fetch
