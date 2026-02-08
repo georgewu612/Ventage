@@ -25,33 +25,31 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate and load mock data into Supabase")
-    parser.add_argument(
-        "--signals", type=int, default=10, help="Number of market signals to generate"
-    )
-    parser.add_argument(
-        "--options", type=int, default=15, help="Number of options flow records to generate"
-    )
-    parser.add_argument(
-        "--darkpool", type=int, default=10, help="Number of dark pool orders to generate"
-    )
-    parser.add_argument(
-        "--earnings", type=int, default=5, help="Number of earnings forecasts to generate"
-    )
-    parser.add_argument(
-        "--sentiment", type=int, default=10, help="Number of sentiment records to generate"
-    )
-    parser.add_argument(
-        "--insider", type=int, default=8, help="Number of insider trades to generate"
-    )
-    parser.add_argument(
-        "--putcall", type=int, default=5, help="Number of put/call ratios to generate"
-    )
+    parser = argparse.ArgumentParser(description="Generate mock data for Ventage database")
+    parser.add_argument("--all", action="store_true", help="Generate all data with default amounts")
+    parser.add_argument("--signals", type=int, default=0, help="Number of market signals")
+    parser.add_argument("--options", type=int, default=0, help="Number of options flow records")
+    parser.add_argument("--darkpool", type=int, default=0, help="Number of dark pool orders")
+    parser.add_argument("--earnings", type=int, default=0, help="Number of earnings forecasts")
+    parser.add_argument("--sentiment", type=int, default=0, help="Number of market sentiment records")
+    parser.add_argument("--insider", type=int, default=0, help="Number of insider trades")
+    parser.add_argument("--putcall", type=int, default=0, help="Number of put/call ratios")
     parser.add_argument(
         "--clear", action="store_true", help="Clear existing data before inserting"
     )
     
     args = parser.parse_args()
+    
+    # If --all flag is used, set default amounts
+    if args.all:
+        logger.info("🚀 Generating ALL mock data with default amounts...")
+        args.signals = args.signals or 20
+        args.options = args.options or 30
+        args.darkpool = args.darkpool or 15
+        args.earnings = args.earnings or 10
+        args.sentiment = args.sentiment or 25
+        args.insider = args.insider or 15
+        args.putcall = args.putcall or 10
     
     loader = DataLoader()
     

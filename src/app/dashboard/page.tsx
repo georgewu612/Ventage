@@ -23,14 +23,14 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        <div>
             {/* Header */}
             <header className="border-b border-white/10 backdrop-blur-sm bg-white/5">
                 <div className="container mx-auto px-6 py-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h1 className="text-3xl font-bold text-white">Ventage</h1>
-                            <p className="text-gray-400 mt-1">AI-Powered FinTech Dashboard</p>
+                            <h1 className="text-3xl font-bold text-white">市场信号</h1>
+                            <p className="text-gray-400 mt-1">AI 实时分析的交易信号</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="px-4 py-2 rounded-lg bg-white/10 backdrop-blur">
