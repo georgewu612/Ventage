@@ -27,9 +27,21 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # External data APIs (optional — ETL collectors degrade gracefully)
+    polygon_api_key: str = ""
+    unusual_whales_api_key: str = ""
+
     @property
     def has_supabase_config(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
+
+    @property
+    def has_polygon_config(self) -> bool:
+        return bool(self.polygon_api_key)
+
+    @property
+    def has_unusual_whales_config(self) -> bool:
+        return bool(self.unusual_whales_api_key)
 
 
 @lru_cache(maxsize=1)
