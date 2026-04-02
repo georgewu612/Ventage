@@ -40,10 +40,10 @@ ventage/
 
 ### 命名规范
 
-| 前缀 | 可见性 | 示例 |
-|-----|-------|------|
-| `NEXT_PUBLIC_` | 客户端可见（会打包进前端） | `NEXT_PUBLIC_SUPABASE_URL` |
-| 无前缀 | 仅服务端可见 | `SUPABASE_SERVICE_ROLE_KEY` |
+| 前缀           | 可见性                     | 示例                        |
+| -------------- | -------------------------- | --------------------------- |
+| `NEXT_PUBLIC_` | 客户端可见（会打包进前端） | `NEXT_PUBLIC_SUPABASE_URL`  |
+| 无前缀         | 仅服务端可见               | `SUPABASE_SERVICE_ROLE_KEY` |
 
 ### 敏感度分层
 
@@ -140,7 +140,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str
     supabase_service_role_key: str
-    
+
     model_config = SettingsConfigDict(env_file=".env")
 ```
 
@@ -220,4 +220,4 @@ refactor: 重构数据加载器
 
 ---
 
-*最后更新: 2026-02-08*
+_最后更新: 2026-02-08_

@@ -1,4 +1,5 @@
 # Ventage - AI Fintech Dashboard
+
 ## 完整架构设计报告
 
 **版本**: 1.1  
@@ -33,14 +34,14 @@ AdaApp 是一个 **AI 驱动的金融数据分析平台**，整合多维度市�
 
 ### 1.2 核心功能
 
-| 功能模块 | 描述 | 数据来源 |
-|---------|------|----------|
-| 🤖 AI 选股 | 基于技术面/基本面/情绪的智能筛选 | 综合分析 |
-| 📊 期权异动 | 追踪大额期权交易和异常活动 | Options Flow API |
-| 🔮 财报预测 | 预测 EPS/营收 vs 分析师共识 | Historical + ML |
-| 💬 情绪分析 | 社交媒体和新闻情绪监控 | Reddit/Twitter/News |
-| 👔 内部交易 | C-suite 买卖追踪 | SEC Form 4 |
-| 🌑 Dark Pool | 大宗交易监控 | Dark Pool Feed |
+| 功能模块     | 描述                             | 数据来源            |
+| ------------ | -------------------------------- | ------------------- |
+| 🤖 AI 选股   | 基于技术面/基本面/情绪的智能筛选 | 综合分析            |
+| 📊 期权异动  | 追踪大额期权交易和异常活动       | Options Flow API    |
+| 🔮 财报预测  | 预测 EPS/营收 vs 分析师共识      | Historical + ML     |
+| 💬 情绪分析  | 社交媒体和新闻情绪监控           | Reddit/Twitter/News |
+| 👔 内部交易  | C-suite 买卖追踪                 | SEC Form 4          |
+| 🌑 Dark Pool | 大宗交易监控                     | Dark Pool Feed      |
 
 ### 1.3 核心理念
 
@@ -112,14 +113,14 @@ AdaApp 是一个 **AI 驱动的金融数据分析平台**，整合多维度市�
 
 ### 2.2 技术栈
 
-| 层级 | 技术选型 | 说明 |
-|-----|---------|------|
-| 前端 | Next.js 14 + Shadcn/UI + TailwindCSS | 现代 React 框架 |
-| 后端 | Python 3.11 + FastAPI | 数据处理 agents |
-| 数据库 | Supabase (PostgreSQL) | 托管数据库 + Realtime |
-| AI Agent | OpenClaw (Claude) | 报告生成 + 分析 |
-| 任务调度 | APScheduler / Cron | 定时数据抓取 |
-| 缓存 | Redis (可选) | 热数据缓存 |
+| 层级     | 技术选型                             | 说明                  |
+| -------- | ------------------------------------ | --------------------- |
+| 前端     | Next.js 14 + Shadcn/UI + TailwindCSS | 现代 React 框架       |
+| 后端     | Python 3.11 + FastAPI                | 数据处理 agents       |
+| 数据库   | Supabase (PostgreSQL)                | 托管数据库 + Realtime |
+| AI Agent | OpenClaw (Claude)                    | 报告生成 + 分析       |
+| 任务调度 | APScheduler / Cron                   | 定时数据抓取          |
+| 缓存     | Redis (可选)                         | 热数据缓存            |
 
 ---
 
@@ -333,7 +334,7 @@ ALTER TABLE put_call_ratios ENABLE ROW LEVEL SECURITY;
 -- 读取策略：认证用户可读
 CREATE POLICY "Authenticated users can read" ON market_signals
     FOR SELECT USING (auth.role() = 'authenticated');
-    
+
 -- 写入策略：仅 service_role 可写
 CREATE POLICY "Service role can insert" ON market_signals
     FOR INSERT WITH CHECK (auth.role() = 'service_role');
@@ -431,22 +432,22 @@ class Signal:
 class StockSelector:
     def __init__(self, supabase: Client):
         self.db = supabase
-        
+
     async def analyze(self, symbol: str) -> Signal:
         """综合分析股票并生成信号"""
-        
+
         # 1. 技术分析
         technical_score = await self._technical_analysis(symbol)
-        
+
         # 2. 基本面分析
         fundamental_score = await self._fundamental_analysis(symbol)
-        
+
         # 3. 情绪分析
         sentiment_score = await self._sentiment_analysis(symbol)
-        
+
         # 4. 期权流向
         options_score = await self._options_flow_analysis(symbol)
-        
+
         # 5. 综合评分
         weights = {
             'technical': 0.25,
@@ -454,14 +455,14 @@ class StockSelector:
             'sentiment': 0.25,
             'options': 0.25
         }
-        
+
         composite_score = (
             technical_score * weights['technical'] +
             fundamental_score * weights['fundamental'] +
             sentiment_score * weights['sentiment'] +
             options_score * weights['options']
         )
-        
+
         # 6. 生成信号
         if composite_score > 0.6:
             direction = 'bullish'
@@ -469,7 +470,7 @@ class StockSelector:
             direction = 'bearish'
         else:
             direction = 'neutral'
-            
+
         return Signal(
             symbol=symbol,
             direction=direction,
@@ -482,7 +483,7 @@ class StockSelector:
             },
             analysis=await self._generate_analysis(symbol, direction, composite_score)
         )
-    
+
     async def _generate_analysis(self, symbol: str, direction: str, score: float) -> str:
         """调用 OpenClaw 生成详细分析"""
         # 这里可以调用 OpenClaw API 生成自然语言分析
@@ -504,7 +505,7 @@ from typing import Optional
 class TelegramNotifier:
     def __init__(self, openclaw_url: str = "http://localhost:18789"):
         self.openclaw_url = openclaw_url
-        
+
     async def send_insider_alert(
         self,
         symbol: str,
@@ -515,10 +516,10 @@ class TelegramNotifier:
         shares: int
     ):
         """发送内部交易警报"""
-        
+
         emoji = "🚨" if trade_type == "BUY" else "📉"
         action = "买入" if trade_type == "BUY" else "卖出"
-        
+
         message = f"""
 {emoji} **内部人士{action}警报**
 
@@ -530,7 +531,7 @@ class TelegramNotifier:
 
 📊 正在生成详细分析...
         """.strip()
-        
+
         # 通过 OpenClaw 发送
         async with httpx.AsyncClient() as client:
             await client.post(
@@ -613,7 +614,11 @@ interface Signal {
 
 export function SignalCard({ signal }: { signal: Signal }) {
   const directionConfig = {
-    bullish: { icon: TrendingUp, color: "text-green-500", bg: "bg-green-500/10" },
+    bullish: {
+      icon: TrendingUp,
+      color: "text-green-500",
+      bg: "bg-green-500/10",
+    },
     bearish: { icon: TrendingDown, color: "text-red-500", bg: "bg-red-500/10" },
     neutral: { icon: Minus, color: "text-yellow-500", bg: "bg-yellow-500/10" },
   };
@@ -633,7 +638,7 @@ export function SignalCard({ signal }: { signal: Signal }) {
         </Badge>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-muted-foreground">{signal.analysis}</p>
+        <p className="text-muted-foreground text-sm">{signal.analysis}</p>
       </CardContent>
     </Card>
   );
@@ -651,7 +656,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
 
 export function useRealtimeSignals() {
@@ -669,7 +674,7 @@ export function useRealtimeSignals() {
         { event: "INSERT", schema: "public", table: "market_signals" },
         (payload) => {
           setSignals((prev) => [payload.new, ...prev].slice(0, 50));
-        }
+        },
       )
       .subscribe();
 
@@ -684,7 +689,7 @@ export function useRealtimeSignals() {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50);
-    
+
     if (data) setSignals(data);
   }
 
@@ -718,13 +723,13 @@ async def generate_trading_report(
 ) -> str:
     """
     生成交易报告
-    
+
     Args:
         symbols: 股票列表，为空则使用所有有信号的股票
         period: 报告周期 ('daily', 'weekly', 'monthly')
         include_options: 是否包含期权分析
         include_sentiment: 是否包含情绪分析
-    
+
     Returns:
         Markdown 格式的交易报告
     """
@@ -735,7 +740,7 @@ async def generate_trading_report(
 async def analyze_symbol(symbol: str) -> dict:
     """
     深度分析单个股票
-    
+
     Returns:
         包含技术面、基本面、情绪等多维度分析
     """
@@ -768,46 +773,49 @@ async def get_insider_summary(days: int = 7) -> str:
 
 ```markdown
 # 📊 AdaApp 每日交易报告
+
 **日期**: 2026-02-06
 
 ## 🎯 今日 AI 信号
 
 ### 🟢 看多信号 (3只)
 
-| 股票 | 置信度 | 主要因素 |
-|-----|-------|---------|
-| NVDA | 87% | 期权异动 + 情绪飙升 |
-| META | 75% | 财报预期上调 |
-| TSLA | 68% | 内部人士买入 |
+| 股票 | 置信度 | 主要因素            |
+| ---- | ------ | ------------------- |
+| NVDA | 87%    | 期权异动 + 情绪飙升 |
+| META | 75%    | 财报预期上调        |
+| TSLA | 68%    | 内部人士买入        |
 
 ### 🔴 看空信号 (1只)
 
-| 股票 | 置信度 | 主要因素 |
-|-----|-------|---------|
-| COIN | 72% | Put/Call 比率异常 |
+| 股票 | 置信度 | 主要因素          |
+| ---- | ------ | ----------------- |
+| COIN | 72%    | Put/Call 比率异常 |
 
 ## 📈 期权异动
 
 过去 24 小时大额异动：
+
 - **NVDA** Feb 28 $900C - $2.3M 权利金 (Sweep)
 - **AAPL** Mar 15 $180P - $1.8M 权利金 (Block)
 
 ## 👔 内部交易
 
-| 股票 | 内部人 | 操作 | 金额 |
-|-----|-------|-----|-----|
-| NVDA | Jensen Huang (CEO) | 买入 | $2.5M |
+| 股票 | 内部人              | 操作 | 金额  |
+| ---- | ------------------- | ---- | ----- |
+| NVDA | Jensen Huang (CEO)  | 买入 | $2.5M |
 | MSFT | Satya Nadella (CEO) | 卖出 | $1.2M |
 
 ## 💬 情绪摘要
 
-| 股票 | Reddit | Twitter | 综合 |
-|-----|--------|---------|------|
-| NVDA | 🟢 0.82 | 🟢 0.75 | 🟢 看多 |
+| 股票 | Reddit  | Twitter  | 综合    |
+| ---- | ------- | -------- | ------- |
+| NVDA | 🟢 0.82 | 🟢 0.75  | 🟢 看多 |
 | TSLA | 🟡 0.12 | 🔴 -0.25 | 🟡 中性 |
 
 ---
-*由 James (AI Assistant) 自动生成*
+
+_由 James (AI Assistant) 自动生成_
 ```
 
 ---
@@ -932,6 +940,7 @@ ALERT_RULES = [
 ## 8. 实施计划
 
 ### Phase 1: 基础架构 (Week 1)
+
 - [ ] 创建 Supabase 项目
 - [ ] 执行数据库 Schema
 - [ ] 配置 RLS 策略
@@ -939,6 +948,7 @@ ALERT_RULES = [
 - [ ] 验证数据插入
 
 ### Phase 2: 后端 Agents (Week 2)
+
 - [ ] 实现 StockSelector Agent
 - [ ] 实现 OptionsWatcher Agent
 - [ ] 实现 SentimentAnalyzer
@@ -946,6 +956,7 @@ ALERT_RULES = [
 - [ ] 编写单元测试
 
 ### Phase 3: 前端 Dashboard (Week 3)
+
 - [ ] 初始化 Next.js 项目
 - [ ] 安装配置 Shadcn/UI
 - [ ] 实现 Dashboard 布局
@@ -953,18 +964,21 @@ ALERT_RULES = [
 - [ ] 接入 Supabase Realtime
 
 ### Phase 4: AI 集成 (Week 4)
+
 - [ ] 配置 OpenClaw Webhook
 - [ ] 实现报告生成功能
 - [ ] MCP Server 封装 (可选)
 - [ ] 测试 AI 分析质量
 
 ### Phase 5: 警报系统 (Week 5)
+
 - [ ] 实现 Telegram 警报
 - [ ] 配置触发规则
 - [ ] Dashboard 通知集成
 - [ ] 警报历史记录
 
 ### Phase 6: 优化上线 (Week 6)
+
 - [ ] 性能优化
 - [ ] 安全审计
 - [ ] 文档完善
@@ -976,31 +990,31 @@ ALERT_RULES = [
 
 ### 9.1 基础设施
 
-| 项目 | 月成本 | 说明 |
-|-----|-------|------|
-| Supabase Pro | $25 | 8GB 数据库, 50GB 带宽 |
-| VPS (已有) | $0 | 你的 srv1339024 |
-| OpenClaw | $0 | 自托管 |
+| 项目         | 月成本 | 说明                  |
+| ------------ | ------ | --------------------- |
+| Supabase Pro | $25    | 8GB 数据库, 50GB 带宽 |
+| VPS (已有)   | $0     | 你的 srv1339024       |
+| OpenClaw     | $0     | 自托管                |
 
 ### 9.2 数据源 (可选)
 
-| 数据源 | 月成本 | 数据类型 |
-|-------|-------|---------|
-| Polygon.io Starter | $29 | 延迟 15min 市场数据 |
-| Polygon.io Developer | $79 | 实时数据 |
-| Unusual Whales | $57 | 期权异动 |
-| Quiver Quant | $25 | 内部交易 |
-| **总计 (基础版)** | **$25** | 仅 Supabase |
-| **总计 (专业版)** | **$190** | 全部数据源 |
+| 数据源               | 月成本   | 数据类型            |
+| -------------------- | -------- | ------------------- |
+| Polygon.io Starter   | $29      | 延迟 15min 市场数据 |
+| Polygon.io Developer | $79      | 实时数据            |
+| Unusual Whales       | $57      | 期权异动            |
+| Quiver Quant         | $25      | 内部交易            |
+| **总计 (基础版)**    | **$25**  | 仅 Supabase         |
+| **总计 (专业版)**    | **$190** | 全部数据源          |
 
 ### 9.3 开发时间估算
 
-| 阶段 | 时间 | 说明 |
-|-----|------|-----|
-| Phase 1-2 | 2 周 | 后端开发 |
-| Phase 3-4 | 2 周 | 前端 + AI 集成 |
-| Phase 5-6 | 2 周 | 警报 + 优化 |
-| **总计** | **6 周** | MVP 版本 |
+| 阶段      | 时间     | 说明           |
+| --------- | -------- | -------------- |
+| Phase 1-2 | 2 周     | 后端开发       |
+| Phase 3-4 | 2 周     | 前端 + AI 集成 |
+| Phase 5-6 | 2 周     | 警报 + 优化    |
+| **总计**  | **6 周** | MVP 版本       |
 
 ---
 
@@ -1031,7 +1045,7 @@ TELEGRAM_CHAT_ID=7845535760
 
 **文档结束**
 
-*如有问题，随时问我。*
+_如有问题，随时问我。_
 
 ---
 
@@ -1090,9 +1104,9 @@ BEGIN
     partition_name := 'options_flow_' || TO_CHAR(partition_date, 'YYYY_MM');
     start_date := TO_CHAR(partition_date, 'YYYY-MM-DD');
     end_date := TO_CHAR(partition_date + INTERVAL '1 month', 'YYYY-MM-DD');
-    
+
     EXECUTE format(
-        'CREATE TABLE IF NOT EXISTS %I PARTITION OF options_flow 
+        'CREATE TABLE IF NOT EXISTS %I PARTITION OF options_flow
          FOR VALUES FROM (%L) TO (%L)',
         partition_name, start_date, end_date
     );
@@ -1119,11 +1133,13 @@ CREATE TABLE dark_pool_orders (
 ```
 
 **分区优势**:
+
 - 查询最近数据时只扫描相关分区
 - 历史数据可归档或删除整个分区
 - 索引体积更小，维护更快
 
 **Supabase 注意事项**:
+
 - Supabase 支持分区表，但需要在 SQL Editor 中手动创建
 - RLS 策略需要在父表上设置，会自动继承到分区
 
@@ -1133,7 +1149,8 @@ CREATE TABLE dark_pool_orders (
 
 **问题**: 金融数据极度敏感，AI 可能在分析报告中"编造"数据。
 
-**核心原则**: 
+**核心原则**:
+
 > **AI 只负责归纳分析，不负责计算。所有数字由代码计算后传给 AI。**
 
 **解决方案**: 强制使用 JSON Schema 约束输出
@@ -1154,7 +1171,7 @@ class AnalysisFactor(BaseModel):
 class StockAnalysis(BaseModel):
     """AI 分析输出的严格格式"""
     summary: str = Field(
-        max_length=200, 
+        max_length=200,
         description="一句话总结，不要包含任何数字"
     )
     reasoning: str = Field(
@@ -1174,13 +1191,13 @@ async def generate_analysis(self, symbol: str, data: dict) -> StockAnalysis:
     """
     调用 AI 生成分析，使用 Structured Output
     """
-    
+
     # 1. 所有数字由 Python 预计算
     context = f"""
     分析以下股票数据，只使用我提供的数字，不要自己计算任何数值：
-    
+
     股票: {symbol}
-    
+
     ## 预计算数据（直接引用，不要修改）
     - 当前价格: ${data['price']:.2f}
     - 5日涨跌: {data['change_5d']:+.2f}%
@@ -1189,14 +1206,14 @@ async def generate_analysis(self, symbol: str, data: dict) -> StockAnalysis:
     - 情绪分数: {data['sentiment']:+.2f}
     - 内部人士本月买入: ${data['insider_buys']:,.0f}
     - 综合得分: {data['composite_score']:.2f} (由系统计算)
-    
+
     ## 你的任务
     1. 根据以上数据写一段分析
     2. 不要编造任何数字
     3. 不要计算任何百分比
     4. 引用数据时使用我提供的原始值
     """
-    
+
     # 2. 使用 OpenAI/Anthropic 的 Structured Output
     response = await client.chat.completions.create(
         model="gpt-4o",
@@ -1209,10 +1226,10 @@ async def generate_analysis(self, symbol: str, data: dict) -> StockAnalysis:
             }
         }
     )
-    
+
     # 3. 解析并验证
     analysis = StockAnalysis.model_validate_json(response.choices[0].message.content)
-    
+
     return analysis
 ```
 
@@ -1246,23 +1263,23 @@ def validate_analysis(analysis: StockAnalysis, source_data: dict) -> bool:
     二次验证：确保 AI 输出没有编造数字
     """
     text = analysis.summary + analysis.reasoning
-    
+
     # 检查是否包含未提供的数字
     import re
     numbers_in_text = re.findall(r'\d+\.?\d*%?', text)
-    
+
     allowed_numbers = {
         str(source_data['price']),
         f"{source_data['change_5d']:.2f}",
         f"{source_data['rsi']:.1f}",
         # ... 所有允许的数字
     }
-    
+
     for num in numbers_in_text:
         if num not in allowed_numbers and float(num.rstrip('%')) > 1:
             logging.warning(f"AI 可能编造了数字: {num}")
             return False
-    
+
     return True
 ```
 
@@ -1297,7 +1314,7 @@ class AlertAggregator:
     - 根据优先级决定发送策略
     - 全局冷却期防止刷屏
     """
-    
+
     def __init__(
         self,
         aggregation_window: int = 300,  # 5分钟聚合窗口
@@ -1307,20 +1324,20 @@ class AlertAggregator:
         self.aggregation_window = aggregation_window
         self.cooldown_per_symbol = cooldown_per_symbol
         self.max_alerts_per_minute = max_alerts_per_minute
-        
+
         self.pending_alerts: dict[str, list[Alert]] = defaultdict(list)
         self.last_sent: dict[str, datetime] = {}
         self.sent_this_minute: int = 0
         self.minute_reset: datetime = datetime.utcnow()
-        
+
         self._lock = asyncio.Lock()
-    
+
     async def add_alert(self, alert: Alert) -> None:
         """添加警报到聚合队列"""
         async with self._lock:
             key = f"{alert.symbol}:{alert.alert_type}"
             self.pending_alerts[key].append(alert)
-    
+
     async def process_alerts(self) -> list[dict]:
         """
         处理聚合队列，返回要发送的消息
@@ -1328,73 +1345,73 @@ class AlertAggregator:
         """
         async with self._lock:
             now = datetime.utcnow()
-            
+
             # 重置每分钟计数器
             if (now - self.minute_reset).seconds >= 60:
                 self.sent_this_minute = 0
                 self.minute_reset = now
-            
+
             messages_to_send = []
             keys_to_clear = []
-            
+
             for key, alerts in self.pending_alerts.items():
                 if not alerts:
                     continue
-                
+
                 symbol = alerts[0].symbol
                 oldest = min(a.timestamp for a in alerts)
-                
+
                 # 检查是否在聚合窗口内
                 if (now - oldest).seconds < self.aggregation_window:
                     # 还在聚合中，除非是高优先级
                     if not any(a.priority == 'high' for a in alerts):
                         continue
-                
+
                 # 检查冷却期
                 if symbol in self.last_sent:
                     if (now - self.last_sent[symbol]).seconds < self.cooldown_per_symbol:
                         # 冷却中，除非是高优先级
                         if not any(a.priority == 'high' for a in alerts):
                             continue
-                
+
                 # 检查每分钟限制
                 if self.sent_this_minute >= self.max_alerts_per_minute:
                     # 只让高优先级通过
                     if not any(a.priority == 'high' for a in alerts):
                         continue
-                
+
                 # 生成聚合消息
                 message = self._aggregate_message(alerts)
                 messages_to_send.append(message)
-                
+
                 # 更新状态
                 self.last_sent[symbol] = now
                 self.sent_this_minute += 1
                 keys_to_clear.append(key)
-            
+
             # 清理已处理的警报
             for key in keys_to_clear:
                 self.pending_alerts[key] = []
-            
+
             return messages_to_send
-    
+
     def _aggregate_message(self, alerts: list[Alert]) -> dict:
         """将多个警报合并成一条消息"""
-        
+
         symbol = alerts[0].symbol
         count = len(alerts)
-        
+
         if count == 1:
             # 单条警报，直接返回
             return self._format_single_alert(alerts[0])
-        
+
         # 多条警报，生成聚合消息
         alert_types = set(a.alert_type for a in alerts)
         highest_priority = 'high' if any(a.priority == 'high' for a in alerts) else 'medium'
-        
+
         # 汇总数据
         total_value = sum(a.data.get('value', 0) for a in alerts)
-        
+
         message = f"""
 🔔 **{symbol} 多重信号聚合** ({count} 条警报)
 
@@ -1407,20 +1424,20 @@ class AlertAggregator:
 
 **建议**: 多重信号叠加，建议重点关注
         """.strip()
-        
+
         return {
             "symbol": symbol,
             "message": message,
             "priority": highest_priority,
             "alert_count": count
         }
-    
+
     def _format_alert_types(self, alerts: list[Alert]) -> str:
         """格式化警报类型列表"""
         type_counts = defaultdict(int)
         for a in alerts:
             type_counts[a.alert_type] += 1
-        
+
         lines = []
         type_emojis = {
             'insider_buy': '👔 内部买入',
@@ -1429,13 +1446,13 @@ class AlertAggregator:
             'sentiment_spike': '💬 情绪异动',
             'ai_signal': '🤖 AI 信号'
         }
-        
+
         for alert_type, count in type_counts.items():
             emoji_name = type_emojis.get(alert_type, alert_type)
             lines.append(f"  • {emoji_name} x{count}")
-        
+
         return '\n'.join(lines)
-    
+
     def _format_time_span(self, alerts: list[Alert]) -> str:
         """格式化时间跨度"""
         times = [a.timestamp for a in alerts]
@@ -1461,11 +1478,11 @@ async def alert_processor():
 
 **配置建议**:
 
-| 场景 | 聚合窗口 | 冷却期 | 每分钟上限 |
-|-----|---------|-------|----------|
-| 激进型 | 2分钟 | 5分钟 | 10条 |
-| 平衡型（推荐） | 5分钟 | 10分钟 | 5条 |
-| 保守型 | 15分钟 | 30分钟 | 3条 |
+| 场景           | 聚合窗口 | 冷却期 | 每分钟上限 |
+| -------------- | -------- | ------ | ---------- |
+| 激进型         | 2分钟    | 5分钟  | 10条       |
+| 平衡型（推荐） | 5分钟    | 10分钟 | 5条        |
+| 保守型         | 15分钟   | 30分钟 | 3条        |
 
 ---
 
@@ -1569,7 +1586,7 @@ WantedBy=multi-user.target
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
+version: "3.8"
 
 services:
   scheduler:
@@ -1582,7 +1599,7 @@ services:
       - OPENCLAW_URL=http://host.docker.internal:18789
     volumes:
       - ./logs:/app/logs
-    
+
   api:
     build: .
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000
@@ -1598,14 +1615,14 @@ services:
 
 ### 10.5 优化清单总结
 
-| 优化项 | 优先级 | 复杂度 | 阶段 |
-|-------|-------|-------|------|
-| 表分区 | 高 | 中 | Phase 1 |
-| AI 幻觉控制 | 高 | 低 | Phase 2 |
-| 警报聚合 | 高 | 中 | Phase 5 |
-| Scheduler 部署 | 中 | 低 | Phase 2 |
-| 日志监控 | 中 | 低 | Phase 6 |
+| 优化项         | 优先级 | 复杂度 | 阶段    |
+| -------------- | ------ | ------ | ------- |
+| 表分区         | 高     | 中     | Phase 1 |
+| AI 幻觉控制    | 高     | 低     | Phase 2 |
+| 警报聚合       | 高     | 中     | Phase 5 |
+| Scheduler 部署 | 中     | 低     | Phase 2 |
+| 日志监控       | 中     | 低     | Phase 6 |
 
 ---
 
-*文档版本 1.1 - 完整架构 + 生产环境优化建议*
+_文档版本 1.1 - 完整架构 + 生产环境优化建议_

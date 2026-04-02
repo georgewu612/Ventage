@@ -7,8 +7,8 @@ __pycache__/
 venv/
 .venv/
 ENV/
-.env
-.env.local
+.env*
+!.env.example
 
 # Node
 node_modules/
@@ -29,7 +29,6 @@ logs/
 *.log
 
 # Secrets (never commit!)
-.env.production
 *.pem
 *.key
 
@@ -37,3 +36,9 @@ logs/
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Local runtime
+.api.pid
+.web.pid
+.api.log
+.web.log

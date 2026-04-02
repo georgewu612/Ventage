@@ -1,0 +1,512 @@
+[
+  {
+    "symbol": "NFLX",
+    "source": "reddit",
+    "sentiment_score": -0.2091,
+    "magnitude": 0.335,
+    "volume": 4081,
+    "keywords": {
+      "bullish": 40,
+      "bearish": 83
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232688Z"
+  },
+  {
+    "symbol": "AMD",
+    "source": "news",
+    "sentiment_score": -0.2004,
+    "magnitude": 0.3095,
+    "volume": 19955,
+    "keywords": {
+      "bullish": 67,
+      "bearish": 97
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232693Z"
+  },
+  {
+    "symbol": "TSLA",
+    "source": "twitter",
+    "sentiment_score": -0.0416,
+    "magnitude": 0.4961,
+    "volume": 18187,
+    "keywords": {
+      "bullish": 7,
+      "bearish": 94
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232697Z"
+  },
+  {
+    "symbol": "TSLA",
+    "source": "reddit",
+    "sentiment_score": 0.4172,
+    "magnitude": 0.8285,
+    "volume": 3887,
+    "keywords": {
+      "bullish": 24,
+      "bearish": 14
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232704Z"
+  },
+  {
+    "symbol": "AAPL",
+    "source": "twitter",
+    "sentiment_score": 0.664,
+    "magnitude": 0.8395,
+    "volume": 9723,
+    "keywords": {
+      "bullish": 49,
+      "bearish": 92
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232708Z"
+  },
+  {
+    "symbol": "MSFT",
+    "source": "twitter",
+    "sentiment_score": -0.4051,
+    "magnitude": 0.8305,
+    "volume": 18806,
+    "keywords": {
+      "bullish": 82,
+      "bearish": 32
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232711Z"
+  },
+  {
+    "symbol": "META",
+    "source": "twitter",
+    "sentiment_score": -0.5282,
+    "magnitude": 0.6023,
+    "volume": 10377,
+    "keywords": {
+      "bullish": 10,
+      "bearish": 51
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232715Z"
+  },
+  {
+    "symbol": "AMD",
+    "source": "news",
+    "sentiment_score": 0.3965,
+    "magnitude": 0.6123,
+    "volume": 17611,
+    "keywords": {
+      "bullish": 91,
+      "bearish": 5
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232718Z"
+  },
+  {
+    "symbol": "NFLX",
+    "source": "news",
+    "sentiment_score": -0.2932,
+    "magnitude": 0.5494,
+    "volume": 4495,
+    "keywords": {
+      "bullish": 7,
+      "bearish": 45
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232721Z"
+  },
+  {
+    "symbol": "NFLX",
+    "source": "news",
+    "sentiment_score": -0.2264,
+    "magnitude": 0.3947,
+    "volume": 4003,
+    "keywords": {
+      "bullish": 82,
+      "bearish": 28
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232725Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "source": "twitter",
+    "sentiment_score": 0.0148,
+    "magnitude": 0.3992,
+    "volume": 4005,
+    "keywords": {
+      "bullish": 24,
+      "bearish": 99
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232728Z"
+  },
+  {
+    "symbol": "AAPL",
+    "source": "news",
+    "sentiment_score": 0.1736,
+    "magnitude": 0.4371,
+    "volume": 17936,
+    "keywords": {
+      "bullish": 73,
+      "bearish": 51
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232732Z"
+  },
+  {
+    "symbol": "MSFT",
+    "source": "twitter",
+    "sentiment_score": 0.5358,
+    "magnitude": 0.6854,
+    "volume": 4800,
+    "keywords": {
+      "bullish": 75,
+      "bearish": 60
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232736Z"
+  },
+  {
+    "symbol": "MSFT",
+    "source": "news",
+    "sentiment_score": 0.4727,
+    "magnitude": 0.7076,
+    "volume": 13613,
+    "keywords": {
+      "bullish": 81,
+      "bearish": 95
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232739Z"
+  },
+  {
+    "symbol": "AAPL",
+    "source": "twitter",
+    "sentiment_score": -0.165,
+    "magnitude": 0.3986,
+    "volume": 7097,
+    "keywords": {
+      "bullish": 16,
+      "bearish": 63
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232742Z"
+  },
+  {
+    "symbol": "MSFT",
+    "source": "news",
+    "sentiment_score": 0.8123,
+    "magnitude": 1.2311,
+    "volume": 2709,
+    "keywords": {
+      "bullish": 52,
+      "bearish": 96
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232746Z"
+  },
+  {
+    "symbol": "TSLA",
+    "source": "reddit",
+    "sentiment_score": -0.5029,
+    "magnitude": 0.8279,
+    "volume": 2282,
+    "keywords": {
+      "bullish": 25,
+      "bearish": 35
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232749Z"
+  },
+  {
+    "symbol": "NVDA",
+    "source": "twitter",
+    "sentiment_score": 0.4527,
+    "magnitude": 0.5951,
+    "volume": 17412,
+    "keywords": {
+      "bullish": 43,
+      "bearish": 47
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232752Z"
+  },
+  {
+    "symbol": "MSFT",
+    "source": "news",
+    "sentiment_score": -0.6813,
+    "magnitude": 1.1609,
+    "volume": 19241,
+    "keywords": {
+      "bullish": 99,
+      "bearish": 31
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232757Z"
+  },
+  {
+    "symbol": "PLTR",
+    "source": "reddit",
+    "sentiment_score": 0.999,
+    "magnitude": 1.0814,
+    "volume": 12872,
+    "keywords": {
+      "bullish": 61,
+      "bearish": 95
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232760Z"
+  },
+  {
+    "symbol": "PLTR",
+    "source": "reddit",
+    "sentiment_score": 0.1606,
+    "magnitude": 0.4629,
+    "volume": 530,
+    "keywords": {
+      "bullish": 90,
+      "bearish": 32
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232765Z"
+  },
+  {
+    "symbol": "META",
+    "source": "news",
+    "sentiment_score": -0.8412,
+    "magnitude": 1.142,
+    "volume": 11551,
+    "keywords": {
+      "bullish": 66,
+      "bearish": 54
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232768Z"
+  },
+  {
+    "symbol": "NFLX",
+    "source": "reddit",
+    "sentiment_score": 0.3825,
+    "magnitude": 0.7895,
+    "volume": 4685,
+    "keywords": {
+      "bullish": 14,
+      "bearish": 78
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232772Z"
+  },
+  {
+    "symbol": "AMD",
+    "source": "reddit",
+    "sentiment_score": 0.092,
+    "magnitude": 0.4302,
+    "volume": 15104,
+    "keywords": {
+      "bullish": 21,
+      "bearish": 98
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232775Z"
+  },
+  {
+    "symbol": "TSLA",
+    "source": "reddit",
+    "sentiment_score": 0.3304,
+    "magnitude": 0.408,
+    "volume": 16633,
+    "keywords": {
+      "bullish": 27,
+      "bearish": 30
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232778Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "source": "reddit",
+    "sentiment_score": 0.6959,
+    "magnitude": 0.7937,
+    "volume": 11299,
+    "keywords": {
+      "bullish": 35,
+      "bearish": 77
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232782Z"
+  },
+  {
+    "symbol": "NFLX",
+    "source": "news",
+    "sentiment_score": 0.8576,
+    "magnitude": 0.9604,
+    "volume": 14098,
+    "keywords": {
+      "bullish": 10,
+      "bearish": 36
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "7d",
+    "created_at": "2026-04-02T16:45:59.232785Z"
+  },
+  {
+    "symbol": "META",
+    "source": "reddit",
+    "sentiment_score": -0.3088,
+    "magnitude": 0.5726,
+    "volume": 15737,
+    "keywords": {
+      "bullish": 55,
+      "bearish": 66
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232788Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "source": "twitter",
+    "sentiment_score": -0.9418,
+    "magnitude": 1.3176,
+    "volume": 4871,
+    "keywords": {
+      "bullish": 12,
+      "bearish": 91
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "1h",
+    "created_at": "2026-04-02T16:45:59.232792Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "source": "twitter",
+    "sentiment_score": 0.8643,
+    "magnitude": 1.2015,
+    "volume": 10191,
+    "keywords": {
+      "bullish": 100,
+      "bearish": 38
+    },
+    "sample_posts": {
+      "post1": "Sample post content",
+      "post2": "Another post"
+    },
+    "analysis_window": "24h",
+    "created_at": "2026-04-02T16:45:59.232796Z"
+  }
+]

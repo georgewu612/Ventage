@@ -1,0 +1,836 @@
+[
+  {
+    "symbol": "NFLX",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.33,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 33,
+      "unusual_volume": true,
+      "premium_spent": 4885145,
+      "call_put_ratio": 0.68,
+      "insider_net_value": -1462654
+    },
+    "valid_until": "2026-03-28T16:51:59.231392Z",
+    "created_at": "2026-03-27T16:51:59.231392Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.85,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 85,
+      "unusual_volume": true,
+      "premium_spent": 2471159,
+      "call_put_ratio": 1.07
+    },
+    "valid_until": "2026-03-27T23:46:59.231805Z",
+    "created_at": "2026-03-26T23:46:59.231805Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "technical",
+    "direction": "bullish",
+    "confidence": 0.44,
+    "analysis": "内部人士连续增持",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 44,
+      "unusual_volume": true,
+      "premium_spent": 567287,
+      "call_put_ratio": 3.93
+    },
+    "valid_until": "2026-03-30T10:43:59.231815Z",
+    "created_at": "2026-03-29T10:43:59.231815Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.9,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 90,
+      "unusual_volume": false,
+      "premium_spent": 3402073,
+      "call_put_ratio": 4.01,
+      "dark_pool_value": 5044757
+    },
+    "valid_until": "2026-03-28T07:14:59.231823Z",
+    "created_at": "2026-03-27T07:14:59.231823Z"
+  },
+  {
+    "symbol": "AMD",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.27,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 27,
+      "unusual_volume": false,
+      "premium_spent": 2656826,
+      "call_put_ratio": 0.74,
+      "sentiment_score": -0.125
+    },
+    "valid_until": "2026-03-29T07:23:59.231831Z",
+    "created_at": "2026-03-28T07:23:59.231831Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "fundamental",
+    "direction": "bearish",
+    "confidence": 0.87,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 87,
+      "unusual_volume": false,
+      "premium_spent": 4111672,
+      "call_put_ratio": 0.45,
+      "sentiment_score": 0.473
+    },
+    "valid_until": "2026-04-02T04:48:59.231839Z",
+    "created_at": "2026-04-01T04:48:59.231839Z"
+  },
+  {
+    "symbol": "PLTR",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.41,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 41,
+      "unusual_volume": false,
+      "premium_spent": 914220,
+      "call_put_ratio": 0.9,
+      "sentiment_score": 0.383
+    },
+    "valid_until": "2026-04-03T04:54:59.231847Z",
+    "created_at": "2026-04-02T04:54:59.231847Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.34,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 34,
+      "unusual_volume": false,
+      "premium_spent": 2036822,
+      "call_put_ratio": 0.72
+    },
+    "valid_until": "2026-03-30T06:44:59.231855Z",
+    "created_at": "2026-03-29T06:44:59.231855Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.75,
+    "analysis": "内部人士连续增持",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 75,
+      "unusual_volume": true,
+      "premium_spent": 3253851,
+      "call_put_ratio": 3.02,
+      "sentiment_score": 0.735
+    },
+    "valid_until": "2026-03-28T00:04:59.231862Z",
+    "created_at": "2026-03-27T00:04:59.231862Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.26,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 26,
+      "unusual_volume": false,
+      "premium_spent": 4440960,
+      "call_put_ratio": 0.53
+    },
+    "valid_until": "2026-04-02T07:39:59.231869Z",
+    "created_at": "2026-04-01T07:39:59.231869Z"
+  },
+  {
+    "symbol": "AMZN",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.33,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 33,
+      "unusual_volume": false,
+      "premium_spent": 4991873,
+      "call_put_ratio": 0.64
+    },
+    "valid_until": "2026-04-01T13:42:59.231876Z",
+    "created_at": "2026-03-31T13:42:59.231876Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.56,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 56,
+      "unusual_volume": false,
+      "premium_spent": 3891490,
+      "call_put_ratio": 0.67
+    },
+    "valid_until": "2026-03-28T22:43:59.231883Z",
+    "created_at": "2026-03-27T22:43:59.231883Z"
+  },
+  {
+    "symbol": "AMZN",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.9,
+    "analysis": "大量看涨期权流入",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 90,
+      "unusual_volume": false,
+      "premium_spent": 3729209,
+      "call_put_ratio": 1.09
+    },
+    "valid_until": "2026-04-02T16:30:59.231890Z",
+    "created_at": "2026-04-01T16:30:59.231890Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.28,
+    "analysis": "内部人士连续增持",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 28,
+      "unusual_volume": true,
+      "premium_spent": 2068021,
+      "call_put_ratio": 2.78
+    },
+    "valid_until": "2026-04-01T20:11:59.231897Z",
+    "created_at": "2026-03-31T20:11:59.231897Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.45,
+    "analysis": "大量看涨期权流入",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 45,
+      "unusual_volume": true,
+      "premium_spent": 4342020,
+      "call_put_ratio": 3.73
+    },
+    "valid_until": "2026-03-28T05:37:59.231904Z",
+    "created_at": "2026-03-27T05:37:59.231904Z"
+  },
+  {
+    "symbol": "NVDA",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.27,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 27,
+      "unusual_volume": true,
+      "premium_spent": 2215233,
+      "call_put_ratio": 0.56,
+      "dark_pool_value": 4087942
+    },
+    "valid_until": "2026-03-29T04:04:59.231910Z",
+    "created_at": "2026-03-28T04:04:59.231910Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.8,
+    "analysis": "内部人士减持加速",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 80,
+      "unusual_volume": false,
+      "premium_spent": 797660,
+      "call_put_ratio": 0.91,
+      "insider_net_value": 941758
+    },
+    "valid_until": "2026-03-28T10:04:59.231917Z",
+    "created_at": "2026-03-27T10:04:59.231917Z"
+  },
+  {
+    "symbol": "NVDA",
+    "signal_type": "fundamental",
+    "direction": "bearish",
+    "confidence": 0.47,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 47,
+      "unusual_volume": true,
+      "premium_spent": 4888234,
+      "call_put_ratio": 0.48
+    },
+    "valid_until": "2026-03-31T02:46:59.231925Z",
+    "created_at": "2026-03-30T02:46:59.231925Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.64,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 64,
+      "unusual_volume": true,
+      "premium_spent": 724095,
+      "call_put_ratio": 0.94,
+      "dark_pool_value": 4761539
+    },
+    "valid_until": "2026-04-02T08:56:59.231932Z",
+    "created_at": "2026-04-01T08:56:59.231932Z"
+  },
+  {
+    "symbol": "AMZN",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.7,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 70,
+      "unusual_volume": true,
+      "premium_spent": 2025538,
+      "call_put_ratio": 1.88,
+      "sentiment_score": -0.507
+    },
+    "valid_until": "2026-03-30T04:25:59.231939Z",
+    "created_at": "2026-03-29T04:25:59.231939Z"
+  },
+  {
+    "symbol": "AMD",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.73,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 73,
+      "unusual_volume": true,
+      "premium_spent": 2744275,
+      "call_put_ratio": 2.51,
+      "sentiment_score": 0.041
+    },
+    "valid_until": "2026-03-31T05:59:59.231946Z",
+    "created_at": "2026-03-30T05:59:59.231946Z"
+  },
+  {
+    "symbol": "NVDA",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.56,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 56,
+      "unusual_volume": false,
+      "premium_spent": 4148800,
+      "call_put_ratio": 3.51,
+      "dark_pool_value": 8446624
+    },
+    "valid_until": "2026-03-28T10:04:59.231953Z",
+    "created_at": "2026-03-27T10:04:59.231953Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.34,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 34,
+      "unusual_volume": true,
+      "premium_spent": 848510,
+      "call_put_ratio": 0.82,
+      "dark_pool_value": 9548509
+    },
+    "valid_until": "2026-04-02T19:34:59.231963Z",
+    "created_at": "2026-04-01T19:34:59.231963Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.41,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 41,
+      "unusual_volume": true,
+      "premium_spent": 253008,
+      "call_put_ratio": 1.81,
+      "insider_net_value": 383443
+    },
+    "valid_until": "2026-03-30T14:03:59.231971Z",
+    "created_at": "2026-03-29T14:03:59.231971Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.79,
+    "analysis": "内部人士减持加速",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 79,
+      "unusual_volume": true,
+      "premium_spent": 1905185,
+      "call_put_ratio": 0.84,
+      "sentiment_score": 0.484
+    },
+    "valid_until": "2026-03-30T18:36:59.231978Z",
+    "created_at": "2026-03-29T18:36:59.231978Z"
+  },
+  {
+    "symbol": "AMD",
+    "signal_type": "technical",
+    "direction": "bullish",
+    "confidence": 0.71,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 71,
+      "unusual_volume": false,
+      "premium_spent": 2276126,
+      "call_put_ratio": 2.59,
+      "dark_pool_value": 1345827
+    },
+    "valid_until": "2026-04-03T13:59:59.231987Z",
+    "created_at": "2026-04-02T13:59:59.231987Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.74,
+    "analysis": "大量看涨期权流入",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 74,
+      "unusual_volume": false,
+      "premium_spent": 3181375,
+      "call_put_ratio": 3.34,
+      "dark_pool_value": 7083920
+    },
+    "valid_until": "2026-03-29T22:11:59.231994Z",
+    "created_at": "2026-03-28T22:11:59.231994Z"
+  },
+  {
+    "symbol": "AMZN",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.73,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 73,
+      "unusual_volume": true,
+      "premium_spent": 3145446,
+      "call_put_ratio": 0.4
+    },
+    "valid_until": "2026-03-30T08:37:59.232001Z",
+    "created_at": "2026-03-29T08:37:59.232001Z"
+  },
+  {
+    "symbol": "GOOGL",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.69,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 69,
+      "unusual_volume": false,
+      "premium_spent": 3626026,
+      "call_put_ratio": 0.73,
+      "insider_net_value": 1889961
+    },
+    "valid_until": "2026-03-29T01:10:59.232008Z",
+    "created_at": "2026-03-28T01:10:59.232008Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.36,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 36,
+      "unusual_volume": false,
+      "premium_spent": 3020423,
+      "call_put_ratio": 4.09,
+      "dark_pool_value": 7723729
+    },
+    "valid_until": "2026-03-29T14:30:59.232015Z",
+    "created_at": "2026-03-28T14:30:59.232015Z"
+  },
+  {
+    "symbol": "PLTR",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.51,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 51,
+      "unusual_volume": true,
+      "premium_spent": 2818970,
+      "call_put_ratio": 3.89,
+      "sentiment_score": 0.275
+    },
+    "valid_until": "2026-03-30T06:39:59.232022Z",
+    "created_at": "2026-03-29T06:39:59.232022Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "technical",
+    "direction": "bullish",
+    "confidence": 0.2,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 20,
+      "unusual_volume": true,
+      "premium_spent": 3388821,
+      "call_put_ratio": 3.36,
+      "sentiment_score": -0.321
+    },
+    "valid_until": "2026-03-30T18:59:59.232028Z",
+    "created_at": "2026-03-29T18:59:59.232028Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.87,
+    "analysis": "内部人士减持加速",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 87,
+      "unusual_volume": false,
+      "premium_spent": 3309920,
+      "call_put_ratio": 0.44,
+      "insider_net_value": -2526459
+    },
+    "valid_until": "2026-03-31T11:35:59.232035Z",
+    "created_at": "2026-03-30T11:35:59.232035Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "technical",
+    "direction": "bullish",
+    "confidence": 0.73,
+    "analysis": "社交情绪显著转强",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 73,
+      "unusual_volume": true,
+      "premium_spent": 1466751,
+      "call_put_ratio": 3.69,
+      "sentiment_score": -0.351
+    },
+    "valid_until": "2026-04-02T21:15:59.232042Z",
+    "created_at": "2026-04-01T21:15:59.232042Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.93,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 93,
+      "unusual_volume": false,
+      "premium_spent": 643269,
+      "call_put_ratio": 0.92,
+      "dark_pool_value": 11866299
+    },
+    "valid_until": "2026-03-30T16:56:59.232049Z",
+    "created_at": "2026-03-29T16:56:59.232049Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.28,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 28,
+      "unusual_volume": false,
+      "premium_spent": 3903977,
+      "call_put_ratio": 0.49,
+      "sentiment_score": -0.619
+    },
+    "valid_until": "2026-03-28T02:41:59.232055Z",
+    "created_at": "2026-03-27T02:41:59.232055Z"
+  },
+  {
+    "symbol": "AMZN",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.79,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "insider_trades",
+      "signal_score": 79,
+      "unusual_volume": false,
+      "premium_spent": 4497088,
+      "call_put_ratio": 3.47,
+      "insider_net_value": -1143867
+    },
+    "valid_until": "2026-04-01T00:46:59.232062Z",
+    "created_at": "2026-03-31T00:46:59.232062Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.36,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 36,
+      "unusual_volume": true,
+      "premium_spent": 1259818,
+      "call_put_ratio": 0.85,
+      "dark_pool_value": 8789476
+    },
+    "valid_until": "2026-03-30T07:41:59.232068Z",
+    "created_at": "2026-03-29T07:41:59.232068Z"
+  },
+  {
+    "symbol": "AMD",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.42,
+    "analysis": "社交情绪明显转弱",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 42,
+      "unusual_volume": false,
+      "premium_spent": 3341756,
+      "call_put_ratio": 0.88,
+      "dark_pool_value": 2808994
+    },
+    "valid_until": "2026-04-02T20:14:59.232075Z",
+    "created_at": "2026-04-01T20:14:59.232075Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "fundamental",
+    "direction": "bullish",
+    "confidence": 0.64,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 64,
+      "unusual_volume": true,
+      "premium_spent": 4721404,
+      "call_put_ratio": 3.01
+    },
+    "valid_until": "2026-03-29T00:02:59.232081Z",
+    "created_at": "2026-03-28T00:02:59.232081Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.58,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 58,
+      "unusual_volume": false,
+      "premium_spent": 1287088,
+      "call_put_ratio": 0.78
+    },
+    "valid_until": "2026-03-29T18:14:59.232087Z",
+    "created_at": "2026-03-28T18:14:59.232087Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "fundamental",
+    "direction": "bearish",
+    "confidence": 0.92,
+    "analysis": "看跌期权成交放量",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 92,
+      "unusual_volume": true,
+      "premium_spent": 3089065,
+      "call_put_ratio": 0.76,
+      "sentiment_score": -0.754
+    },
+    "valid_until": "2026-04-03T14:05:59.232093Z",
+    "created_at": "2026-04-02T14:05:59.232093Z"
+  },
+  {
+    "symbol": "TSLA",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.32,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 32,
+      "unusual_volume": false,
+      "premium_spent": 2086326,
+      "call_put_ratio": 0.78
+    },
+    "valid_until": "2026-04-02T02:00:59.232100Z",
+    "created_at": "2026-04-01T02:00:59.232100Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.9,
+    "analysis": "内部人士连续增持",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 90,
+      "unusual_volume": true,
+      "premium_spent": 322241,
+      "call_put_ratio": 2.52,
+      "sentiment_score": -0.526
+    },
+    "valid_until": "2026-03-30T17:31:59.232106Z",
+    "created_at": "2026-03-29T17:31:59.232106Z"
+  },
+  {
+    "symbol": "META",
+    "signal_type": "composite",
+    "direction": "bearish",
+    "confidence": 0.28,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 28,
+      "unusual_volume": false,
+      "premium_spent": 1461261,
+      "call_put_ratio": 0.72,
+      "dark_pool_value": 10059743
+    },
+    "valid_until": "2026-03-30T00:41:59.232114Z",
+    "created_at": "2026-03-29T00:41:59.232114Z"
+  },
+  {
+    "symbol": "AAPL",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.35,
+    "analysis": "内部人士减持加速",
+    "factors": {
+      "module": "market_sentiment",
+      "signal_score": 35,
+      "unusual_volume": true,
+      "premium_spent": 2746041,
+      "call_put_ratio": 0.71,
+      "sentiment_score": 0.891
+    },
+    "valid_until": "2026-03-30T11:37:59.232120Z",
+    "created_at": "2026-03-29T11:37:59.232120Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "composite",
+    "direction": "bullish",
+    "confidence": 0.38,
+    "analysis": "暗池出现大额买单",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 38,
+      "unusual_volume": false,
+      "premium_spent": 440629,
+      "call_put_ratio": 1.72,
+      "dark_pool_value": 7953541
+    },
+    "valid_until": "2026-03-28T00:09:59.232127Z",
+    "created_at": "2026-03-27T00:09:59.232127Z"
+  },
+  {
+    "symbol": "MSFT",
+    "signal_type": "technical",
+    "direction": "bearish",
+    "confidence": 0.36,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 36,
+      "unusual_volume": true,
+      "premium_spent": 1687657,
+      "call_put_ratio": 0.59
+    },
+    "valid_until": "2026-04-02T19:26:59.232133Z",
+    "created_at": "2026-04-01T19:26:59.232133Z"
+  },
+  {
+    "symbol": "NFLX",
+    "signal_type": "sentiment",
+    "direction": "bearish",
+    "confidence": 0.46,
+    "analysis": "暗池出现大额卖单",
+    "factors": {
+      "module": "options_flow",
+      "signal_score": 46,
+      "unusual_volume": true,
+      "premium_spent": 2343732,
+      "call_put_ratio": 0.55
+    },
+    "valid_until": "2026-03-28T22:05:59.232140Z",
+    "created_at": "2026-03-27T22:05:59.232140Z"
+  },
+  {
+    "symbol": "AMD",
+    "signal_type": "sentiment",
+    "direction": "bullish",
+    "confidence": 0.61,
+    "analysis": "内部人士连续增持",
+    "factors": {
+      "module": "dark_pool",
+      "signal_score": 61,
+      "unusual_volume": true,
+      "premium_spent": 2967690,
+      "call_put_ratio": 3.08,
+      "dark_pool_value": 6234715
+    },
+    "valid_until": "2026-04-01T18:46:59.232146Z",
+    "created_at": "2026-03-31T18:46:59.232146Z"
+  }
+]
