@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # Frontend URL for CORS (production)
+    frontend_url: str = ""
+
     # External data APIs (optional — ETL collectors degrade gracefully)
     polygon_api_key: str = ""
     unusual_whales_api_key: str = ""

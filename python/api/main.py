@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,19 +16,25 @@ settings = get_settings()
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="Ventage Week 1 API (Mock data flow)",
+    description="Ventage API — AI-powered fintech signals",
+    docs_url="/docs" if settings.app_env == "development" else None,
+    redoc_url=None,
 )
+
+# CORS: production uses FRONTEND_URL env var, dev allows localhost
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+_frontend_url = os.getenv("FRONTEND_URL", "")
+if _frontend_url:
+    _cors_origins.append(_frontend_url)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
