@@ -21,6 +21,7 @@ from supabase import create_client
 
 from config.settings import get_settings
 from agents.signal_engine import SignalEngine
+from alerting.manager import AlertManager
 from etl.collectors.insider_collector import InsiderTradesCollector
 from etl.collectors.options_collector import OptionsFlowCollector
 from etl.collectors.sentiment_collector import SentimentCollector
@@ -58,6 +59,19 @@ async def run_signal_engine(db):
     signals = await engine.generate_all()
     logger.info("signal_engine_result", signals_generated=len(signals))
     return signals
+
+
+async def run_alert_check(db):
+    """Evaluate recent signals and send alerts if warranted."""
+    manager = AlertManager(db)
+    result = await manager.evaluate_and_notify()
+    logger.info(
+        "alert_check_result",
+        evaluated=result["evaluated"],
+        matched=result["matched"],
+        sent=result["sent"],
+    )
+    return result
 
 
 async def run_all_once():
@@ -128,6 +142,17 @@ def start_scheduler():
         args=[db],
         id="signal_engine",
         name="Signal Engine",
+        max_instances=1,
+    )
+
+    # Alert check: every 25 minutes (after signal engine)
+    scheduler.add_job(
+        run_alert_check,
+        "interval",
+        minutes=25,
+        args=[db],
+        id="alert_check",
+        name="Alert Check (Telegram)",
         max_instances=1,
     )
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
+from alerting.manager import AlertManager
 from config.settings import get_settings
 
 router = APIRouter()
@@ -136,3 +137,73 @@ def preview_alerts(payload: AlertPreviewRequest) -> AlertPreviewResponse:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to preview alerts: {exc}") from exc
+
+
+class AlertTriggerResponse(BaseModel):
+    evaluated: int
+    matched: int
+    sent: int
+    errors: list[str]
+
+
+@router.post("/alerts/trigger", response_model=AlertTriggerResponse)
+async def trigger_alerts() -> AlertTriggerResponse:
+    """Manually trigger alert evaluation and notification."""
+    try:
+        supabase = _get_supabase_client()
+        manager = AlertManager(supabase)
+        result = await manager.evaluate_and_notify()
+        return AlertTriggerResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to trigger alerts: {exc}") from exc
+
+
+class AlertHistoryItem(BaseModel):
+    id: str
+    symbol: str
+    module: str
+    signal_score: float | None
+    direction: str | None
+    sent_at: str
+    channel: str | None
+
+
+class AlertHistoryResponse(BaseModel):
+    total: int
+    items: list[AlertHistoryItem]
+
+
+@router.get("/alerts/history", response_model=AlertHistoryResponse)
+def get_alert_history(limit: int = 50) -> AlertHistoryResponse:
+    """Get recent alert history."""
+    try:
+        supabase = _get_supabase_client()
+        resp = (
+            supabase.table("alert_history")
+            .select("*")
+            .order("sent_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        items = resp.data or []
+        return AlertHistoryResponse(
+            total=len(items),
+            items=[
+                AlertHistoryItem(
+                    id=str(r.get("id")),
+                    symbol=r.get("symbol", ""),
+                    module=r.get("module", ""),
+                    signal_score=r.get("signal_score"),
+                    direction=r.get("direction"),
+                    sent_at=str(r.get("sent_at", "")),
+                    channel=r.get("channel"),
+                )
+                for r in items
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to get alert history: {exc}") from exc
