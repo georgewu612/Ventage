@@ -20,7 +20,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 
 from config.settings import get_settings
+from agents.signal_engine import SignalEngine
 from etl.collectors.insider_collector import InsiderTradesCollector
+from etl.collectors.options_collector import OptionsFlowCollector
 from etl.collectors.sentiment_collector import SentimentCollector
 
 import structlog
@@ -50,15 +52,32 @@ async def run_collector(collector_cls, db):
     return result
 
 
+async def run_signal_engine(db):
+    """Run the signal engine to generate signals from collected data."""
+    engine = SignalEngine(db)
+    signals = await engine.generate_all()
+    logger.info("signal_engine_result", signals_generated=len(signals))
+    return signals
+
+
 async def run_all_once():
-    """Run all collectors once (for testing or manual invocation)."""
+    """Run all collectors once, then generate signals."""
     db = _create_supabase_client()
-    collectors = [InsiderTradesCollector, SentimentCollector]
+    collectors = [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector]
 
     results = []
     for cls in collectors:
         result = await run_collector(cls, db)
         results.append(result)
+
+    # After collecting data, generate signals
+    signals = await run_signal_engine(db)
+    results.append({
+        "collector": "signal_engine",
+        "status": "success",
+        "collected": len(signals),
+        "loaded": len(signals),
+    })
 
     return results
 
@@ -79,6 +98,17 @@ def start_scheduler():
         max_instances=1,
     )
 
+    # Options flow: every 5 minutes (CBOE delayed data)
+    scheduler.add_job(
+        run_collector,
+        "interval",
+        minutes=5,
+        args=[OptionsFlowCollector, db],
+        id="options_flow",
+        name="Options Flow (CBOE/UW)",
+        max_instances=1,
+    )
+
     # Reddit sentiment: every 10 minutes
     scheduler.add_job(
         run_collector,
@@ -90,19 +120,25 @@ def start_scheduler():
         max_instances=1,
     )
 
+    # Signal engine: every 20 minutes (after collectors have run)
+    scheduler.add_job(
+        run_signal_engine,
+        "interval",
+        minutes=20,
+        args=[db],
+        id="signal_engine",
+        name="Signal Engine",
+        max_instances=1,
+    )
+
     # Run all collectors immediately on startup
-    scheduler.add_job(
-        run_collector,
-        args=[InsiderTradesCollector, db],
-        id="insider_trades_startup",
-        name="Insider Trades (startup)",
-    )
-    scheduler.add_job(
-        run_collector,
-        args=[SentimentCollector, db],
-        id="sentiment_startup",
-        name="Sentiment (startup)",
-    )
+    for cls in [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector]:
+        scheduler.add_job(
+            run_collector,
+            args=[cls, db],
+            id=f"{cls.name}_startup",
+            name=f"{cls.name} (startup)",
+        )
 
     scheduler.start()
     logger.info("scheduler_started", jobs=len(scheduler.get_jobs()))

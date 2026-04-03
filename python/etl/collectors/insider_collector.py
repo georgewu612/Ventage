@@ -1,11 +1,13 @@
 """SEC EDGAR Form 4 insider trades collector.
 
-Uses the free SEC EDGAR full-text search API to fetch recent Form 4 filings.
-Docs: https://efts.sec.gov/LATEST/search-index?q=%22form-type%22&dateRange=custom
+Fetches Form 4 filings from SEC EDGAR and parses the XML to extract
+insider names, trade types, shares, prices, and ownership details.
 """
 
 from __future__ import annotations
 
+import asyncio
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -124,50 +126,184 @@ class InsiderTradesCollector(BaseCollector):
         filing: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """Parse a Form 4 XML filing to extract transaction details."""
-        accession = filing.get("accession", "").replace("-", "")
+        accession = filing.get("accession", "")
         primary_doc = filing.get("primary_doc", "")
         if not accession or not primary_doc:
             return []
 
-        # Try to get the JSON index for this filing
+        # Build URL: https://www.sec.gov/Archives/edgar/data/{cik}/{accession_no_dashes}/{doc}
         cik = filing["cik"].lstrip("0")
-        index_url = f"https://data.sec.gov/submissions/CIK{filing['cik']}.json"
+        accession_path = accession.replace("-", "")
+        xml_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{cik}/"
+            f"{accession_path}/{primary_doc}"
+        )
 
-        # For now, extract what we can from the filing metadata
-        # Full XML parsing would require additional logic
-        return [{
-            "symbol": filing["symbol"],
-            "insider_name": "",  # Would come from XML parsing
-            "insider_title": "",
-            "relationship": "Officer",
-            "trade_type": "BUY",  # Default, would come from XML
-            "shares": 0,
-            "price": None,
-            "value": None,
-            "shares_owned_after": None,
-            "filing_date": filing["filing_date"],
-            "transaction_date": None,
+        # SEC rate limit: max 10 requests/second
+        await asyncio.sleep(0.15)
+
+        resp = await client.get(xml_url)
+        resp.raise_for_status()
+
+        return self._extract_transactions_from_xml(
+            resp.text, filing["symbol"], filing["filing_date"], accession
+        )
+
+    def _extract_transactions_from_xml(
+        self,
+        xml_text: str,
+        symbol: str,
+        filing_date: str,
+        accession: str,
+    ) -> list[dict[str, Any]]:
+        """Extract transaction records from Form 4 XML content."""
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError:
+            self.log.debug("xml_parse_error", accession=accession)
+            return []
+
+        # XML namespace — Form 4 uses default namespace
+        ns = ""
+        if root.tag.startswith("{"):
+            ns = root.tag.split("}")[0] + "}"
+
+        # Extract reporting owner info
+        owner_name = self._xml_text(root, f".//{ns}reportingOwner/{ns}reportingOwnerId/{ns}rptOwnerName")
+        owner_title = self._xml_text(root, f".//{ns}reportingOwner/{ns}reportingOwnerRelationship/{ns}officerTitle")
+
+        # Determine relationship
+        rel_node = root.find(f".//{ns}reportingOwner/{ns}reportingOwnerRelationship")
+        relationship = self._determine_relationship(rel_node, ns)
+
+        transactions: list[dict[str, Any]] = []
+
+        # Parse non-derivative transactions (common stock trades)
+        for txn in root.findall(f".//{ns}nonDerivativeTransaction"):
+            record = self._parse_transaction_element(
+                txn, ns, symbol, owner_name, owner_title, relationship,
+                filing_date, accession,
+            )
+            if record:
+                transactions.append(record)
+
+        # If no transactions found, still record the filing with owner info
+        if not transactions:
+            transactions.append({
+                "symbol": symbol,
+                "insider_name": owner_name or "Unknown",
+                "insider_title": owner_title or None,
+                "relationship": relationship,
+                "trade_type": "BUY",
+                "shares": 0,
+                "price": None,
+                "value": None,
+                "shares_owned_after": None,
+                "filing_date": filing_date,
+                "transaction_date": None,
+                "sec_form": "Form 4",
+                "footnotes": None,
+                "_accession": accession,
+                "_source": "sec_edgar",
+            })
+
+        return transactions
+
+    def _parse_transaction_element(
+        self,
+        txn: ET.Element,
+        ns: str,
+        symbol: str,
+        owner_name: str,
+        owner_title: str | None,
+        relationship: str,
+        filing_date: str,
+        accession: str,
+    ) -> dict[str, Any] | None:
+        """Parse a single <nonDerivativeTransaction> element."""
+        # Transaction date
+        txn_date = self._xml_text(txn, f"{ns}transactionDate/{ns}value")
+
+        # Shares
+        shares_str = self._xml_text(txn, f"{ns}transactionAmounts/{ns}transactionShares/{ns}value")
+        shares = float(shares_str) if shares_str else 0
+
+        # Price per share
+        price_str = self._xml_text(txn, f"{ns}transactionAmounts/{ns}transactionPricePerShare/{ns}value")
+        price = float(price_str) if price_str else None
+
+        # Acquisition (A) or Disposition (D) → BUY or SELL
+        acq_disp = self._xml_text(
+            txn, f"{ns}transactionAmounts/{ns}transactionAcquiredDisposedCode/{ns}value"
+        )
+        trade_type = "BUY" if acq_disp == "A" else "SELL"
+
+        # Shares owned after transaction
+        owned_after_str = self._xml_text(
+            txn, f"{ns}postTransactionAmounts/{ns}sharesOwnedFollowingTransaction/{ns}value"
+        )
+        shares_owned_after = float(owned_after_str) if owned_after_str else None
+
+        # Calculate value
+        value = round(shares * price, 2) if price and shares else None
+
+        if shares == 0 and price is None:
+            return None
+
+        return {
+            "symbol": symbol,
+            "insider_name": owner_name or "Unknown",
+            "insider_title": owner_title or None,
+            "relationship": relationship,
+            "trade_type": trade_type,
+            "shares": int(shares),
+            "price": price,
+            "value": value,
+            "shares_owned_after": int(shares_owned_after) if shares_owned_after else None,
+            "filing_date": filing_date,
+            "transaction_date": txn_date,
             "sec_form": "Form 4",
             "footnotes": None,
-            "_accession": filing.get("accession"),
+            "_accession": accession,
             "_source": "sec_edgar",
-        }]
+        }
+
+    def _determine_relationship(self, rel_node: ET.Element | None, ns: str) -> str:
+        """Determine the insider's relationship from XML."""
+        if rel_node is None:
+            return "Other"
+        if self._xml_text(rel_node, f"{ns}isDirector") == "1":
+            return "Director"
+        if self._xml_text(rel_node, f"{ns}isOfficer") == "1":
+            return "Officer"
+        if self._xml_text(rel_node, f"{ns}isTenPercentOwner") == "1":
+            return "10% Owner"
+        return "Other"
+
+    @staticmethod
+    def _xml_text(el: ET.Element, path: str) -> str | None:
+        """Safely extract text from an XML element path."""
+        node = el.find(path)
+        return node.text.strip() if node is not None and node.text else None
 
     def transform(self, raw_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Clean and normalize insider trade records."""
         normalized = []
-        seen_accessions: set[str] = set()
+        seen: set[str] = set()
 
         for record in raw_records:
-            accession = record.get("_accession")
-            if accession and accession in seen_accessions:
-                continue
-            if accession:
-                seen_accessions.add(accession)
-
             # Skip records with no meaningful data
             if not record.get("symbol") or not record.get("filing_date"):
                 continue
+
+            # Dedup by accession + insider + shares + trade_type
+            dedup_key = (
+                f"{record.get('_accession')}|{record.get('insider_name')}"
+                f"|{record.get('shares')}|{record.get('trade_type')}"
+            )
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
 
             clean = {
                 "symbol": record["symbol"].upper(),
