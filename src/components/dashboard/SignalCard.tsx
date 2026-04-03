@@ -11,7 +11,27 @@ interface Signal {
   confidence: number;
   signal_type: string;
   analysis?: string | null;
+  module?: string;
+  signal_score?: number;
   created_at: string;
+}
+
+function timeAgo(dateStr: string, locale: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = Math.floor((now - then) / 1000);
+
+  if (diff < 60) return locale === "zh-CN" ? "刚刚" : "just now";
+  if (diff < 3600) {
+    const m = Math.floor(diff / 60);
+    return locale === "zh-CN" ? `${m}分钟前` : `${m}m ago`;
+  }
+  if (diff < 86400) {
+    const h = Math.floor(diff / 3600);
+    return locale === "zh-CN" ? `${h}小时前` : `${h}h ago`;
+  }
+  const d = Math.floor(diff / 86400);
+  return locale === "zh-CN" ? `${d}天前` : `${d}d ago`;
 }
 
 export function SignalCard({ signal }: { signal: Signal }) {
@@ -20,23 +40,26 @@ export function SignalCard({ signal }: { signal: Signal }) {
   const directionConfig = {
     bullish: {
       icon: TrendingUp,
-      color: "text-green-500",
-      bg: "bg-green-500/10",
-      border: "border-green-500/20",
+      color: "text-emerald-400",
+      bg: "bg-emerald-500/10",
+      border: "border-emerald-500/20",
+      barColor: "bg-emerald-500",
       label: t("signal.bullish"),
     },
     bearish: {
       icon: TrendingDown,
-      color: "text-red-500",
+      color: "text-red-400",
       bg: "bg-red-500/10",
       border: "border-red-500/20",
+      barColor: "bg-red-500",
       label: t("signal.bearish"),
     },
     neutral: {
       icon: Minus,
-      color: "text-yellow-500",
+      color: "text-yellow-400",
       bg: "bg-yellow-500/10",
       border: "border-yellow-500/20",
+      barColor: "bg-yellow-500",
       label: t("signal.neutral"),
     },
   };
@@ -44,43 +67,75 @@ export function SignalCard({ signal }: { signal: Signal }) {
   const config = directionConfig[signal.direction];
   const Icon = config.icon;
   const confidencePercent = Math.round(signal.confidence * 100);
+  const score = signal.signal_score ?? confidencePercent;
 
   return (
     <div
-      className={`rounded-lg border ${config.border} ${config.bg} p-6 transition-all hover:shadow-lg`}
+      className={`group relative overflow-hidden rounded-xl border ${config.border} ${config.bg} p-5 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20`}
     >
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl font-bold">${signal.symbol}</span>
-          <Icon className={`h-5 w-5 ${config.color}`} />
-          <span
-            className={`rounded px-2 py-1 text-xs ${config.bg} ${config.color}`}
-          >
-            {config.label}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/50 px-3 py-1 text-sm font-medium dark:bg-black/50">
-            {confidencePercent}% {t("signal.confidence")}
-          </span>
-        </div>
+      {/* Confidence bar at top */}
+      <div className="absolute inset-x-0 top-0 h-1 bg-white/5">
+        <div
+          className={`h-full ${config.barColor} transition-all duration-700`}
+          style={{ width: `${confidencePercent}%` }}
+        />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-          <span className="font-medium">{t("signal.type")}:</span>
+      <div className="mb-3 flex items-center justify-between pt-1">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xl font-bold text-white">${signal.symbol}</span>
+          <div
+            className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${config.bg} ${config.color}`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {config.label}
+          </div>
+        </div>
+        <span className={`text-2xl font-bold tabular-nums ${config.color}`}>
+          {confidencePercent}%
+        </span>
+      </div>
+
+      {signal.analysis && (
+        <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-gray-300">
+          {signal.analysis}
+        </p>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <div className="flex items-center gap-3">
+          {signal.module && (
+            <span className="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">
+              {signal.module}
+            </span>
+          )}
           <span className="capitalize">{signal.signal_type}</span>
         </div>
+        <span title={new Date(signal.created_at).toLocaleString(dateLocale)}>
+          {timeAgo(signal.created_at, dateLocale)}
+        </span>
+      </div>
+    </div>
+  );
+}
 
-        {signal.analysis && (
-          <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
-            {signal.analysis}
-          </p>
-        )}
-
-        <div className="mt-4 text-xs text-gray-500">
-          {new Date(signal.created_at).toLocaleString(dateLocale)}
+export function SignalCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-xl border border-white/10 bg-white/5 p-5">
+      <div className="mb-3 flex items-center justify-between pt-1">
+        <div className="flex items-center gap-2.5">
+          <div className="h-6 w-16 rounded bg-white/10" />
+          <div className="h-5 w-12 rounded bg-white/10" />
         </div>
+        <div className="h-7 w-10 rounded bg-white/10" />
+      </div>
+      <div className="mb-3 space-y-2">
+        <div className="h-4 w-full rounded bg-white/10" />
+        <div className="h-4 w-2/3 rounded bg-white/10" />
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="h-3 w-20 rounded bg-white/10" />
+        <div className="h-3 w-14 rounded bg-white/10" />
       </div>
     </div>
   );

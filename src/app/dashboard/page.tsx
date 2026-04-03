@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 
-import { SignalCard } from "@/components/dashboard/SignalCard";
+import {
+  SignalCard,
+  SignalCardSkeleton,
+} from "@/components/dashboard/SignalCard";
 import { useAlertsPreview } from "@/lib/hooks/useAlertsPreview";
 import { useMarketSignals } from "@/lib/hooks/useMarketSignals";
 import { useSystemStatus } from "@/lib/hooks/useSystemStatus";
@@ -47,20 +50,17 @@ export default function DashboardPage() {
     preview,
   } = useAlertsPreview();
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="text-2xl text-white">{t("common.loading")}</div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="text-xl text-red-500">
-          {t("common.error")}: {error.message}
-        </div>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
+        <div className="text-4xl">⚠️</div>
+        <div className="text-xl text-red-400">{error.message}</div>
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
+        >
+          {t("common.retry") ?? "重试"}
+        </button>
       </div>
     );
   }
@@ -362,19 +362,26 @@ export default function DashboardPage() {
           <p className="text-gray-400">{t("dashboard.subtitle")}</p>
         </div>
 
-        {signals.length === 0 ? (
-          <div className="py-20 text-center">
+        {loading ? (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SignalCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : signals.length === 0 ? (
+          <div className="flex flex-col items-center py-20 text-center">
+            <div className="mb-4 text-5xl opacity-40">📭</div>
             <p className="text-lg text-gray-400">{t("dashboard.empty")}</p>
             <p className="mt-2 text-sm text-gray-500">
-              <code className="rounded bg-white/10 px-2 py-1">
-                {t("dashboard.emptyHint")}
-              </code>
+              {t("dashboard.emptyHint")}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="animate-stagger grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {signals.map((signal) => (
-              <SignalCard key={signal.id} signal={signal} />
+              <div key={signal.id} className="animate-slide-up">
+                <SignalCard signal={signal} />
+              </div>
             ))}
           </div>
         )}
