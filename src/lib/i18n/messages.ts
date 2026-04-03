@@ -56,6 +56,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     "placeholder.week1": "Week 1 暂停直连 Supabase，Week 2 接入 API 聚合。",
     "placeholder.body":
       "当前页面为占位状态。先完成主链路：Mock -> FastAPI -> Dashboard。",
+    "nav.logout": "退出登录",
     "locale.label": "语言",
     "locale.zh": "中文",
     "locale.en": "English",
@@ -115,6 +116,7 @@ export const messages: Record<Locale, Record<string, string>> = {
       "Week 1 keeps Supabase direct queries disabled; API aggregation lands in Week 2.",
     "placeholder.body":
       "This page is intentionally a placeholder. We are first completing Mock -> FastAPI -> Dashboard.",
+    "nav.logout": "Log out",
     "locale.label": "Language",
     "locale.zh": "Chinese",
     "locale.en": "English",

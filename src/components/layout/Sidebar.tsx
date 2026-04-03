@@ -1,25 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   DollarSign,
+  LogOut,
   Menu,
   MessageSquare,
   TrendingUp,
+  User,
   Users,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Locale } from "@/lib/i18n/messages";
 import { useI18n } from "@/lib/i18n/provider";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const { locale, setLocale, t } = useI18n();
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserEmail(user?.email ?? null);
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   const navItems = [
     {
@@ -108,7 +127,22 @@ export function Sidebar() {
         </nav>
 
         <div className="absolute right-0 bottom-0 left-0 border-t border-white/10 p-4">
-          <div className="text-center text-xs text-gray-500">
+          {userEmail && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
+              <User className="h-4 w-4 shrink-0 text-gray-400" />
+              <span className="truncate text-xs text-gray-300">
+                {userEmail}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-white/5 hover:text-red-400"
+          >
+            <LogOut className="h-4 w-4" />
+            {t("nav.logout") ?? "退出登录"}
+          </button>
+          <div className="mt-2 text-center text-xs text-gray-500">
             © 2026 Ventage
           </div>
         </div>
