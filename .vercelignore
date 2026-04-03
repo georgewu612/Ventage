@@ -1,0 +1,5 @@
+python/
+docs/
+database/
+*.md
+!README.md
