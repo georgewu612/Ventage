@@ -165,18 +165,18 @@ def start_scheduler():
             name=f"{cls.name} (startup)",
         )
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    async def _run():
+        scheduler.start()
+        logger.info("scheduler_started", jobs=len(scheduler.get_jobs()))
+        try:
+            # Keep running forever
+            while True:
+                await asyncio.sleep(3600)
+        except (KeyboardInterrupt, SystemExit):
+            scheduler.shutdown()
+            logger.info("scheduler_stopped")
 
-    scheduler.start()
-    logger.info("scheduler_started", jobs=len(scheduler.get_jobs()))
-
-    # Keep the event loop running
-    try:
-        loop.run_forever()
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        logger.info("scheduler_stopped")
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":
