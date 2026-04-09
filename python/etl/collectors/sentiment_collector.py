@@ -81,8 +81,20 @@ class SentimentCollector(BaseCollector):
 
         for sort in ["hot", "new"]:
             url = f"https://old.reddit.com/r/{subreddit}/{sort}.json?limit=50"
-            resp = await client.get(url)
-            resp.raise_for_status()
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 403:
+                    self.log.warning(
+                        "reddit_blocked",
+                        subreddit=subreddit,
+                        sort=sort,
+                        hint="Reddit blocks some cloud/datacenter IPs. Consider running locally or using a proxy.",
+                    )
+                    continue
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                self.log.warning("reddit_http_error", subreddit=subreddit, sort=sort, status=exc.response.status_code)
+                continue
             await asyncio.sleep(1)  # Rate limit between requests
             data = resp.json()
 

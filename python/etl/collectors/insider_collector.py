@@ -185,15 +185,19 @@ class InsiderTradesCollector(BaseCollector):
         """Parse a Form 4 XML filing to extract transaction details."""
         accession = filing.get("accession", "")
         primary_doc = filing.get("primary_doc", "")
-        if not accession or not primary_doc:
+        if not accession:
             return []
 
         cik = filing["cik"].lstrip("0")
         accession_path = accession.replace("-", "")
-        xml_url = (
-            f"https://www.sec.gov/Archives/edgar/data/{cik}/"
-            f"{accession_path}/{primary_doc}"
+
+        # Try to find the XML document for this filing
+        xml_url = await self._find_form4_xml_url(
+            client, cik, accession_path, primary_doc
         )
+        if not xml_url:
+            self.log.debug("no_xml_found", accession=accession)
+            return []
 
         # SEC rate limit
         await asyncio.sleep(0.15)
@@ -201,9 +205,58 @@ class InsiderTradesCollector(BaseCollector):
         resp = await client.get(xml_url)
         resp.raise_for_status()
 
+        # Verify we got XML, not HTML
+        content = resp.text.strip()
+        if content.startswith("<!DOCTYPE") or content.startswith("<html"):
+            self.log.debug("got_html_not_xml", accession=accession, url=xml_url)
+            return []
+
         return self._extract_transactions_from_xml(
-            resp.text, filing["symbol"], filing["filing_date"], accession
+            content, filing["symbol"], filing["filing_date"], accession
         )
+
+    async def _find_form4_xml_url(
+        self,
+        client: httpx.AsyncClient,
+        cik: str,
+        accession_path: str,
+        primary_doc: str,
+    ) -> str | None:
+        """Find the actual Form 4 XML document URL from the filing index."""
+        base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession_path}"
+
+        # If primary_doc is already XML, use it directly
+        if primary_doc and primary_doc.lower().endswith(".xml"):
+            return f"{base}/{primary_doc}"
+
+        # Otherwise, fetch the filing index to find the XML file
+        try:
+            await asyncio.sleep(0.15)
+            index_url = f"{base}/index.json"
+            resp = await client.get(index_url)
+            resp.raise_for_status()
+            index_data = resp.json()
+
+            # Look for XML files in the filing directory
+            for item in index_data.get("directory", {}).get("item", []):
+                name = item.get("name", "")
+                if name.lower().endswith(".xml") and "form4" not in name.lower():
+                    # Skip XBRL manifest files, prefer the actual data XML
+                    if name.lower() in ("filingsummary.xml", "r1.xml"):
+                        continue
+                    return f"{base}/{name}"
+
+            # Fallback: try primary_doc even if not .xml
+            if primary_doc:
+                return f"{base}/{primary_doc}"
+
+        except Exception as exc:
+            self.log.debug("index_fetch_failed", error=str(exc))
+            # Fallback to primary_doc
+            if primary_doc:
+                return f"{base}/{primary_doc}"
+
+        return None
 
     def _extract_transactions_from_xml(
         self,

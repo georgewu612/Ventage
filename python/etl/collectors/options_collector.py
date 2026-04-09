@@ -7,6 +7,7 @@ API key is configured, switches to UW for richer unusual activity data.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -122,7 +123,17 @@ class OptionsFlowCollector(BaseCollector):
 
             # Extract strike and expiration from option symbol
             strike = opt.get("strike", 0)
-            expiration = opt.get("expiration_date", "")
+            expiration = opt.get("expiration_date") or opt.get("expiration") or ""
+
+            # Fallback: parse expiration from OCC option symbol (e.g., AAPL260417C00150000)
+            if not expiration and option:
+                exp_match = re.search(r'(\d{6})[CP]', option[len(symbol):] if len(option) > len(symbol) else option)
+                if exp_match:
+                    raw = exp_match.group(1)  # e.g., "260417"
+                    try:
+                        expiration = f"20{raw[:2]}-{raw[2:4]}-{raw[4:6]}"
+                    except (IndexError, ValueError):
+                        pass
 
             # Calculate unusual score: volume/OI ratio capped at 100
             vol_oi_ratio = (volume / open_interest) if open_interest > 0 else 0
@@ -204,12 +215,12 @@ class OptionsFlowCollector(BaseCollector):
         seen: set[str] = set()
 
         for record in raw_records:
-            if not record.get("symbol") or not record.get("expiration"):
+            if not record.get("symbol"):
                 continue
 
             dedup_key = (
-                f"{record['symbol']}|{record['option_type']}"
-                f"|{record['strike']}|{record['expiration']}|{record['volume']}"
+                f"{record['symbol']}|{record.get('option_type', '')}"
+                f"|{record.get('strike', '')}|{record.get('expiration', '')}|{record.get('volume', '')}"
             )
             if dedup_key in seen:
                 continue
