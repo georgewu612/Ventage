@@ -7,6 +7,7 @@ expanded company list sourced from CIKTickerMapper.
 from __future__ import annotations
 
 import asyncio
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -222,14 +223,26 @@ class InsiderTradesCollector(BaseCollector):
         accession_path: str,
         primary_doc: str,
     ) -> str | None:
-        """Find the actual Form 4 XML document URL from the filing index."""
+        """Find the actual Form 4 XML document URL from the filing index.
+
+        SEC EDGAR primary_doc paths often include an XSL prefix like
+        ``xslF345X06/filename.xml`` which triggers server-side XSLT and
+        returns HTML instead of raw XML.  We strip that prefix to get the
+        raw XML document directly.
+        """
         base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession_path}"
 
-        # If primary_doc is already XML, use it directly
-        if primary_doc and primary_doc.lower().endswith(".xml"):
-            return f"{base}/{primary_doc}"
+        if not primary_doc:
+            return None
 
-        # Otherwise, fetch the filing index to find the XML file
+        # Strip the xslF345X0{N}/ prefix that causes SEC to return HTML
+        # e.g. "xslF345X06/wk-form4_1774051862.xml" → "wk-form4_1774051862.xml"
+        clean_doc = re.sub(r"^xslF345X\d+/", "", primary_doc)
+
+        if clean_doc.lower().endswith(".xml"):
+            return f"{base}/{clean_doc}"
+
+        # Fallback: fetch filing index to find the XML file
         try:
             await asyncio.sleep(0.15)
             index_url = f"{base}/index.json"
@@ -237,26 +250,17 @@ class InsiderTradesCollector(BaseCollector):
             resp.raise_for_status()
             index_data = resp.json()
 
-            # Look for XML files in the filing directory
             for item in index_data.get("directory", {}).get("item", []):
                 name = item.get("name", "")
-                if name.lower().endswith(".xml") and "form4" not in name.lower():
-                    # Skip XBRL manifest files, prefer the actual data XML
+                if name.lower().endswith(".xml"):
                     if name.lower() in ("filingsummary.xml", "r1.xml"):
                         continue
                     return f"{base}/{name}"
-
-            # Fallback: try primary_doc even if not .xml
-            if primary_doc:
-                return f"{base}/{primary_doc}"
-
         except Exception as exc:
             self.log.debug("index_fetch_failed", error=str(exc))
-            # Fallback to primary_doc
-            if primary_doc:
-                return f"{base}/{primary_doc}"
 
-        return None
+        # Last resort: try original primary_doc
+        return f"{base}/{clean_doc}"
 
     def _extract_transactions_from_xml(
         self,
