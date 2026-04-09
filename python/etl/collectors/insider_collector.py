@@ -1,8 +1,7 @@
-"""SEC EDGAR Form 4 insider trades collector — full market coverage.
+"""SEC EDGAR Form 4 insider trades collector — expanded market coverage.
 
-Fetches ALL recent Form 4 filings from SEC EDGAR's full-text search API,
-then parses each XML to extract insider names, trade types, shares, prices,
-and ownership details. No longer limited to a hardcoded symbol list.
+Uses the reliable per-CIK EDGAR submissions API with a dynamic,
+expanded company list sourced from CIKTickerMapper.
 """
 
 from __future__ import annotations
@@ -20,161 +19,163 @@ from etl.cik_mapper import CIKTickerMapper
 # SEC requires a User-Agent identifying the requester
 SEC_USER_AGENT = "Ventage/1.0 (ventage-app; contact@ventage.app)"
 
-# Maximum Form 4 filings to process per run (control API usage)
-MAX_FILINGS_PER_RUN = 50
-
-# Core symbols that are always tracked (for options/sentiment follow-up)
-CORE_SYMBOLS = {
+# Core symbols that are always tracked
+CORE_SYMBOLS = [
     "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
     "META", "GOOGL", "AMD", "NFLX", "PLTR",
-}
+]
+
+# Extended watchlist — major US stocks across sectors
+EXTENDED_SYMBOLS = [
+    # Semiconductors
+    "INTC", "QCOM", "AVGO", "MU", "MRVL", "ON",
+    # Finance
+    "JPM", "GS", "BAC", "V", "MA", "C", "WFC", "MS",
+    # Healthcare
+    "JNJ", "PFE", "UNH", "LLY", "ABBV", "MRK", "BMY",
+    # Tech
+    "CRM", "ORCL", "ADBE", "UBER", "COIN", "SNAP", "SQ", "SHOP",
+    "PYPL", "ROKU", "DDOG", "NET", "ZS", "CRWD",
+    # Consumer
+    "DIS", "NKE", "SBUX", "MCD", "WMT", "TGT", "COST", "HD",
+    # Energy
+    "XOM", "CVX", "COP",
+    # EV / Auto
+    "RIVN", "LCID", "F", "GM",
+    # Other popular
+    "BA", "CAT", "DE", "RTX", "LMT",
+    "SOFI", "HOOD", "MARA", "RIOT",
+]
+
+# Maximum Form 4 filings to parse per symbol per run
+MAX_FILINGS_PER_SYMBOL = 5
+
+# Maximum total symbols per run (rotate through extended list)
+MAX_SYMBOLS_PER_RUN = 30
 
 
 class InsiderTradesCollector(BaseCollector):
-    """Collects Form 4 insider trading filings from SEC EDGAR — full market."""
+    """Collects Form 4 insider trading filings from SEC EDGAR — expanded coverage."""
 
     name = "insider_trades"
     table = "insider_trades"
 
+    # Track rotation offset for extended symbols
+    _rotation_offset: int = 0
+
     async def collect(self) -> list[dict[str, Any]]:
-        """Fetch recent Form 4 filings from SEC EDGAR full-text search."""
+        """Fetch recent Form 4 filings using per-CIK API with expanded symbol list."""
         all_filings: list[dict[str, Any]] = []
+
+        # Build this run's symbol list
+        symbols = await self._get_symbols_for_run()
+        self.log.info("tracking_symbols", count=len(symbols), symbols=symbols[:10])
 
         async with httpx.AsyncClient(
             headers={"User-Agent": SEC_USER_AGENT},
             timeout=30.0,
         ) as client:
-            # Use EDGAR full-text search to get ALL recent Form 4 filings
-            filings_meta = await self._fetch_recent_form4s(client)
-            self.log.info("form4_index_fetched", filings=len(filings_meta))
+            for symbol in symbols:
+                cik = await CIKTickerMapper.get_cik(symbol)
+                if not cik:
+                    continue
 
-            # Parse each filing's XML for transaction details
-            for filing in filings_meta[:MAX_FILINGS_PER_RUN]:
                 try:
-                    txns = await self._parse_form4(client, filing)
-                    all_filings.extend(txns)
-                except Exception as exc:
-                    self.log.debug(
-                        "form4_parse_error",
-                        accession=filing.get("accession"),
-                        error=str(exc),
+                    filings = await self._fetch_form4_for_cik(
+                        client, cik.zfill(10), symbol
                     )
+                    all_filings.extend(filings)
+                except Exception as exc:
+                    self.log.warning(
+                        "symbol_fetch_failed", symbol=symbol, error=str(exc)
+                    )
+
+                # SEC rate limit: max 10 requests/second
+                await asyncio.sleep(0.15)
 
         self.log.info("collected_raw", count=len(all_filings))
         return all_filings
 
-    async def _fetch_recent_form4s(
-        self, client: httpx.AsyncClient
+    async def _get_symbols_for_run(self) -> list[str]:
+        """Build a symbol list for this run: core + rotating extended subset."""
+        symbols = list(CORE_SYMBOLS)
+
+        # Add a rotating subset of extended symbols
+        extended = EXTENDED_SYMBOLS.copy()
+        remaining_slots = MAX_SYMBOLS_PER_RUN - len(symbols)
+
+        if remaining_slots > 0:
+            start = InsiderTradesCollector._rotation_offset
+            # Wrap around the extended list
+            selected = []
+            for i in range(remaining_slots):
+                idx = (start + i) % len(extended)
+                sym = extended[idx]
+                if sym not in symbols:
+                    selected.append(sym)
+            symbols.extend(selected)
+
+            # Advance rotation offset for next run
+            InsiderTradesCollector._rotation_offset = (
+                start + remaining_slots
+            ) % len(extended)
+
+        return symbols
+
+    async def _fetch_form4_for_cik(
+        self,
+        client: httpx.AsyncClient,
+        cik: str,
+        symbol: str,
     ) -> list[dict[str, Any]]:
-        """Fetch recent Form 4 filings from EDGAR full-text search API."""
-        # EFTS (EDGAR Full-Text Search) returns recent filings across ALL companies
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d")
-        url = "https://efts.sec.gov/LATEST/search-index"
-        params = {
-            "q": '"4"',
-            "dateRange": "custom",
-            "startdt": cutoff,
-            "forms": "4",
-            "from": 0,
-            "size": MAX_FILINGS_PER_RUN,
-        }
-
-        await asyncio.sleep(0.15)  # SEC rate limit
-        resp = await client.get(url, params=params)
-
-        # If EFTS is unavailable, fall back to the RSS feed
-        if resp.status_code != 200:
-            self.log.warning("efts_unavailable", status=resp.status_code)
-            return await self._fetch_form4_rss(client)
-
-        data = resp.json()
-        hits = data.get("hits", {}).get("hits", [])
-
-        filings: list[dict[str, Any]] = []
-        for hit in hits:
-            source = hit.get("_source", {})
-            entity = source.get("entity_name", "")
-            cik = str(source.get("entity_id", ""))
-            filing_date = source.get("file_date", "")
-            accession = source.get("file_num", "") or hit.get("_id", "")
-
-            # Look up the ticker from CIK
-            ticker = await CIKTickerMapper.get_ticker(cik)
-            if not ticker:
-                continue
-
-            # Get the primary document URL
-            file_url = source.get("file_url", "")
-
-            filings.append({
-                "symbol": ticker,
-                "cik": cik.zfill(10),
-                "filing_date": filing_date,
-                "accession": accession,
-                "primary_doc": file_url,
-                "company_name": entity,
-            })
-
-        return filings
-
-    async def _fetch_form4_rss(
-        self, client: httpx.AsyncClient
-    ) -> list[dict[str, Any]]:
-        """Fallback: Fetch recent Form 4 filings from EDGAR RSS feed."""
-        url = (
-            "https://www.sec.gov/cgi-bin/browse-edgar"
-            "?action=getcurrent&type=4&dateb=&owner=include"
-            f"&count={MAX_FILINGS_PER_RUN}&search_text=&start=0&output=atom"
-        )
-
-        await asyncio.sleep(0.15)
+        """Fetch recent Form 4 filings for a single company CIK."""
+        url = f"https://data.sec.gov/submissions/CIK{cik}.json"
         resp = await client.get(url)
         resp.raise_for_status()
+        data = resp.json()
 
         filings: list[dict[str, Any]] = []
-        try:
-            root = ET.fromstring(resp.text)
-            ns = "{http://www.w3.org/2005/Atom}"
+        recent = data.get("filings", {}).get("recent", {})
+        if not recent:
+            return filings
 
-            for entry in root.findall(f"{ns}entry"):
-                title = entry.findtext(f"{ns}title", "")
-                if "4 -" not in title and "4-" not in title:
-                    continue
+        forms = recent.get("form", [])
+        dates = recent.get("filingDate", [])
+        accessions = recent.get("accessionNumber", [])
+        primary_docs = recent.get("primaryDocument", [])
 
-                # Extract CIK from the link
-                link_el = entry.find(f"{ns}link")
-                link = link_el.get("href", "") if link_el is not None else ""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
 
-                # Try to extract CIK from link
-                cik = ""
-                if "/cgi-bin/browse-edgar" in link and "CIK=" in link:
-                    cik = link.split("CIK=")[1].split("&")[0]
+        for i, form_type in enumerate(forms):
+            if form_type != "4":
+                continue
+            filing_date = dates[i] if i < len(dates) else None
+            if not filing_date or filing_date < cutoff:
+                continue
 
-                updated = entry.findtext(f"{ns}updated", "")
-                filing_date = updated[:10] if updated else ""
+            filings.append({
+                "symbol": symbol,
+                "cik": cik,
+                "filing_date": filing_date,
+                "accession": accessions[i] if i < len(accessions) else None,
+                "primary_doc": primary_docs[i] if i < len(primary_docs) else None,
+                "company_name": data.get("name", ""),
+            })
 
-                # Look up ticker
-                ticker = await CIKTickerMapper.get_ticker(cik) if cik else None
-                if not ticker:
-                    continue
+        # Fetch transaction details from each Form 4 XML
+        detailed: list[dict[str, Any]] = []
+        for filing in filings[:MAX_FILINGS_PER_SYMBOL]:
+            try:
+                txns = await self._parse_form4(client, filing)
+                detailed.extend(txns)
+            except Exception as exc:
+                self.log.debug(
+                    "form4_parse_error",
+                    accession=filing.get("accession"),
+                    error=str(exc),
+                )
 
-                # Extract accession from content
-                content = entry.findtext(f"{ns}summary", "")
-                accession = ""
-
-                filings.append({
-                    "symbol": ticker,
-                    "cik": cik.zfill(10),
-                    "filing_date": filing_date,
-                    "accession": accession,
-                    "primary_doc": "",
-                    "company_name": title.split(" -")[0] if " -" in title else "",
-                })
-
-        except ET.ParseError:
-            self.log.warning("rss_parse_error")
-
-        return filings
+        return detailed
 
     async def _parse_form4(
         self,
@@ -184,22 +185,17 @@ class InsiderTradesCollector(BaseCollector):
         """Parse a Form 4 XML filing to extract transaction details."""
         accession = filing.get("accession", "")
         primary_doc = filing.get("primary_doc", "")
-
-        # If we have a direct URL, use it
-        if primary_doc and primary_doc.startswith("http"):
-            xml_url = primary_doc
-        elif accession and primary_doc:
-            # Build URL from CIK + accession
-            cik = filing["cik"].lstrip("0")
-            accession_path = accession.replace("-", "")
-            xml_url = (
-                f"https://www.sec.gov/Archives/edgar/data/{cik}/"
-                f"{accession_path}/{primary_doc}"
-            )
-        else:
+        if not accession or not primary_doc:
             return []
 
-        # SEC rate limit: max 10 requests/second
+        cik = filing["cik"].lstrip("0")
+        accession_path = accession.replace("-", "")
+        xml_url = (
+            f"https://www.sec.gov/Archives/edgar/data/{cik}/"
+            f"{accession_path}/{primary_doc}"
+        )
+
+        # SEC rate limit
         await asyncio.sleep(0.15)
 
         resp = await client.get(xml_url)
@@ -223,12 +219,10 @@ class InsiderTradesCollector(BaseCollector):
             self.log.debug("xml_parse_error", accession=accession)
             return []
 
-        # XML namespace
         ns = ""
         if root.tag.startswith("{"):
             ns = root.tag.split("}")[0] + "}"
 
-        # Extract reporting owner info
         owner_name = self._xml_text(
             root, f".//{ns}reportingOwner/{ns}reportingOwnerId/{ns}rptOwnerName"
         )
@@ -237,7 +231,6 @@ class InsiderTradesCollector(BaseCollector):
             f".//{ns}reportingOwner/{ns}reportingOwnerRelationship/{ns}officerTitle",
         )
 
-        # Determine relationship
         rel_node = root.find(
             f".//{ns}reportingOwner/{ns}reportingOwnerRelationship"
         )
@@ -245,7 +238,6 @@ class InsiderTradesCollector(BaseCollector):
 
         transactions: list[dict[str, Any]] = []
 
-        # Parse non-derivative transactions (common stock trades)
         for txn in root.findall(f".//{ns}nonDerivativeTransaction"):
             record = self._parse_transaction_element(
                 txn, ns, symbol, owner_name, owner_title, relationship,
@@ -254,7 +246,6 @@ class InsiderTradesCollector(BaseCollector):
             if record:
                 transactions.append(record)
 
-        # If no transactions found, still record the filing with owner info
         if not transactions:
             transactions.append({
                 "symbol": symbol,
@@ -362,7 +353,6 @@ class InsiderTradesCollector(BaseCollector):
             if not record.get("symbol") or not record.get("filing_date"):
                 continue
 
-            # Dedup by accession + insider + shares + trade_type
             dedup_key = (
                 f"{record.get('_accession')}|{record.get('insider_name')}"
                 f"|{record.get('shares')}|{record.get('trade_type')}"
