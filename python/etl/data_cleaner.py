@@ -19,6 +19,7 @@ RETENTION_DAYS = {
     "insider_trades": 90,       # Keep 3 months of insider trades
     "options_flow": 30,         # Keep 1 month of options data
     "market_sentiment": 30,     # Keep 1 month of sentiment data
+    "market_news": 14,          # Keep 2 weeks of news (high volume)
     "market_signals": 60,       # Keep 2 months of signals
     "alert_history": 60,        # Keep 2 months of alert history
 }

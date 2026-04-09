@@ -23,6 +23,7 @@ from config.settings import get_settings
 from agents.signal_engine import SignalEngine
 from alerting.manager import AlertManager
 from etl.collectors.insider_collector import InsiderTradesCollector
+from etl.collectors.news_collector import NewsCollector
 from etl.collectors.options_collector import OptionsFlowCollector
 from etl.collectors.sentiment_collector import SentimentCollector
 from etl.data_cleaner import cleanup_old_data
@@ -85,7 +86,7 @@ async def run_data_cleanup(db):
 async def run_all_once():
     """Run all collectors once, then generate signals."""
     db = _create_supabase_client()
-    collectors = [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector]
+    collectors = [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector, NewsCollector]
 
     results = []
     for cls in collectors:
@@ -142,6 +143,17 @@ def start_scheduler():
         max_instances=1,
     )
 
+    # WallStreetCN news: every 5 minutes (7x24 live feed)
+    scheduler.add_job(
+        run_collector,
+        "interval",
+        minutes=5,
+        args=[NewsCollector, db],
+        id="market_news",
+        name="WallStreetCN News",
+        max_instances=1,
+    )
+
     # Signal engine: every 20 minutes (after collectors have run)
     scheduler.add_job(
         run_signal_engine,
@@ -176,7 +188,7 @@ def start_scheduler():
     )
 
     # Run all collectors immediately on startup
-    for cls in [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector]:
+    for cls in [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector, NewsCollector]:
         scheduler.add_job(
             run_collector,
             args=[cls, db],
