@@ -15,17 +15,15 @@ import httpx
 from textblob import TextBlob
 
 from etl.base import BaseCollector
+from etl.cik_mapper import CIKTickerMapper
 
 REDDIT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
 # Finance-related subreddits to monitor
 SUBREDDITS = ["wallstreetbets", "stocks", "investing", "options"]
 
-# Tracked symbols
-TRACKED_SYMBOLS = {
-    "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
-    "META", "GOOGL", "AMD", "NFLX", "PLTR",
-}
+# Valid tickers will be loaded dynamically from SEC registry
+_valid_tickers: set[str] | None = None
 
 # Common words that look like tickers but aren't
 TICKER_BLACKLIST = {
@@ -52,6 +50,10 @@ class SentimentCollector(BaseCollector):
         """Fetch recent posts from finance subreddits."""
         all_posts: list[dict[str, Any]] = []
 
+        # Load valid tickers for extraction
+        valid_tickers = await self._get_valid_tickers()
+        self.log.info("valid_tickers_loaded", count=len(valid_tickers))
+
         async with httpx.AsyncClient(
             headers={"User-Agent": REDDIT_USER_AGENT},
             timeout=30.0,
@@ -59,7 +61,7 @@ class SentimentCollector(BaseCollector):
         ) as client:
             for subreddit in SUBREDDITS:
                 try:
-                    posts = await self._fetch_subreddit(client, subreddit)
+                    posts = await self._fetch_subreddit(client, subreddit, valid_tickers)
                     all_posts.extend(posts)
                 except Exception as exc:
                     self.log.warning("subreddit_failed", subreddit=subreddit, error=str(exc))
@@ -72,6 +74,7 @@ class SentimentCollector(BaseCollector):
         self,
         client: httpx.AsyncClient,
         subreddit: str,
+        valid_tickers: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch hot + new posts from a subreddit."""
         posts: list[dict[str, Any]] = []
@@ -90,7 +93,7 @@ class SentimentCollector(BaseCollector):
                 text = f"{title} {selftext}".strip()
 
                 # Extract mentioned tickers
-                tickers = self._extract_tickers(text)
+                tickers = self._extract_tickers(text, valid_tickers or set())
                 if not tickers:
                     continue
 
@@ -108,13 +111,20 @@ class SentimentCollector(BaseCollector):
 
         return posts
 
-    def _extract_tickers(self, text: str) -> set[str]:
-        """Extract stock tickers mentioned in text."""
+    async def _get_valid_tickers(self) -> set[str]:
+        """Get all valid ticker symbols from SEC registry."""
+        global _valid_tickers
+        if _valid_tickers is None:
+            _valid_tickers = await CIKTickerMapper.get_all_tickers()
+        return _valid_tickers
+
+    def _extract_tickers(self, text: str, valid_tickers: set[str]) -> set[str]:
+        """Extract stock tickers mentioned in text, validated against SEC registry."""
         matches = TICKER_PATTERN.findall(text)
         tickers: set[str] = set()
         for dollar_match, plain_match in matches:
             ticker = dollar_match or plain_match
-            if ticker in TRACKED_SYMBOLS and ticker not in TICKER_BLACKLIST:
+            if ticker not in TICKER_BLACKLIST and ticker in valid_tickers:
                 tickers.add(ticker)
         return tickers
 

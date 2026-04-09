@@ -7,7 +7,7 @@ API key is configured, switches to UW for richer unusual activity data.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -15,11 +15,14 @@ import httpx
 from config.settings import get_settings
 from etl.base import BaseCollector
 
-# Same tracked symbols as insider collector
-TRACKED_SYMBOLS = [
+# Core symbols that are always tracked
+CORE_SYMBOLS = [
     "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
     "META", "GOOGL", "AMD", "NFLX", "PLTR",
 ]
+
+# Maximum total symbols to query per run (CBOE rate limit friendly)
+MAX_DYNAMIC_SYMBOLS = 30
 
 CBOE_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -42,9 +45,33 @@ class OptionsFlowCollector(BaseCollector):
 
         return await self._collect_cboe()
 
+    async def _get_dynamic_symbols(self) -> list[str]:
+        """Build dynamic symbol list: core + recently active from insider trades."""
+        symbols = set(CORE_SYMBOLS)
+
+        try:
+            # Query symbols with recent insider activity (last 3 days)
+            result = (
+                self.db.table("insider_trades")
+                .select("symbol")
+                .gte("filing_date", (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d"))
+                .execute()
+            )
+            if result.data:
+                active_symbols = {row["symbol"] for row in result.data if row.get("symbol")}
+                symbols.update(active_symbols)
+        except Exception as exc:
+            self.log.warning("dynamic_symbols_query_failed", error=str(exc))
+
+        # Cap at MAX_DYNAMIC_SYMBOLS
+        symbol_list = list(symbols)[:MAX_DYNAMIC_SYMBOLS]
+        self.log.info("dynamic_symbols", count=len(symbol_list))
+        return symbol_list
+
     async def _collect_cboe(self) -> list[dict[str, Any]]:
-        """Fetch delayed options quotes from CBOE for tracked symbols."""
+        """Fetch delayed options quotes from CBOE for dynamic symbols."""
         all_options: list[dict[str, Any]] = []
+        symbols = await self._get_dynamic_symbols()
 
         async with httpx.AsyncClient(
             headers={
@@ -53,7 +80,7 @@ class OptionsFlowCollector(BaseCollector):
             },
             timeout=30.0,
         ) as client:
-            for symbol in TRACKED_SYMBOLS:
+            for symbol in symbols:
                 try:
                     options = await self._fetch_cboe_options(client, symbol)
                     all_options.extend(options)
@@ -151,8 +178,6 @@ class OptionsFlowCollector(BaseCollector):
 
                 for trade in data.get("data", []):
                     symbol = trade.get("underlying_symbol", "")
-                    if symbol not in TRACKED_SYMBOLS:
-                        continue
 
                     all_options.append({
                         "symbol": symbol,

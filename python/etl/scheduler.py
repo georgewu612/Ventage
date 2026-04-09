@@ -25,6 +25,7 @@ from alerting.manager import AlertManager
 from etl.collectors.insider_collector import InsiderTradesCollector
 from etl.collectors.options_collector import OptionsFlowCollector
 from etl.collectors.sentiment_collector import SentimentCollector
+from etl.data_cleaner import cleanup_old_data
 
 import structlog
 
@@ -74,6 +75,13 @@ async def run_alert_check(db):
     return result
 
 
+async def run_data_cleanup(db):
+    """Clean up old data to stay within Supabase storage limits."""
+    result = await cleanup_old_data(db)
+    logger.info("data_cleanup_result", total_deleted=result["total_deleted"])
+    return result
+
+
 async def run_all_once():
     """Run all collectors once, then generate signals."""
     db = _create_supabase_client()
@@ -101,14 +109,14 @@ def start_scheduler():
     db = _create_supabase_client()
     scheduler = AsyncIOScheduler()
 
-    # Insider trades: every 15 minutes (SEC rate limits)
+    # Insider trades: every 20 minutes (full market, SEC rate limits)
     scheduler.add_job(
         run_collector,
         "interval",
-        minutes=15,
+        minutes=20,
         args=[InsiderTradesCollector, db],
         id="insider_trades",
-        name="SEC EDGAR Insider Trades",
+        name="SEC EDGAR Insider Trades (Full Market)",
         max_instances=1,
     )
 
@@ -153,6 +161,17 @@ def start_scheduler():
         args=[db],
         id="alert_check",
         name="Alert Check (Telegram)",
+        max_instances=1,
+    )
+
+    # Data cleanup: once daily (every 24 hours)
+    scheduler.add_job(
+        run_data_cleanup,
+        "interval",
+        hours=24,
+        args=[db],
+        id="data_cleanup",
+        name="Data Cleanup (Daily)",
         max_instances=1,
     )
 
