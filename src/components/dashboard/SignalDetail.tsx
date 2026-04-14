@@ -26,7 +26,8 @@ interface Signal {
   analysis?: string | null;
   module?: string;
   signal_score?: number;
-  factors?: Record<string, Factor> | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  factors?: Record<string, any> | null;
   valid_until?: string | null;
   created_at: string;
 }
@@ -152,7 +153,9 @@ export function SignalDetail({ signal }: { signal: Signal }) {
         </h3>
         {hasFactor ? (
           <div className="space-y-3">
-            {Object.entries(factors!).map(([key, factor]) => {
+            {Object.entries(factors!).map(([key, raw]) => {
+              const factor = raw as Factor;
+              if (!factor || typeof factor.value !== "number") return null;
               const pct =
                 factor.max > 0 ? (factor.value / factor.max) * 100 : 0;
               return (
