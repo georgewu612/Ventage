@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
@@ -175,34 +175,53 @@ class AlertHistoryResponse(BaseModel):
     items: list[AlertHistoryItem]
 
 
-@router.get("/alerts/history", response_model=AlertHistoryResponse)
-def get_alert_history(limit: int = 50) -> AlertHistoryResponse:
-    """Get recent alert history."""
+@router.get("/alerts/history")
+def get_alert_history(
+    symbol: Optional[str] = Query(default=None),
+    module: Optional[str] = Query(default=None),
+    direction: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    """Get recent alert history with optional filters."""
     try:
         supabase = _get_supabase_client()
-        resp = (
+        query = (
             supabase.table("alert_history")
             .select("*")
             .order("sent_at", desc=True)
-            .limit(limit)
-            .execute()
+            .limit(1000)
         )
-        items = resp.data or []
-        return AlertHistoryResponse(
-            total=len(items),
-            items=[
-                AlertHistoryItem(
-                    id=str(r.get("id")),
-                    symbol=r.get("symbol", ""),
-                    module=r.get("module", ""),
-                    signal_score=r.get("signal_score"),
-                    direction=r.get("direction"),
-                    sent_at=str(r.get("sent_at", "")),
-                    channel=r.get("channel"),
-                )
-                for r in items
+        if symbol:
+            query = query.eq("symbol", symbol.upper())
+        if module:
+            query = query.eq("module", module)
+        if direction:
+            query = query.eq("direction", direction)
+
+        rows = query.execute().data or []
+        total = len(rows)
+        sliced = rows[offset : offset + limit]
+        return {
+            "items": [
+                {
+                    "id": str(r.get("id")),
+                    "symbol": r.get("symbol", ""),
+                    "module": r.get("module", ""),
+                    "signal_score": r.get("signal_score"),
+                    "direction": r.get("direction"),
+                    "sent_at": str(r.get("sent_at", "")),
+                    "channel": r.get("channel"),
+                }
+                for r in sliced
             ],
-        )
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(sliced),
+                "total": total,
+            },
+        }
     except HTTPException:
         raise
     except Exception as exc:

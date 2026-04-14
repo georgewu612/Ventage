@@ -91,3 +91,17 @@ html {
 .animate-stagger > :nth-child(n + 7) {
   animation-delay: 300ms;
 }
+
+/* Slide-in from right for panels */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out both;
+}

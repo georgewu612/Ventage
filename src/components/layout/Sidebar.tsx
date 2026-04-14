@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   DollarSign,
   LogOut,
   Menu,
   MessageSquare,
+  Newspaper,
   TrendingUp,
   User,
   Users,
@@ -60,6 +62,16 @@ export function Sidebar() {
       name: t("nav.sentiment"),
       href: "/dashboard/sentiment",
       icon: MessageSquare,
+    },
+    {
+      name: t("nav.news"),
+      href: "/dashboard/news",
+      icon: Newspaper,
+    },
+    {
+      name: t("nav.alerts"),
+      href: "/dashboard/alerts",
+      icon: Bell,
     },
   ];
 

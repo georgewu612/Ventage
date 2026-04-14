@@ -6,6 +6,8 @@ import {
   SignalCard,
   SignalCardSkeleton,
 } from "@/components/dashboard/SignalCard";
+import { SignalDetail } from "@/components/dashboard/SignalDetail";
+import { SlidePanel } from "@/components/ui/SlidePanel";
 import { useAlertsPreview } from "@/lib/hooks/useAlertsPreview";
 import { useMarketSignals } from "@/lib/hooks/useMarketSignals";
 import { useSystemStatus } from "@/lib/hooks/useSystemStatus";
@@ -25,6 +27,10 @@ export default function DashboardPage() {
   const [symbolInput, setSymbolInput] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [minScore, setMinScore] = useState(20);
+
+  const [selectedSignal, setSelectedSignal] = useState<
+    (typeof signals)[number] | null
+  >(null);
 
   const [alertMinScore, setAlertMinScore] = useState(75);
   const [alertModule, setAlertModule] = useState("");
@@ -380,12 +386,23 @@ export default function DashboardPage() {
           <div className="animate-stagger grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {signals.map((signal) => (
               <div key={signal.id} className="animate-slide-up">
-                <SignalCard signal={signal} />
+                <SignalCard
+                  signal={signal}
+                  onClick={() => setSelectedSignal(signal)}
+                />
               </div>
             ))}
           </div>
         )}
       </main>
+
+      <SlidePanel
+        isOpen={!!selectedSignal}
+        onClose={() => setSelectedSignal(null)}
+        title={t("detail.title")}
+      >
+        {selectedSignal && <SignalDetail signal={selectedSignal} />}
+      </SlidePanel>
 
       <footer className="mt-20 border-t border-white/10 bg-white/5 py-8 backdrop-blur-sm">
         <div className="container mx-auto px-6 text-center text-gray-500">

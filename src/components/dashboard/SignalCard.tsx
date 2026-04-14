@@ -34,7 +34,13 @@ function timeAgo(dateStr: string, locale: string): string {
   return locale === "zh-CN" ? `${d}天前` : `${d}d ago`;
 }
 
-export function SignalCard({ signal }: { signal: Signal }) {
+export function SignalCard({
+  signal,
+  onClick,
+}: {
+  signal: Signal;
+  onClick?: () => void;
+}) {
   const { t, dateLocale } = useI18n();
 
   const directionConfig = {
@@ -71,7 +77,8 @@ export function SignalCard({ signal }: { signal: Signal }) {
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border ${config.border} ${config.bg} p-5 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20`}
+      onClick={onClick}
+      className={`group relative overflow-hidden rounded-xl border ${config.border} ${config.bg} p-5 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20 ${onClick ? "cursor-pointer" : ""}`}
     >
       {/* Confidence bar at top */}
       <div className="absolute inset-x-0 top-0 h-1 bg-white/5">

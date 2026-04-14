@@ -127,6 +127,12 @@ class SignalEngine:
                 "module": "insider_trades",
                 "signal_score": confidence,
                 "analysis": analysis,
+                "factors": {
+                    "value_score": {"value": value_score, "max": 50, "label": "交易金额"},
+                    "count_score": {"value": count_score, "max": 30, "label": "交易笔数"},
+                    "exec_score": {"value": exec_score, "max": 20, "label": "高管级别"},
+                },
+                "valid_until": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
             })
 
         return signals
@@ -205,6 +211,12 @@ class SignalEngine:
                 "module": "options_flow",
                 "signal_score": confidence,
                 "analysis": analysis,
+                "factors": {
+                    "volume_score": {"value": volume_score, "max": 30, "label": "成交量"},
+                    "unusual_base": {"value": unusual_base, "max": 40, "label": "异常度"},
+                    "sweep_bonus": {"value": sweep_bonus, "max": 30, "label": "扫单加分"},
+                },
+                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
             })
 
         return signals
@@ -272,6 +284,12 @@ class SignalEngine:
                 "module": "market_sentiment",
                 "signal_score": confidence,
                 "analysis": analysis,
+                "factors": {
+                    "score_strength": {"value": score_strength, "max": 40, "label": "情绪强度"},
+                    "volume_score": {"value": volume_score, "max": 30, "label": "讨论量"},
+                    "magnitude_score": {"value": magnitude_score, "max": 30, "label": "波动幅度"},
+                },
+                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(),
             })
 
         return signals
@@ -302,6 +320,8 @@ class SignalEngine:
                 "module": sig["module"],
                 "signal_score": sig["signal_score"],
                 "analysis": sig.get("analysis"),
+                "factors": sig.get("factors"),
+                "valid_until": sig.get("valid_until"),
             })
 
         try:
