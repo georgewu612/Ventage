@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   BarChart3,
+  RefreshCw,
   Search,
   TrendingDown,
   TrendingUp,
@@ -27,13 +28,32 @@ const POPULAR_SYMBOLS = [
   "AMD",
 ];
 
+const INTERVALS = [
+  { value: "1min", label: "1min" },
+  { value: "5min", label: "5min" },
+  { value: "15min", label: "15min" },
+  { value: "1h", label: "1H" },
+  { value: "1d", label: "1D" },
+];
+
 const PERIODS = [
+  { value: "1d", label: "1D" },
+  { value: "5d", label: "5D" },
   { value: "1m", label: "1M" },
   { value: "3m", label: "3M" },
   { value: "6m", label: "6M" },
   { value: "1y", label: "1Y" },
   { value: "2y", label: "2Y" },
 ];
+
+// Smart defaults: when user picks an interval, auto-set a reasonable period
+const INTERVAL_DEFAULT_PERIOD: Record<string, string> = {
+  "1min": "1d",
+  "5min": "5d",
+  "15min": "5d",
+  "1h": "1m",
+  "1d": "3m",
+};
 
 function formatPrice(val: number | null): string {
   if (val === null) return "-";
@@ -99,15 +119,32 @@ export default function TechnicalPage() {
   const [symbol, setSymbol] = useState("NVDA");
   const [inputValue, setInputValue] = useState("NVDA");
   const [period, setPeriod] = useState("3m");
+  const [interval, setInterval] = useState("1d");
   const [showBollinger, setShowBollinger] = useState(true);
   const [showSMA, setShowSMA] = useState(true);
 
-  const { data, loading, error } = useTechnicalAnalysis(symbol, period);
+  const { data, loading, error, lastUpdated, refetch } = useTechnicalAnalysis(
+    symbol,
+    period,
+    interval,
+  );
 
   const handleSearch = () => {
     const s = inputValue.trim().toUpperCase();
     if (s) setSymbol(s);
   };
+
+  const handleIntervalChange = (newInterval: string) => {
+    setInterval(newInterval);
+    // Auto-set a reasonable period
+    const defaultPeriod = INTERVAL_DEFAULT_PERIOD[newInterval] || "3m";
+    setPeriod(defaultPeriod);
+  };
+
+  const isIntraday = interval !== "1d";
+
+  const intervalLabel =
+    INTERVALS.find((i) => i.value === interval)?.label || interval;
 
   const rsiDirection = (rsi: number | null) => {
     if (rsi === null) return "neutral" as const;
@@ -160,8 +197,8 @@ export default function TechnicalPage() {
       </header>
 
       <main className="container mx-auto px-6 py-8">
-        {/* Symbol search + Period selector */}
-        <div className="mb-6 flex flex-wrap items-center gap-3">
+        {/* Symbol search */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -200,21 +237,76 @@ export default function TechnicalPage() {
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="ml-auto flex items-center gap-1 rounded-lg border border-white/10">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriod(p.value)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  period === p.value
-                    ? "bg-white/15 text-white"
-                    : "text-gray-400 hover:text-white"
-                } ${p.value === "1m" ? "rounded-l-lg" : ""} ${p.value === "2y" ? "rounded-r-lg" : ""}`}
-              >
-                {p.label}
-              </button>
-            ))}
+        {/* Interval + Period selectors */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          {/* Interval (分时级别) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">
+              {t("technical.interval")}
+            </span>
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/10">
+              {INTERVALS.map((itv, idx) => (
+                <button
+                  key={itv.value}
+                  onClick={() => handleIntervalChange(itv.value)}
+                  className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    interval === itv.value
+                      ? "bg-cyan-500/20 text-cyan-300"
+                      : "text-gray-400 hover:text-white"
+                  } ${idx === 0 ? "rounded-l-lg" : ""} ${idx === INTERVALS.length - 1 ? "rounded-r-lg" : ""}`}
+                >
+                  {itv.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Period (时间跨度) */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">
+              {t("technical.period")}
+            </span>
+            <div className="flex items-center gap-0.5 rounded-lg border border-white/10">
+              {PERIODS.map((p, idx) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    period === p.value
+                      ? "bg-white/15 text-white"
+                      : "text-gray-400 hover:text-white"
+                  } ${idx === 0 ? "rounded-l-lg" : ""} ${idx === PERIODS.length - 1 ? "rounded-r-lg" : ""}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Refresh button + last updated */}
+          <div className="ml-auto flex items-center gap-2">
+            {lastUpdated && (
+              <span className="text-xs text-gray-500">
+                {t("technical.lastUpdated")} {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+            {isIntraday && (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-400">
+                {t("technical.autoRefresh")}
+              </span>
+            )}
+            <button
+              onClick={refetch}
+              disabled={loading}
+              className="rounded-lg border border-white/10 p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-50"
+              title={t("technical.refresh")}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
+            </button>
           </div>
         </div>
 
@@ -248,7 +340,9 @@ export default function TechnicalPage() {
             <div className="mb-4 text-4xl">⚠️</div>
             <div className="text-red-400">{error.message}</div>
           </div>
-        ) : loading || !data ? (
+        ) : loading && !data ? (
+          <ChartSkeleton />
+        ) : !data ? (
           <ChartSkeleton />
         ) : (
           <div className="animate-fade-in space-y-6">
@@ -259,9 +353,10 @@ export default function TechnicalPage() {
                 <span className="text-lg font-bold text-white">
                   ${data.symbol}
                 </span>
-                <span className="text-sm text-gray-400">
-                  {t("technical.dailyChart")}
-                </span>
+                <span className="text-sm text-gray-400">{intervalLabel}</span>
+                {loading && (
+                  <RefreshCw className="h-3 w-3 animate-spin text-cyan-400" />
+                )}
               </div>
               <CandlestickChart
                 data={data}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API_BASE_URL } from "@/lib/config";
 
@@ -57,16 +57,32 @@ interface TechnicalSignal {
 export interface TechnicalData {
   symbol: string;
   period: string;
+  interval: string;
   candles: Candle[];
   indicators: Indicators;
   latest: LatestValues;
   signals: TechnicalSignal[];
 }
 
-export function useTechnicalAnalysis(symbol: string, period: string = "3m") {
+// Auto-refresh intervals based on chart interval
+const REFRESH_INTERVALS: Record<string, number> = {
+  "1min": 60_000, // 1 minute
+  "5min": 60_000, // 1 minute
+  "15min": 60_000, // 1 minute
+  "1h": 300_000, // 5 minutes
+  "1d": 0, // no auto-refresh for daily
+};
+
+export function useTechnicalAnalysis(
+  symbol: string,
+  period: string = "3m",
+  interval: string = "1d",
+) {
   const [data, setData] = useState<TechnicalData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!symbol) return;
@@ -74,7 +90,7 @@ export function useTechnicalAnalysis(symbol: string, period: string = "3m") {
       setLoading(true);
       setError(null);
       const response = await fetch(
-        `${API_BASE_URL}/v1/technical/${symbol.toUpperCase()}?period=${period}`,
+        `${API_BASE_URL}/v1/technical/${symbol.toUpperCase()}?period=${period}&interval=${interval}`,
       );
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
@@ -84,17 +100,36 @@ export function useTechnicalAnalysis(symbol: string, period: string = "3m") {
       }
       const payload = await response.json();
       setData(payload);
+      setLastUpdated(new Date());
     } catch (err) {
       setError(err as Error);
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [symbol, period]);
+  }, [symbol, period, interval]);
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
 
-  return { data, loading, error, refetch: fetchData };
+    // Set up auto-refresh for intraday intervals
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    const refreshMs = REFRESH_INTERVALS[interval] || 0;
+    if (refreshMs > 0) {
+      intervalRef.current = setInterval(fetchData, refreshMs);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [fetchData, interval]);
+
+  return { data, loading, error, lastUpdated, refetch: fetchData };
 }

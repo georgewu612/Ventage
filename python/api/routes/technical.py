@@ -11,12 +11,33 @@ from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter()
 
+# period → yfinance period string
 PERIOD_MAP = {
+    "1d": "1d",
+    "5d": "5d",
     "1m": "1mo",
     "3m": "3mo",
     "6m": "6mo",
     "1y": "1y",
     "2y": "2y",
+}
+
+# interval → yfinance interval string
+INTERVAL_MAP = {
+    "1min": "1m",
+    "5min": "5m",
+    "15min": "15m",
+    "1h": "1h",
+    "1d": "1d",
+}
+
+# yfinance limits: max period for each interval
+INTERVAL_MAX_PERIOD = {
+    "1min": "5d",      # 1m data max 7 days
+    "5min": "1m",      # 5m data max 60 days
+    "15min": "1m",     # 15m data max 60 days
+    "1h": "3m",        # 1h data max 730 days
+    "1d": "2y",        # daily data unlimited
 }
 
 
@@ -63,16 +84,27 @@ def _safe_float(val: Any) -> float | None:
 @router.get("/technical/{symbol}")
 def get_technical_analysis(
     symbol: str,
-    period: str = Query(default="3m", description="1m, 3m, 6m, 1y, 2y"),
+    period: str = Query(default="3m", description="1d, 5d, 1m, 3m, 6m, 1y, 2y"),
+    interval: str = Query(default="1d", description="1min, 5min, 15min, 1h, 1d"),
 ) -> dict[str, Any]:
     """Fetch OHLC data and compute technical indicators for a symbol."""
     yf_period = PERIOD_MAP.get(period)
     if not yf_period:
         raise HTTPException(status_code=400, detail=f"Invalid period: {period}. Use: {list(PERIOD_MAP.keys())}")
 
+    yf_interval = INTERVAL_MAP.get(interval)
+    if not yf_interval:
+        raise HTTPException(status_code=400, detail=f"Invalid interval: {interval}. Use: {list(INTERVAL_MAP.keys())}")
+
+    # Enforce yfinance period limits for intraday intervals
+    max_period = INTERVAL_MAX_PERIOD.get(interval, "2y")
+    period_order = list(PERIOD_MAP.keys())
+    if period_order.index(period) > period_order.index(max_period):
+        yf_period = PERIOD_MAP[max_period]
+
     try:
         ticker = yf.Ticker(symbol.upper())
-        df = ticker.history(period=yf_period, interval="1d")
+        df = ticker.history(period=yf_period, interval=yf_interval)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to fetch data from Yahoo Finance: {exc}") from exc
 
@@ -186,6 +218,7 @@ def get_technical_analysis(
     return {
         "symbol": symbol.upper(),
         "period": period,
+        "interval": interval,
         "candles": candles,
         "indicators": indicators,
         "latest": latest,
