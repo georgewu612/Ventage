@@ -295,6 +295,7 @@ class InsiderTradesCollector(BaseCollector):
 
         transactions: list[dict[str, Any]] = []
 
+        # Parse non-derivative transactions (direct stock buys/sells)
         for txn in root.findall(f".//{ns}nonDerivativeTransaction"):
             record = self._parse_transaction_element(
                 txn, ns, symbol, owner_name, owner_title, relationship,
@@ -303,24 +304,14 @@ class InsiderTradesCollector(BaseCollector):
             if record:
                 transactions.append(record)
 
-        if not transactions:
-            transactions.append({
-                "symbol": symbol,
-                "insider_name": owner_name or "Unknown",
-                "insider_title": owner_title or None,
-                "relationship": relationship,
-                "trade_type": "BUY",
-                "shares": 0,
-                "price": None,
-                "value": None,
-                "shares_owned_after": None,
-                "filing_date": filing_date,
-                "transaction_date": None,
-                "sec_form": "Form 4",
-                "footnotes": None,
-                "_accession": accession,
-                "_source": "sec_edgar",
-            })
+        # Also parse derivative transactions (options exercises, RSU vesting)
+        for txn in root.findall(f".//{ns}derivativeTransaction"):
+            record = self._parse_transaction_element(
+                txn, ns, symbol, owner_name, owner_title, relationship,
+                filing_date, accession,
+            )
+            if record:
+                transactions.append(record)
 
         return transactions
 
@@ -408,6 +399,10 @@ class InsiderTradesCollector(BaseCollector):
 
         for record in raw_records:
             if not record.get("symbol") or not record.get("filing_date"):
+                continue
+
+            # Skip placeholder records with no actual trade data
+            if not record.get("shares") and not record.get("value"):
                 continue
 
             dedup_key = (
