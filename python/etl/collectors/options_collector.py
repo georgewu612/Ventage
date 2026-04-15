@@ -121,19 +121,23 @@ class OptionsFlowCollector(BaseCollector):
             # Determine call/put from option symbol
             option_type = "call" if "C" in option[len(symbol):] else "put"
 
-            # Extract strike and expiration from option symbol
+            # CBOE does NOT return strike or expiration_date fields directly.
+            # Both are encoded in the OCC option symbol: SYMBOL + YYMMDD + C/P + 8-digit strike
+            # e.g. NKE260417P00039500 → exp=2026-04-17, strike=$39.50
             strike = opt.get("strike", 0)
             expiration = opt.get("expiration_date") or opt.get("expiration") or ""
 
-            # Fallback: parse expiration from OCC option symbol (e.g., AAPL260417C00150000)
-            if not expiration and option:
-                exp_match = re.search(r'(\d{6})[CP]', option[len(symbol):] if len(option) > len(symbol) else option)
-                if exp_match:
-                    raw = exp_match.group(1)  # e.g., "260417"
-                    try:
-                        expiration = f"20{raw[:2]}-{raw[2:4]}-{raw[4:6]}"
-                    except (IndexError, ValueError):
-                        pass
+            # Parse from OCC symbol if not provided by API
+            if option and len(option) > len(symbol):
+                suffix = option[len(symbol):]  # e.g. "260417C00150000"
+                occ_match = re.match(r'(\d{6})[CP](\d{8})', suffix)
+                if occ_match:
+                    date_part = occ_match.group(1)   # "260417"
+                    strike_part = occ_match.group(2)  # "00150000"
+                    if not expiration:
+                        expiration = f"20{date_part[:2]}-{date_part[2:4]}-{date_part[4:6]}"
+                    if not strike:
+                        strike = int(strike_part) / 1000  # 00150000 → 150.0
 
             # Calculate unusual score: volume/OI ratio capped at 100
             vol_oi_ratio = (volume / open_interest) if open_interest > 0 else 0
