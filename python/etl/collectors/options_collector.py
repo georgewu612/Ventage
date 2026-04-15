@@ -139,6 +139,15 @@ class OptionsFlowCollector(BaseCollector):
                     if not strike:
                         strike = int(strike_part) / 1000  # 00150000 → 150.0
 
+            # Skip expired options (expiration before today)
+            if expiration:
+                try:
+                    exp_date = datetime.strptime(expiration, "%Y-%m-%d").date()
+                    if exp_date < datetime.now(timezone.utc).date():
+                        continue
+                except ValueError:
+                    pass
+
             # Calculate unusual score: volume/OI ratio capped at 100
             vol_oi_ratio = (volume / open_interest) if open_interest > 0 else 0
             unusual_score = min(100, int(vol_oi_ratio * 20))
