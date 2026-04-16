@@ -124,4 +124,8 @@ class TradingAgentsAnalyzer:
 
         except Exception as exc:
             self.log.error("trading_agents_failed", symbol=symbol, error=str(exc))
+            self._last_error = str(exc)
             return None
+
+    def last_error(self) -> str:
+        return getattr(self, "_last_error", "unknown error")

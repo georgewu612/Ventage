@@ -171,6 +171,10 @@ def get_multi_agent_analysis(
 
     result = analyzer.analyze(symbol, date)
     if not result:
-        raise HTTPException(status_code=500, detail=f"Multi-agent analysis failed for {symbol.upper()}")
+        err = analyzer.last_error() if hasattr(analyzer, "last_error") else "unknown error"
+        raise HTTPException(
+            status_code=500,
+            detail=f"Multi-agent analysis failed for {symbol.upper()}: {err}",
+        )
 
     return result
