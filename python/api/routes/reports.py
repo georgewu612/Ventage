@@ -155,6 +155,7 @@ def _get_ta_analyzer() -> Any:
 def get_multi_agent_analysis(
     symbol: str,
     date: str | None = Query(default=None, description="Analysis date (YYYY-MM-DD), defaults to today"),
+    language: str = Query(default="en", description="Response language: 'zh' for Chinese, 'en' for English"),
 ) -> dict[str, Any]:
     """Run TradingAgents multi-agent analysis for a symbol.
 
@@ -169,7 +170,7 @@ def get_multi_agent_analysis(
             detail="TradingAgents not available. Ensure OPENAI_API_KEY and ALPHAVANTAGE_API_KEY are configured, and tradingagents is installed.",
         )
 
-    result = analyzer.analyze(symbol, date)
+    result = analyzer.analyze(symbol, date, language=language)
     if not result:
         err = analyzer.last_error() if hasattr(analyzer, "last_error") else "unknown error"
         raise HTTPException(

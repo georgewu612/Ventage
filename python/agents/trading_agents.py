@@ -7,6 +7,7 @@ to collaboratively evaluate market conditions.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -16,6 +17,30 @@ import structlog
 from config.settings import get_settings
 
 logger = structlog.get_logger()
+
+# Report field keys that can be translated
+_REPORT_FIELDS = (
+    "fundamentals_report",
+    "sentiment_report",
+    "news_report",
+    "technical_report",
+    "bull_report",
+    "bear_report",
+    "risk_report",
+    "trader_decision",
+)
+
+_TRANSLATION_SYSTEM_PROMPT = """\
+你是专业金融翻译员。将下面的 JSON 中所有英文金融分析报告翻译成简体中文。
+
+翻译规则：
+1. 保留原文的 Markdown 格式（##、###、**、-、\\n 等）
+2. 保留股票代码（如 MSFT、NVDA）、数字、百分比原样不变
+3. 保留专业财务指标缩写（P/E、EPS、RSI、MACD、EBITDA、TTM 等）原样不变
+4. 保留公司名称的英文原名
+5. 输出格式：与输入相同的 JSON 结构，key 不变，只翻译 value 的文本内容
+6. 只输出 JSON，不要任何额外说明
+"""
 
 
 class TradingAgentsAnalyzer:
@@ -69,12 +94,66 @@ class TradingAgentsAnalyzer:
     def is_available(self) -> bool:
         return self._available
 
-    def analyze(self, symbol: str, date: str | None = None) -> dict[str, Any] | None:
+    def _translate_reports(self, result: dict[str, Any], language: str) -> dict[str, Any]:
+        """Batch-translate all agent report fields to the target language.
+
+        Uses a single OpenAI call to translate all reports at once to keep
+        latency and cost minimal (~$0.001 per analysis).
+        """
+        if language == "en" or not self.settings.openai_api_key:
+            return result
+
+        # Collect fields that need translation
+        translatable = {
+            k: v for k, v in result.items()
+            if k in _REPORT_FIELDS and isinstance(v, str) and v.strip()
+        }
+        if not translatable:
+            return result
+
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=self.settings.openai_api_key)
+            response = client.chat.completions.create(
+                model=self.settings.openai_model or "gpt-4o-mini",
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _TRANSLATION_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(translatable, ensure_ascii=False),
+                    },
+                ],
+            )
+            translated: dict[str, str] = json.loads(
+                response.choices[0].message.content or "{}"
+            )
+            self.log.info(
+                "trading_agents_translated",
+                language=language,
+                fields=list(translated.keys()),
+            )
+            return {**result, **translated}
+
+        except Exception as exc:
+            # Translation failure is non-fatal — return original English reports
+            self.log.warning("trading_agents_translation_failed", error=str(exc))
+            return result
+
+    def analyze(
+        self,
+        symbol: str,
+        date: str | None = None,
+        language: str = "en",
+    ) -> dict[str, Any] | None:
         """Run multi-agent analysis for a symbol.
 
         Args:
             symbol: Stock ticker (e.g., "NVDA")
             date: Analysis date in YYYY-MM-DD format (defaults to today)
+            language: Response language — "zh" for Chinese, "en" for English (default)
 
         Returns:
             Dict with decision and agent insights, or None on failure.
@@ -85,13 +164,13 @@ class TradingAgentsAnalyzer:
         if not date:
             date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        self.log.info("trading_agents_analyzing", symbol=symbol, date=date)
+        self.log.info("trading_agents_analyzing", symbol=symbol, date=date, language=language)
 
         try:
             state, decision = self._graph.propagate(symbol.upper(), date)
 
             # Extract structured result
-            result = {
+            result: dict[str, Any] = {
                 "symbol": symbol.upper(),
                 "date": date,
                 "decision": decision if isinstance(decision, str) else str(decision),
@@ -141,6 +220,10 @@ class TradingAgentsAnalyzer:
                 symbol=symbol,
                 decision_length=len(result.get("decision", "")),
             )
+
+            # Translate reports to target language if requested
+            result = self._translate_reports(result, language)
+
             return result
 
         except Exception as exc:

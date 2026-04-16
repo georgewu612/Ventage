@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 
 import { API_BASE_URL } from "@/lib/config";
+import { useI18n } from "@/lib/i18n/provider";
 
 export interface MultiAgentResult {
   symbol: string;
@@ -24,30 +25,33 @@ export function useMultiAgentAnalysis() {
   const [result, setResult] = useState<MultiAgentResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const { locale } = useI18n();
 
-  const analyze = useCallback(async (symbol: string) => {
-    if (!symbol) return;
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(
-        `${API_BASE_URL}/v1/reports/multi-agent/${symbol.toUpperCase()}`,
-      );
-      if (!response.ok) {
-        const detail = await response.json().catch(() => ({}));
-        throw new Error(
-          detail.detail || `API request failed: ${response.status}`,
-        );
+  const analyze = useCallback(
+    async (symbol: string) => {
+      if (!symbol) return;
+      try {
+        setLoading(true);
+        setError(null);
+        const url = `${API_BASE_URL}/v1/reports/multi-agent/${symbol.toUpperCase()}?language=${locale}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          throw new Error(
+            detail.detail || `API request failed: ${response.status}`,
+          );
+        }
+        const payload = await response.json();
+        setResult(payload);
+      } catch (err) {
+        setError(err as Error);
+        setResult(null);
+      } finally {
+        setLoading(false);
       }
-      const payload = await response.json();
-      setResult(payload);
-    } catch (err) {
-      setError(err as Error);
-      setResult(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [locale],
+  );
 
   return { result, loading, error, analyze };
 }
