@@ -54,7 +54,7 @@ class TradingAgentsAnalyzer:
                 quick_think_llm=self.settings.openai_model or "gpt-4o-mini",
                 max_debate_rounds=1,       # Keep costs low
                 max_risk_discuss_rounds=1,
-                max_recur_limit=25,
+                max_recur_limit=150,       # 7 agents need many graph steps
             )
 
             self._graph = TradingAgentsGraph(debug=False, config=config)
