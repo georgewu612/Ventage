@@ -1,10 +1,13 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
 # Install dependencies first for better layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# TradingAgents requires Python 3.12+; install separately (non-blocking)
+RUN pip install --no-cache-dir tradingagents>=0.0.2 || echo "tradingagents install skipped"
 
 # Copy application code
 COPY . .

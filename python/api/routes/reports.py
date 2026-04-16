@@ -8,8 +8,12 @@ from fastapi import APIRouter, HTTPException, Query
 from supabase import Client, create_client
 
 from agents.ai_analyst import AIAnalyst
-from agents.trading_agents import TradingAgentsAnalyzer
 from config.settings import get_settings
+
+try:
+    from agents.trading_agents import TradingAgentsAnalyzer
+except Exception:
+    TradingAgentsAnalyzer = None  # type: ignore[assignment,misc]
 
 router = APIRouter()
 
@@ -140,9 +144,9 @@ def analyze_symbol_signals(
 _ta_analyzer: TradingAgentsAnalyzer | None = None
 
 
-def _get_ta_analyzer() -> TradingAgentsAnalyzer:
+def _get_ta_analyzer() -> Any:
     global _ta_analyzer
-    if _ta_analyzer is None:
+    if _ta_analyzer is None and TradingAgentsAnalyzer is not None:
         _ta_analyzer = TradingAgentsAnalyzer()
     return _ta_analyzer
 
@@ -159,7 +163,7 @@ def get_multi_agent_analysis(
     """
     analyzer = _get_ta_analyzer()
 
-    if not analyzer.is_available():
+    if analyzer is None or not analyzer.is_available():
         raise HTTPException(
             status_code=503,
             detail="TradingAgents not available. Ensure OPENAI_API_KEY and ALPHAVANTAGE_API_KEY are configured, and tradingagents is installed.",
