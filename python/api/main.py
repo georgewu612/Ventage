@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.routes.alerts import router as alerts_router
 from api.routes.market_data import router as market_data_router
 from api.routes.news import router as news_router
+from api.routes.reports import router as reports_router
 from api.routes.signals import router as signals_router
 from api.routes.system import router as system_router
 from api.routes.technical import router as technical_router
@@ -52,3 +53,4 @@ app.include_router(system_router, prefix="/v1", tags=["system"])
 app.include_router(alerts_router, prefix="/v1", tags=["alerts"])
 app.include_router(news_router, prefix="/v1", tags=["news"])
 app.include_router(technical_router, prefix="/v1", tags=["technical"])
+app.include_router(reports_router, prefix="/v1", tags=["reports"])

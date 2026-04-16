@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     # Frontend URL for CORS (production)
     frontend_url: str = ""
 
+    # OpenAI API (for AI-driven analysis reports)
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"  # gpt-4o-mini for cost efficiency, gpt-4o for quality
+
     # External data APIs (optional — ETL collectors degrade gracefully)
     polygon_api_key: str = ""
     unusual_whales_api_key: str = ""
@@ -37,6 +41,10 @@ class Settings(BaseSettings):
     @property
     def has_supabase_config(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
+
+    @property
+    def has_openai_config(self) -> bool:
+        return bool(self.openai_api_key)
 
     @property
     def has_polygon_config(self) -> bool:

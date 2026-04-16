@@ -4,7 +4,7 @@ Analyzes insider trades, options flow, and sentiment data to produce
 unified market signals with confidence scores and direction.
 
 Design principle: ALL numbers come from code calculations, never from AI.
-AI is only used for generating natural-language summaries (future).
+AI is only used for generating natural-language summaries.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from typing import Any
 import structlog
 from supabase import Client
 
+from agents.ai_analyst import AIAnalyst
+
 logger = structlog.get_logger()
 
 
@@ -26,6 +28,7 @@ class SignalEngine:
     def __init__(self, db: Client) -> None:
         self.db = db
         self.log = logger.bind(component="signal_engine")
+        self.ai_analyst = AIAnalyst(db)
 
     async def generate_all(self) -> list[dict[str, Any]]:
         """Run all signal generators and return combined results."""
@@ -47,9 +50,19 @@ class SignalEngine:
         # Deduplicate by symbol+module (keep highest score)
         deduped = self._deduplicate(signals)
 
+        # Enhance high-score signals with AI analysis
+        ai_enhanced = 0
+        if self.ai_analyst.is_available():
+            for sig in deduped:
+                if sig.get("signal_score", 0) >= 60:  # Only enhance significant signals
+                    ai_text = self.ai_analyst.analyze_signal(sig)
+                    if ai_text:
+                        sig["analysis"] = ai_text
+                        ai_enhanced += 1
+
         # Save to database
         loaded = self._save_signals(deduped)
-        self.log.info("signals_generated", total=len(deduped), loaded=loaded)
+        self.log.info("signals_generated", total=len(deduped), loaded=loaded, ai_enhanced=ai_enhanced)
 
         return deduped
 

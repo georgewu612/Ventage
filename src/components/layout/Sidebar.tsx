@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   Bell,
+  Brain,
   CandlestickChart,
   DollarSign,
   LogOut,
@@ -68,6 +69,11 @@ export function Sidebar() {
       name: t("nav.technical"),
       href: "/dashboard/technical",
       icon: CandlestickChart,
+    },
+    {
+      name: t("nav.reports"),
+      href: "/dashboard/reports",
+      icon: Brain,
     },
     {
       name: t("nav.news"),
