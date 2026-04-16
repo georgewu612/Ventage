@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 from supabase import Client, create_client
 
 from agents.ai_analyst import AIAnalyst
+from agents.trading_agents import TradingAgentsAnalyzer
 from config.settings import get_settings
 
 router = APIRouter()
@@ -131,3 +132,41 @@ def analyze_symbol_signals(
         "analyses": analyses,
         "model": analyst.model,
     }
+
+
+# ── TradingAgents multi-agent analysis ─────────────────────────────
+
+# Singleton instance (heavy init, reuse across requests)
+_ta_analyzer: TradingAgentsAnalyzer | None = None
+
+
+def _get_ta_analyzer() -> TradingAgentsAnalyzer:
+    global _ta_analyzer
+    if _ta_analyzer is None:
+        _ta_analyzer = TradingAgentsAnalyzer()
+    return _ta_analyzer
+
+
+@router.get("/reports/multi-agent/{symbol}")
+def get_multi_agent_analysis(
+    symbol: str,
+    date: str | None = Query(default=None, description="Analysis date (YYYY-MM-DD), defaults to today"),
+) -> dict[str, Any]:
+    """Run TradingAgents multi-agent analysis for a symbol.
+
+    Deploys 7 specialized AI agents (analysts, researchers, trader, risk manager)
+    to collaboratively evaluate market conditions and produce a trading decision.
+    """
+    analyzer = _get_ta_analyzer()
+
+    if not analyzer.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="TradingAgents not available. Ensure OPENAI_API_KEY and ALPHAVANTAGE_API_KEY are configured, and tradingagents is installed.",
+        )
+
+    result = analyzer.analyze(symbol, date)
+    if not result:
+        raise HTTPException(status_code=500, detail=f"Multi-agent analysis failed for {symbol.upper()}")
+
+    return result

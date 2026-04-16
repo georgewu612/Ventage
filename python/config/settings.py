@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"  # gpt-4o-mini for cost efficiency, gpt-4o for quality
 
+    # Alpha Vantage (for TradingAgents market data)
+    alphavantage_api_key: str = ""
+
     # External data APIs (optional — ETL collectors degrade gracefully)
     polygon_api_key: str = ""
     unusual_whales_api_key: str = ""

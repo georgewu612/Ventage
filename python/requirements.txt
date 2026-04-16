@@ -18,3 +18,4 @@ aiohttp>=3.8.0
 structlog>=23.1.0
 yfinance>=0.2.30
 openai>=1.30.0
+tradingagents>=0.0.2

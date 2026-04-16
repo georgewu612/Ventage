@@ -127,6 +127,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     "reports.riskWarning": "风险提示",
     "reports.disclaimer":
       "免责声明：本报告由 AI 自动生成，仅供参考，不构成任何投资建议。所有数据来源于公开市场信息，AI 分析可能存在偏差。投资有风险，入市需谨慎。",
+    "nav.multiAgent": "多Agent分析",
+    "multiAgent.title": "TradingAgents 多Agent分析",
+    "multiAgent.subtitle":
+      "7个专业AI Agent协作分析 — 基本面、情绪、新闻、技术面、多空辩论、风控",
+    "multiAgent.inputPlaceholder": "输入代码...",
+    "multiAgent.analyze": "启动分析",
+    "multiAgent.analyzing": "多Agent协作分析中...",
+    "multiAgent.analyzingHint":
+      "7个AI Agent正在分析市场数据并进行多空辩论，通常需要30-60秒",
+    "multiAgent.costWarning":
+      "每次多Agent分析约消耗 $0.05-0.10 OpenAI API 费用（7个Agent + 辩论轮次）",
+    "multiAgent.finalDecision": "最终交易决策",
+    "multiAgent.agentReports": "各Agent分析报告",
+    "multiAgent.fundamentals": "基本面分析师",
+    "multiAgent.sentiment": "情绪分析师",
+    "multiAgent.news": "新闻分析师",
+    "multiAgent.technical": "技术分析师",
+    "multiAgent.bull": "看多研究员",
+    "multiAgent.bear": "看空研究员",
+    "multiAgent.risk": "风控经理",
+    "multiAgent.trader": "交易员",
+    "multiAgent.emptyTitle": "多Agent协作分析",
+    "multiAgent.emptyDesc":
+      "输入股票代码，7个专业AI Agent将协作分析并生成交易决策",
     "locale.label": "语言",
     "locale.zh": "中文",
     "locale.en": "English",
@@ -259,6 +283,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     "reports.riskWarning": "Risk Warning",
     "reports.disclaimer":
       "Disclaimer: This report is AI-generated for reference only and does not constitute investment advice. All data is from public market sources. AI analysis may contain biases. Invest at your own risk.",
+    "nav.multiAgent": "Multi-Agent",
+    "multiAgent.title": "TradingAgents Multi-Agent Analysis",
+    "multiAgent.subtitle":
+      "7 specialized AI agents collaborate — fundamentals, sentiment, news, technical, bull/bear debate, risk management",
+    "multiAgent.inputPlaceholder": "Enter symbol...",
+    "multiAgent.analyze": "Run Analysis",
+    "multiAgent.analyzing": "Multi-agent analysis in progress...",
+    "multiAgent.analyzingHint":
+      "7 AI agents are analyzing market data and debating, typically takes 30-60 seconds",
+    "multiAgent.costWarning":
+      "Each multi-agent analysis costs ~$0.05-0.10 in OpenAI API fees (7 agents + debate rounds)",
+    "multiAgent.finalDecision": "Final Trading Decision",
+    "multiAgent.agentReports": "Agent Reports",
+    "multiAgent.fundamentals": "Fundamentals Analyst",
+    "multiAgent.sentiment": "Sentiment Analyst",
+    "multiAgent.news": "News Analyst",
+    "multiAgent.technical": "Technical Analyst",
+    "multiAgent.bull": "Bull Researcher",
+    "multiAgent.bear": "Bear Researcher",
+    "multiAgent.risk": "Risk Manager",
+    "multiAgent.trader": "Trader",
+    "multiAgent.emptyTitle": "Multi-Agent Collaborative Analysis",
+    "multiAgent.emptyDesc":
+      "Enter a stock symbol and 7 specialized AI agents will collaborate to generate a trading decision",
     "locale.label": "Language",
     "locale.zh": "Chinese",
     "locale.en": "English",

@@ -76,6 +76,11 @@ export function Sidebar() {
       icon: Brain,
     },
     {
+      name: t("nav.multiAgent"),
+      href: "/dashboard/multi-agent",
+      icon: Users,
+    },
+    {
       name: t("nav.news"),
       href: "/dashboard/news",
       icon: Newspaper,
