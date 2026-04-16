@@ -99,21 +99,42 @@ class TradingAgentsAnalyzer:
                 "model": self.settings.openai_model,
             }
 
-            # Try to extract agent-level insights from state
-            if isinstance(state, dict):
-                for key in [
-                    "fundamentals_report",
-                    "sentiment_report",
-                    "news_report",
-                    "technical_report",
-                    "bull_report",
-                    "bear_report",
-                    "risk_report",
-                    "trader_decision",
-                ]:
-                    if key in state:
-                        val = state[key]
-                        result[key] = val if isinstance(val, str) else str(val)
+            # state is an AgentState Pydantic object — extract via attribute access
+            def _get(attr: str) -> str | None:
+                val = getattr(state, attr, None)
+                if val is None:
+                    return None
+                return val if isinstance(val, str) else str(val)
+
+            # Top-level analyst reports
+            if v := _get("fundamentals_report"):
+                result["fundamentals_report"] = v
+            if v := _get("sentiment_report"):
+                result["sentiment_report"] = v
+            if v := _get("news_report"):
+                result["news_report"] = v
+            if v := _get("market_report"):  # technical/market report
+                result["technical_report"] = v
+
+            # Bull/bear debate from investment_debate_state
+            invest = getattr(state, "investment_debate_state", None)
+            if invest:
+                if v := getattr(invest, "bull_history", None):
+                    result["bull_report"] = v if isinstance(v, str) else str(v)
+                if v := getattr(invest, "bear_history", None):
+                    result["bear_report"] = v if isinstance(v, str) else str(v)
+
+            # Risk debate
+            risk = getattr(state, "risk_debate_state", None)
+            if risk:
+                if v := getattr(risk, "judge_decision", None):
+                    result["risk_report"] = v if isinstance(v, str) else str(v)
+
+            # Trader decision
+            if v := _get("trader_investment_plan"):
+                result["trader_decision"] = v
+            elif v := _get("investment_plan"):
+                result["trader_decision"] = v
 
             self.log.info(
                 "trading_agents_completed",
