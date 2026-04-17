@@ -146,6 +146,32 @@ class AlertTriggerResponse(BaseModel):
     errors: list[str]
 
 
+@router.get("/alerts/test")
+async def test_telegram() -> dict[str, Any]:
+    """Send a test message to verify Telegram configuration."""
+    settings = get_settings()
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram 未配置，请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量",
+        )
+
+    from alerting.telegram import TelegramNotifier
+
+    notifier = TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id)
+    success = await notifier.send_message(
+        "🔔 <b>Ventage 告警系统测试</b>\n\n"
+        "✅ Telegram 连接正常！\n"
+        "📊 告警系统已就绪，将在检测到高分信号时自动推送。\n\n"
+        "<i>这是一条测试消息，非真实信号告警。</i>"
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="测试消息发送失败，请检查 Bot Token 和 Chat ID 是否正确")
+
+    return {"ok": True, "message": "测试消息已发送，请检查 Telegram"}
+
+
 @router.post("/alerts/trigger", response_model=AlertTriggerResponse)
 async def trigger_alerts() -> AlertTriggerResponse:
     """Manually trigger alert evaluation and notification."""

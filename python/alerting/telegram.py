@@ -18,6 +18,20 @@ import structlog
 
 logger = structlog.get_logger()
 
+# Module display names in Chinese
+_MODULE_NAMES = {
+    "options_flow": "期权异动",
+    "insider_trades": "内部人交易",
+    "market_sentiment": "市场情绪",
+    "dark_pool": "暗池订单",
+}
+
+_DIRECTION_LABELS = {
+    "bullish": ("🟢", "↑", "看涨"),
+    "bearish": ("🔴", "↓", "看跌"),
+    "neutral": ("🟡", "→", "中性"),
+}
+
 
 class TelegramNotifier:
     """Sends messages to Telegram via Bot API."""
@@ -64,52 +78,58 @@ class TelegramNotifier:
         if not signals:
             return False
 
-        lines = [f"<b>🔔 {len(signals)} New Signals</b>\n"]
+        lines = [f"<b>🔔 {len(signals)} 条新信号</b>\n"]
         for sig in signals[:10]:  # Max 10 per message to avoid length limits
             lines.append(self._format_signal_compact(sig))
 
         if len(signals) > 10:
-            lines.append(f"\n... and {len(signals) - 10} more")
+            lines.append(f"\n... 以及另外 {len(signals) - 10} 条")
 
         return await self.send_message("\n".join(lines))
 
     def _format_signal(self, signal: dict[str, Any]) -> str:
-        """Format a single signal as a rich Telegram message."""
+        """Format a single signal as a rich Telegram message (Chinese)."""
         direction = signal.get("direction", "neutral")
-        emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(direction, "⚪")
-        arrow = {"bullish": "↑", "bearish": "↓", "neutral": "→"}.get(direction, "→")
+        emoji, arrow, label = _DIRECTION_LABELS.get(direction, ("⚪", "→", "未知"))
 
         symbol = signal.get("symbol", "???")
         score = signal.get("signal_score", 0)
         confidence = signal.get("confidence", 0)
         module = signal.get("module", "unknown")
-        signal_type = signal.get("signal_type", "")
-        analysis = signal.get("analysis", "")
+        module_cn = _MODULE_NAMES.get(module, module)
+        analysis = signal.get("analysis", "") or signal.get("summary", "")
 
         # Score bar visualization
         filled = int(score / 10)
         bar = "█" * filled + "░" * (10 - filled)
 
+        # Confidence display
+        if isinstance(confidence, float) and confidence <= 1.0:
+            conf_str = f"{confidence:.0%}"
+        else:
+            conf_str = f"{int(confidence)}%"
+
         lines = [
-            f"{emoji} <b>${symbol}</b> {arrow} {direction.upper()}",
-            f"Score: [{bar}] {score:.0f}/100",
-            f"Confidence: {confidence:.0%}" if isinstance(confidence, float) else f"Confidence: {confidence}%",
-            f"Module: {module} | Type: {signal_type}",
+            f"{emoji} <b>${symbol}</b> {arrow} {label}",
+            f"评分：[{bar}] {score:.0f}/100",
+            f"置信度：{conf_str}",
+            f"模块：{module_cn}",
         ]
 
         if analysis:
-            # Truncate long analysis
             short = analysis[:200] + "..." if len(analysis) > 200 else analysis
             lines.append(f"\n<i>{short}</i>")
 
+        lines.append("\n<i>⚠️ 仅供参考，不构成投资建议</i>")
         return "\n".join(lines)
 
     def _format_signal_compact(self, signal: dict[str, Any]) -> str:
-        """Format a signal as a compact one-line summary."""
+        """Format a signal as a compact one-line summary (Chinese)."""
         direction = signal.get("direction", "neutral")
-        emoji = {"bullish": "🟢", "bearish": "🔴", "neutral": "🟡"}.get(direction, "⚪")
+        emoji = _DIRECTION_LABELS.get(direction, ("⚪",))[0]
         symbol = signal.get("symbol", "???")
         score = signal.get("signal_score", 0)
         module = signal.get("module", "")
+        module_cn = _MODULE_NAMES.get(module, module)
 
-        return f"{emoji} <b>${symbol}</b> {score:.0f}pts — {module}"
+        return f"{emoji} <b>${symbol}</b> {score:.0f}分 — {module_cn}"

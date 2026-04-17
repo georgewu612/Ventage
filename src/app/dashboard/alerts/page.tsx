@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Minus, TrendingDown, TrendingUp } from "lucide-react";
+import { Bell, Minus, Send, TrendingDown, TrendingUp, Zap } from "lucide-react";
 
 import { useAlertHistory } from "@/lib/hooks/useAlertHistory";
 import { useI18n } from "@/lib/i18n/provider";
+import { API_BASE_URL } from "@/lib/config";
 
 const MODULE_OPTIONS = [
   "",
@@ -27,13 +28,29 @@ function formatDate(dateStr: string, locale: string): string {
   }
 }
 
+interface TriggerResult {
+  evaluated: number;
+  matched: number;
+  sent: number;
+  errors: string[];
+}
+
 export default function AlertsPage() {
   const { t, dateLocale } = useI18n();
   const [symbolFilter, setSymbolFilter] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [directionFilter, setDirectionFilter] = useState("");
 
-  const { alerts, total, loading, error } = useAlertHistory({
+  // Control panel state
+  const [testLoading, setTestLoading] = useState(false);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [triggerLoading, setTriggerLoading] = useState(false);
+  const [triggerResult, setTriggerResult] = useState<TriggerResult | null>(
+    null,
+  );
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+
+  const { alerts, total, loading, error, refetch } = useAlertHistory({
     symbol: symbolFilter || undefined,
     module: moduleFilter || undefined,
     direction: directionFilter || undefined,
@@ -64,6 +81,47 @@ export default function AlertsPage() {
     },
   };
 
+  async function handleTestTelegram() {
+    setTestLoading(true);
+    setTestMsg(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/v1/alerts/test`);
+      if (resp.ok) {
+        setTestMsg(t("alertControl.testOk"));
+      } else {
+        const body = await resp.json().catch(() => ({}));
+        setTestMsg(body.detail || t("alertControl.testFail"));
+      }
+    } catch {
+      setTestMsg(t("alertControl.testFail"));
+    } finally {
+      setTestLoading(false);
+    }
+  }
+
+  async function handleTriggerAlerts() {
+    setTriggerLoading(true);
+    setTriggerResult(null);
+    setTriggerError(null);
+    try {
+      const resp = await fetch(`${API_BASE_URL}/v1/alerts/trigger`, {
+        method: "POST",
+      });
+      if (resp.ok) {
+        const data: TriggerResult = await resp.json();
+        setTriggerResult(data);
+        refetch?.();
+      } else {
+        const body = await resp.json().catch(() => ({}));
+        setTriggerError(body.detail || t("common.error"));
+      }
+    } catch (e) {
+      setTriggerError(String(e));
+    } finally {
+      setTriggerLoading(false);
+    }
+  }
+
   return (
     <div>
       <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
@@ -87,9 +145,73 @@ export default function AlertsPage() {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
-        {/* Filters */}
-        <div className="mb-8 grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
+      <main className="container mx-auto space-y-6 px-6 py-8">
+        {/* ── Telegram Control Panel ── */}
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-wide text-cyan-300 uppercase">
+            <Bell className="h-4 w-4" />
+            {t("alertControl.title")}
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {/* Test button */}
+            <button
+              onClick={handleTestTelegram}
+              disabled={testLoading}
+              className="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-300 transition hover:bg-cyan-500/20 disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              {testLoading
+                ? t("alertControl.testing")
+                : t("alertControl.testBtn")}
+            </button>
+
+            {/* Trigger button */}
+            <button
+              onClick={handleTriggerAlerts}
+              disabled={triggerLoading}
+              className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/10 px-4 py-2 text-sm text-purple-300 transition hover:bg-purple-500/20 disabled:opacity-50"
+            >
+              <Zap className="h-4 w-4" />
+              {triggerLoading
+                ? t("alertControl.triggering")
+                : t("alertControl.triggerBtn")}
+            </button>
+          </div>
+
+          {/* Test result */}
+          {testMsg && (
+            <p
+              className={`mt-3 text-sm ${testMsg.startsWith("✅") ? "text-emerald-400" : "text-red-400"}`}
+            >
+              {testMsg}
+            </p>
+          )}
+
+          {/* Trigger result */}
+          {triggerResult && (
+            <div className="mt-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
+              <p className="text-gray-300">
+                {t("alertControl.triggerResult")
+                  .replace("{evaluated}", String(triggerResult.evaluated))
+                  .replace("{matched}", String(triggerResult.matched))
+                  .replace("{sent}", String(triggerResult.sent))}
+              </p>
+              {triggerResult.errors.length > 0 && (
+                <p className="mt-1 text-xs text-red-400">
+                  {triggerResult.errors.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Trigger error */}
+          {triggerError && (
+            <p className="mt-3 text-sm text-red-400">{triggerError}</p>
+          )}
+        </div>
+
+        {/* ── Filters ── */}
+        <div className="grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-gray-400">
               {t("filters.symbol")}
@@ -149,12 +271,12 @@ export default function AlertsPage() {
 
         {/* Error */}
         {error && (
-          <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-red-300">
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-red-300">
             {error.message}
           </div>
         )}
 
-        {/* Loading */}
+        {/* ── Alert History List ── */}
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
