@@ -8,6 +8,7 @@ import {
   Brain,
   CandlestickChart,
   DollarSign,
+  Layers,
   LogOut,
   Menu,
   MessageSquare,
@@ -64,6 +65,11 @@ export function Sidebar() {
       name: t("nav.sentiment"),
       href: "/dashboard/sentiment",
       icon: MessageSquare,
+    },
+    {
+      name: t("nav.darkpool"),
+      href: "/dashboard/darkpool",
+      icon: Layers,
     },
     {
       name: t("nav.technical"),

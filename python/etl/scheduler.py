@@ -22,6 +22,7 @@ from supabase import create_client
 from config.settings import get_settings
 from agents.signal_engine import SignalEngine
 from alerting.manager import AlertManager
+from etl.collectors.darkpool_collector import DarkPoolCollector
 from etl.collectors.insider_collector import InsiderTradesCollector
 from etl.collectors.news_collector import NewsCollector
 from etl.collectors.options_collector import OptionsFlowCollector
@@ -154,6 +155,17 @@ def start_scheduler():
         max_instances=1,
     )
 
+    # Dark pool: every 30 minutes (FINRA weekly data, UW if available)
+    scheduler.add_job(
+        run_collector,
+        "interval",
+        minutes=30,
+        args=[DarkPoolCollector, db],
+        id="dark_pool",
+        name="Dark Pool Orders",
+        max_instances=1,
+    )
+
     # Signal engine: every 20 minutes (after collectors have run)
     scheduler.add_job(
         run_signal_engine,
@@ -188,7 +200,7 @@ def start_scheduler():
     )
 
     # Run all collectors immediately on startup
-    for cls in [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector, NewsCollector]:
+    for cls in [InsiderTradesCollector, OptionsFlowCollector, SentimentCollector, NewsCollector, DarkPoolCollector]:
         scheduler.add_job(
             run_collector,
             args=[cls, db],

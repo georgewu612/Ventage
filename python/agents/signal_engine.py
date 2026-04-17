@@ -38,6 +38,7 @@ class SignalEngine:
             self._insider_signals,
             self._options_signals,
             self._sentiment_signals,
+            self._darkpool_signals,
         ]
 
         for gen in generators:
@@ -303,6 +304,83 @@ class SignalEngine:
                     "magnitude_score": {"value": magnitude_score, "max": 30, "label": "波动幅度"},
                 },
                 "valid_until": (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(),
+            })
+
+        return signals
+
+    def _darkpool_signals(self) -> list[dict[str, Any]]:
+        """Generate signals from large dark-pool block trades."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+
+        result = (
+            self.db.table("dark_pool_orders")
+            .select("symbol, price, size, exchange, trade_time, value")
+            .gte("created_at", cutoff)
+            .order("value", desc=True)
+            .limit(300)
+            .execute()
+        )
+
+        orders = result.data or []
+        if not orders:
+            return []
+
+        # Group by symbol
+        by_symbol: dict[str, list[dict]] = {}
+        for o in orders:
+            by_symbol.setdefault(o["symbol"], []).append(o)
+
+        signals = []
+        for symbol, symbol_orders in by_symbol.items():
+            # Total dark pool value and trade count
+            total_value = sum(float(o.get("value") or 0) for o in symbol_orders)
+            total_size = sum(int(o.get("size") or 0) for o in symbol_orders)
+            trade_count = len(symbol_orders)
+            avg_price = (
+                sum(float(o.get("price") or 0) for o in symbol_orders) / trade_count
+                if trade_count > 0 else 0
+            )
+
+            if total_value < 500_000:  # Skip sub-$500K symbols
+                continue
+
+            # Dark pool is inherently directionally ambiguous —
+            # use a neutral signal but score by block size
+            direction = "neutral"
+
+            # Score: larger blocks = more institutional interest = higher score
+            # $1M = 10pts, $5M = 50pts, $10M = 100pts (capped)
+            value_score = min(50, int(total_value / 200_000))      # max 50 @ $10M
+            count_score = min(30, trade_count * 3)                  # max 30 @ 10 trades
+            # Bonus if trade is very large single block (whale print)
+            max_single = max((float(o.get("value") or 0) for o in symbol_orders), default=0)
+            whale_bonus = min(20, int(max_single / 1_000_000) * 4)  # max 20 @ $5M+
+
+            confidence = min(100, value_score + count_score + whale_bonus)
+            confidence_decimal = round(confidence / 100, 2)
+
+            analysis = (
+                f"Dark pool: {trade_count} block trade(s), "
+                f"total ${total_value:,.0f}. "
+                f"Avg price ${avg_price:,.2f}, "
+                f"total {total_size:,} shares."
+            )
+
+            signals.append({
+                "id": str(uuid.uuid4()),
+                "symbol": symbol,
+                "direction": direction,
+                "confidence": confidence_decimal,
+                "signal_type": "dark_pool_block",
+                "module": "dark_pool",
+                "signal_score": confidence,
+                "analysis": analysis,
+                "factors": {
+                    "value_score": {"value": value_score, "max": 50, "label": "成交金额"},
+                    "count_score": {"value": count_score, "max": 30, "label": "成交笔数"},
+                    "whale_bonus": {"value": whale_bonus, "max": 20, "label": "大单加分"},
+                },
+                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
             })
 
         return signals

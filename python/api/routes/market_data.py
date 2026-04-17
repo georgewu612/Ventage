@@ -80,6 +80,32 @@ def get_insider_trades(
         raise HTTPException(status_code=500, detail=f"Failed to fetch insider trades: {exc}") from exc
 
 
+@router.get("/dark-pool-orders")
+def get_dark_pool_orders(
+    symbol: Optional[str] = Query(default=None),
+    exchange: Optional[str] = Query(default=None),
+    min_value: Optional[float] = Query(default=None, description="Min trade value in USD"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    try:
+        supabase = _get_supabase_client()
+        query = supabase.table("dark_pool_orders").select("*").order("trade_time", desc=True).limit(1000)
+        if symbol:
+            query = query.eq("symbol", symbol.upper())
+        if exchange:
+            query = query.eq("exchange", exchange.upper())
+        if min_value is not None:
+            query = query.gte("value", min_value)
+
+        rows = query.execute().data or []
+        return _paginate(rows, limit, offset)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch dark pool orders: {exc}") from exc
+
+
 @router.get("/market-sentiment")
 def get_market_sentiment(
     symbol: Optional[str] = Query(default=None),
