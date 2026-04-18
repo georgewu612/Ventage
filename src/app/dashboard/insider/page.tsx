@@ -129,6 +129,9 @@ export default function InsiderPage() {
           <div className="animate-stagger space-y-3">
             {filtered.map((trade) => {
               const isBuy = trade.trade_type === "BUY";
+              const isAward =
+                isBuy && (trade.price === 0 || trade.price == null);
+              const hasValue = trade.value != null && trade.value > 0;
               return (
                 <div
                   key={trade.id}
@@ -153,12 +156,17 @@ export default function InsiderPage() {
                         )}
                         {trade.trade_type}
                       </div>
+                      {isAward && (
+                        <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-400">
+                          🎁 Award / RSU
+                        </span>
+                      )}
                     </div>
-                    {trade.value != null && (
+                    {hasValue && (
                       <span
                         className={`text-lg font-bold tabular-nums ${isBuy ? "text-emerald-400" : "text-red-400"}`}
                       >
-                        {formatValue(trade.value)}
+                        {formatValue(trade.value!)}
                       </span>
                     )}
                   </div>
@@ -186,14 +194,20 @@ export default function InsiderPage() {
                         {trade.shares.toLocaleString()}
                       </p>
                     </div>
-                    {trade.price != null && (
-                      <div>
-                        <p className="text-xs text-gray-500">Price</p>
+                    <div>
+                      <p className="text-xs text-gray-500">Price</p>
+                      {isAward ? (
+                        <p className="text-xs font-medium text-amber-400">
+                          薪酬授予（无现金）
+                        </p>
+                      ) : trade.price != null ? (
                         <p className="font-medium text-white tabular-nums">
                           ${trade.price.toFixed(2)}
                         </p>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="text-gray-500">—</p>
+                      )}
+                    </div>
                     <div>
                       <p className="text-xs text-gray-500">Filing Date</p>
                       <p className="font-medium text-white">
