@@ -73,7 +73,7 @@ class SignalEngine:
 
         result = (
             self.db.table("insider_trades")
-            .select("symbol, trade_type, shares, value, insider_name, insider_title, filing_date")
+            .select("symbol, trade_type, shares, value, price, insider_name, insider_title, filing_date")
             .gte("filing_date", cutoff[:10])
             .order("filing_date", desc=True)
             .limit(200)
@@ -81,6 +81,17 @@ class SignalEngine:
         )
 
         trades = result.data or []
+        if not trades:
+            return []
+
+        # Filter out non-discretionary trades:
+        # - RSU/Award grants: BUY at $0 (automatic compensation, not a bullish signal)
+        # - Tax withholding: SELL at $0 (forced share retention for taxes, not a bearish signal)
+        def _is_discretionary(t: dict) -> bool:
+            price = t.get("price")
+            return price is not None and float(price) > 0
+
+        trades = [t for t in trades if _is_discretionary(t)]
         if not trades:
             return []
 
