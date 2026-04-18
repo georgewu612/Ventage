@@ -129,8 +129,9 @@ export default function InsiderPage() {
           <div className="animate-stagger space-y-3">
             {filtered.map((trade) => {
               const isBuy = trade.trade_type === "BUY";
-              const isAward =
-                isBuy && (trade.price === 0 || trade.price == null);
+              const isZeroPrice = trade.price === 0 || trade.price == null;
+              const isAward = isBuy && isZeroPrice;
+              const isTaxWithhold = !isBuy && isZeroPrice;
               const hasValue = trade.value != null && trade.value > 0;
               return (
                 <div
@@ -159,6 +160,11 @@ export default function InsiderPage() {
                       {isAward && (
                         <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-400">
                           🎁 Award / RSU
+                        </span>
+                      )}
+                      {isTaxWithhold && (
+                        <span className="rounded-full bg-slate-500/30 px-2.5 py-0.5 text-xs font-medium text-slate-400">
+                          🏦 税款代扣
                         </span>
                       )}
                     </div>
@@ -199,6 +205,10 @@ export default function InsiderPage() {
                       {isAward ? (
                         <p className="text-xs font-medium text-amber-400">
                           薪酬授予（无现金）
+                        </p>
+                      ) : isTaxWithhold ? (
+                        <p className="text-xs font-medium text-slate-400">
+                          税款代扣（非市场卖出）
                         </p>
                       ) : trade.price != null ? (
                         <p className="font-medium text-white tabular-nums">
