@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { API_BASE_URL } from "@/lib/config";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export interface MarketSignal {
   id: string;
@@ -37,6 +38,7 @@ type UseMarketSignalsOptions = {
   minScore?: number;
   limit?: number;
   offset?: number;
+  onNewSignals?: (count: number) => void;
 };
 
 type SignalsApiResponse = {
@@ -55,6 +57,7 @@ export function useMarketSignals(options: UseMarketSignalsOptions = {}) {
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const { onNewSignals } = options;
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -114,6 +117,50 @@ export function useMarketSignals(options: UseMarketSignalsOptions = {}) {
     const intervalId = setInterval(fetchSignals, 30000);
     return () => clearInterval(intervalId);
   }, [fetchSignals]);
+
+  // Supabase Realtime — listen for new signal inserts
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel("market_signals_inserts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "market_signals" },
+        (payload) => {
+          const row = payload.new as MarketSignal;
+          // Normalize module & signal_score from raw DB row
+          const factors =
+            typeof row.factors === "object" && row.factors !== null
+              ? (row.factors as Record<string, unknown>)
+              : {};
+          const module =
+            (row.module as string | undefined) ||
+            (factors.module as string | undefined) ||
+            "unknown";
+          const signal_score =
+            row.signal_score ?? Math.round((row.confidence ?? 0) * 100);
+          const incoming: MarketSignal = {
+            ...row,
+            module,
+            signal_score,
+            summary: row.summary || row.analysis || undefined,
+          };
+
+          setSignals((prev) => {
+            // Avoid duplicates
+            if (prev.some((s) => s.id === incoming.id)) return prev;
+            return [incoming, ...prev];
+          });
+          setTotal((prev) => prev + 1);
+          onNewSignals?.(1);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [onNewSignals]);
 
   return { signals, summary, total, loading, error, refetch: fetchSignals };
 }

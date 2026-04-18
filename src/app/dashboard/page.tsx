@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   SignalCard,
@@ -8,6 +8,7 @@ import {
 } from "@/components/dashboard/SignalCard";
 import { SignalDetail } from "@/components/dashboard/SignalDetail";
 import { SlidePanel } from "@/components/ui/SlidePanel";
+import { ToastContainer, ToastItem } from "@/components/ui/Toast";
 import { useAlertsPreview } from "@/lib/hooks/useAlertsPreview";
 import { useMarketSignals } from "@/lib/hooks/useMarketSignals";
 import { useSystemStatus } from "@/lib/hooks/useSystemStatus";
@@ -53,6 +54,23 @@ export default function DashboardPage() {
   const [alertMinScore, setAlertMinScore] = useState(75);
   const [alertModule, setAlertModule] = useState("");
   const [alertDirection, setAlertDirection] = useState("bullish,bearish");
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const handleNewSignals = useCallback((count: number) => {
+    const id = `toast-${Date.now()}`;
+    setToasts((prev) => [
+      ...prev,
+      {
+        id,
+        message: `🆕 ${count} 条新信号到达`,
+        type: "success",
+      },
+    ]);
+  }, []);
 
   const filters = useMemo(
     () => ({
@@ -65,7 +83,10 @@ export default function DashboardPage() {
     [symbolInput, moduleFilter, minScore],
   );
 
-  const { signals, summary, total, loading, error } = useMarketSignals(filters);
+  const { signals, summary, total, loading, error } = useMarketSignals({
+    ...filters,
+    onNewSignals: handleNewSignals,
+  });
   const { status } = useSystemStatus();
   const {
     data: alertPreview,
@@ -111,6 +132,7 @@ export default function DashboardPage() {
 
   return (
     <div>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
