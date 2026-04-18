@@ -11,12 +11,22 @@ type TableStatus = {
   lag_seconds: number | null;
 };
 
+export type CollectorStatus = {
+  job: string;
+  status: "success" | "error" | "never";
+  ran_at: string | null;
+  lag_seconds: number | null;
+  duration_ms: number | null;
+  error_message: string | null;
+};
+
 export type SystemStatus = {
   status: "ok" | "degraded";
   checked_at: string;
   healthy_tables: number;
   total_tables: number;
   tables: TableStatus[];
+  collectors: CollectorStatus[];
 };
 
 export function useSystemStatus() {

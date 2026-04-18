@@ -42,39 +42,103 @@ def _create_supabase_client():
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
+import time
+
+
+def _write_job_run(db, job_name: str, status: str, collected: int = 0,
+                   loaded: int = 0, error_message: str | None = None,
+                   duration_ms: int = 0) -> None:
+    """Persist ETL job execution result to job_runs table (best-effort)."""
+    try:
+        db.table("job_runs").insert({
+            "job_name": job_name,
+            "status": status,
+            "collected": collected,
+            "loaded": loaded,
+            "error_message": error_message,
+            "duration_ms": duration_ms,
+        }).execute()
+    except Exception as exc:
+        logger.warning("job_run_write_failed", job=job_name, error=str(exc))
+
+
 async def run_collector(collector_cls, db):
-    """Instantiate and run a single collector."""
-    collector = collector_cls(db)
-    result = await collector.run()
-    logger.info(
-        "collector_result",
-        collector=result["collector"],
-        status=result["status"],
-        collected=result["collected"],
-        loaded=result["loaded"],
-    )
-    return result
+    """Instantiate and run a single collector, recording execution to job_runs."""
+    t0 = time.monotonic()
+    try:
+        collector = collector_cls(db)
+        result = await collector.run()
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info(
+            "collector_result",
+            collector=result["collector"],
+            status=result["status"],
+            collected=result["collected"],
+            loaded=result["loaded"],
+            duration_ms=duration_ms,
+        )
+        _write_job_run(
+            db,
+            job_name=result["collector"],
+            status=result["status"],
+            collected=result["collected"],
+            loaded=result["loaded"],
+            duration_ms=duration_ms,
+        )
+        return result
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        job_name = getattr(collector_cls, "name", str(collector_cls))
+        logger.error("collector_error", collector=job_name, error=str(exc))
+        _write_job_run(db, job_name=job_name, status="error",
+                       error_message=str(exc), duration_ms=duration_ms)
+        raise
 
 
 async def run_signal_engine(db):
-    """Run the signal engine to generate signals from collected data."""
-    engine = SignalEngine(db)
-    signals = await engine.generate_all()
-    logger.info("signal_engine_result", signals_generated=len(signals))
-    return signals
+    """Run the signal engine and record execution to job_runs."""
+    t0 = time.monotonic()
+    try:
+        engine = SignalEngine(db)
+        signals = await engine.generate_all()
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("signal_engine_result", signals_generated=len(signals),
+                    duration_ms=duration_ms)
+        _write_job_run(db, job_name="signal_engine", status="success",
+                       loaded=len(signals), duration_ms=duration_ms)
+        return signals
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("signal_engine_error", error=str(exc))
+        _write_job_run(db, job_name="signal_engine", status="error",
+                       error_message=str(exc), duration_ms=duration_ms)
+        raise
 
 
 async def run_alert_check(db):
     """Evaluate recent signals and send alerts if warranted."""
-    manager = AlertManager(db)
-    result = await manager.evaluate_and_notify()
-    logger.info(
-        "alert_check_result",
-        evaluated=result["evaluated"],
-        matched=result["matched"],
-        sent=result["sent"],
-    )
-    return result
+    t0 = time.monotonic()
+    try:
+        manager = AlertManager(db)
+        result = await manager.evaluate_and_notify()
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info(
+            "alert_check_result",
+            evaluated=result["evaluated"],
+            matched=result["matched"],
+            sent=result["sent"],
+            duration_ms=duration_ms,
+        )
+        _write_job_run(db, job_name="alert_check", status="success",
+                       collected=result["evaluated"], loaded=result["sent"],
+                       duration_ms=duration_ms)
+        return result
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("alert_check_error", error=str(exc))
+        _write_job_run(db, job_name="alert_check", status="error",
+                       error_message=str(exc), duration_ms=duration_ms)
+        raise
 
 
 async def run_data_cleanup(db):

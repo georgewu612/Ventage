@@ -373,6 +373,46 @@ export default function DashboardPage() {
                 {new Date(status.checked_at).toLocaleString(dateLocale)}
               </p>
             )}
+
+            {/* Collector job run history */}
+            {(status?.collectors ?? []).length > 0 && (
+              <div className="mb-3">
+                <p className="mb-2 text-xs font-medium text-gray-400">
+                  {t("system.collectors")}
+                </p>
+                <div className="space-y-1.5">
+                  {(status?.collectors ?? []).map((c) => {
+                    const icon =
+                      c.status === "success"
+                        ? "✅"
+                        : c.status === "error"
+                          ? "❌"
+                          : "⏳";
+                    const lagMin =
+                      c.lag_seconds != null
+                        ? Math.round(c.lag_seconds / 60)
+                        : null;
+                    return (
+                      <div
+                        key={c.job}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="text-gray-400">
+                          {icon}{" "}
+                          {c.job.replace("_collector", "").replace("_", " ")}
+                        </span>
+                        <span className="text-gray-500">
+                          {lagMin != null
+                            ? `${lagMin}m ago`
+                            : t("system.never")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               {(status?.tables ?? []).map((table) => (
                 <div

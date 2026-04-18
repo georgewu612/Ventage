@@ -12,6 +12,16 @@ router = APIRouter()
 
 TABLES = ["market_signals", "options_flow", "insider_trades", "market_sentiment"]
 
+JOB_NAMES = [
+    "darkpool_collector",
+    "insider_collector",
+    "news_collector",
+    "options_collector",
+    "sentiment_collector",
+    "signal_engine",
+    "alert_check",
+]
+
 
 def _get_supabase_client() -> Client:
     settings = get_settings()
@@ -60,12 +70,51 @@ def get_system_status() -> dict[str, Any]:
 
         healthy_tables = sum(1 for row in tables if row["total"] > 0)
 
+        # Fetch last run per job from job_runs table
+        collectors: list[dict[str, Any]] = []
+        try:
+            for job_name in JOB_NAMES:
+                rows = (
+                    supabase.table("job_runs")
+                    .select("status, ran_at, duration_ms, error_message")
+                    .eq("job_name", job_name)
+                    .order("ran_at", desc=True)
+                    .limit(1)
+                    .execute()
+                    .data or []
+                )
+                if rows:
+                    row = rows[0]
+                    ran_at = row.get("ran_at")
+                    ran_dt = _iso_to_dt(ran_at)
+                    lag_seconds = int((now - ran_dt).total_seconds()) if ran_dt else None
+                    collectors.append({
+                        "job": job_name,
+                        "status": row.get("status"),
+                        "ran_at": ran_at,
+                        "lag_seconds": lag_seconds,
+                        "duration_ms": row.get("duration_ms"),
+                        "error_message": row.get("error_message"),
+                    })
+                else:
+                    collectors.append({
+                        "job": job_name,
+                        "status": "never",
+                        "ran_at": None,
+                        "lag_seconds": None,
+                        "duration_ms": None,
+                        "error_message": None,
+                    })
+        except Exception:
+            pass  # job_runs table may not exist yet; non-critical
+
         return {
             "status": "ok" if healthy_tables == len(TABLES) else "degraded",
             "checked_at": now.isoformat(),
             "healthy_tables": healthy_tables,
             "total_tables": len(TABLES),
             "tables": tables,
+            "collectors": collectors,
         }
     except HTTPException:
         raise
