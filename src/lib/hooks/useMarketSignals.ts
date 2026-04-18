@@ -24,8 +24,11 @@ export type SignalSummary = {
   total_signals: number;
   bullish: number;
   bearish: number;
+  neutral: number;
   average_score: number;
   by_module: Record<string, number>;
+  top_symbols: { symbol: string; count: number }[];
+  put_call_ratio: number | null;
 };
 
 type UseMarketSignalsOptions = {

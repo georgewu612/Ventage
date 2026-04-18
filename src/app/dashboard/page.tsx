@@ -21,6 +21,24 @@ const MODULE_OPTIONS = [
   "dark_pool",
 ];
 
+function PutCallGauge({ ratio }: { ratio: number | null | undefined }) {
+  const { t } = useI18n();
+  if (ratio == null) {
+    return (
+      <span className="text-2xl font-semibold text-gray-400">
+        {t("summary.putCallNA")}
+      </span>
+    );
+  }
+  const color =
+    ratio > 1.2
+      ? "text-red-400"
+      : ratio < 0.8
+        ? "text-green-400"
+        : "text-cyan-300";
+  return <span className={`text-2xl font-semibold ${color}`}>{ratio}</span>;
+}
+
 export default function DashboardPage() {
   const { t, dateLocale } = useI18n();
 
@@ -65,7 +83,7 @@ export default function DashboardPage() {
           onClick={() => window.location.reload()}
           className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
         >
-          {t("common.retry") ?? "重试"}
+          {t("common.retry")}
         </button>
       </div>
     );
@@ -76,6 +94,19 @@ export default function DashboardPage() {
   );
   const maxModuleCount = moduleEntries.length
     ? Math.max(...moduleEntries.map(([, count]) => count))
+    : 1;
+
+  const bullish = summary?.bullish ?? 0;
+  const bearish = summary?.bearish ?? 0;
+  const neutral = summary?.neutral ?? 0;
+  const totalDir = bullish + bearish + neutral || 1;
+  const bullPct = Math.round((bullish / totalDir) * 100);
+  const bearPct = Math.round((bearish / totalDir) * 100);
+  const neutPct = 100 - bullPct - bearPct;
+
+  const topSymbols = summary?.top_symbols ?? [];
+  const maxSymbolCount = topSymbols.length
+    ? Math.max(...topSymbols.map((s) => s.count))
     : 1;
 
   return (
@@ -101,7 +132,8 @@ export default function DashboardPage() {
       </header>
 
       <main className="container mx-auto px-6 py-8">
-        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-4">
+        {/* ── Summary Cards ── */}
+        <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
           <div className="rounded-lg border border-white/10 bg-white/5 p-4">
             <p className="text-sm text-gray-400">{t("summary.total24h")}</p>
             <p className="text-2xl font-semibold text-white">
@@ -110,15 +142,11 @@ export default function DashboardPage() {
           </div>
           <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
             <p className="text-sm text-green-300">{t("summary.bullish")}</p>
-            <p className="text-2xl font-semibold text-white">
-              {summary?.bullish ?? 0}
-            </p>
+            <p className="text-2xl font-semibold text-white">{bullish}</p>
           </div>
           <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
             <p className="text-sm text-red-300">{t("summary.bearish")}</p>
-            <p className="text-2xl font-semibold text-white">
-              {summary?.bearish ?? 0}
-            </p>
+            <p className="text-2xl font-semibold text-white">{bearish}</p>
           </div>
           <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-4">
             <p className="text-sm text-cyan-300">{t("summary.avgScore")}</p>
@@ -126,10 +154,140 @@ export default function DashboardPage() {
               {summary?.average_score ?? 0}
             </p>
           </div>
+          <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-4">
+            <p className="text-sm text-purple-300">
+              {t("summary.putCallRatio")}
+            </p>
+            <PutCallGauge ratio={summary?.put_call_ratio} />
+          </div>
         </div>
 
+        {/* ── Analytics Row ── */}
         <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 xl:col-span-1">
+          {/* Top Symbols */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <h3 className="mb-3 font-semibold text-white">
+              {t("chart.topSymbols")}
+            </h3>
+            {topSymbols.length === 0 ? (
+              <p className="text-sm text-gray-400">N/A</p>
+            ) : (
+              <div className="space-y-3">
+                {topSymbols.map(({ symbol, count }, i) => {
+                  const width = Math.max(
+                    8,
+                    Math.round((count / maxSymbolCount) * 100),
+                  );
+                  const medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i] ?? "";
+                  return (
+                    <div key={symbol}>
+                      <div className="mb-1 flex items-center justify-between text-xs text-gray-300">
+                        <span>
+                          {medal}{" "}
+                          <span className="font-bold text-white">
+                            ${symbol}
+                          </span>
+                        </span>
+                        <span>
+                          {count} {t("chart.signals")}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded bg-slate-700/80">
+                        <div
+                          className="h-full bg-cyan-400"
+                          style={{ width: `${width}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Direction Distribution */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <h3 className="mb-3 font-semibold text-white">
+              {t("chart.directionDist")}
+            </h3>
+            {summary?.total_signals === 0 ? (
+              <p className="text-sm text-gray-400">N/A</p>
+            ) : (
+              <div className="space-y-4">
+                {/* Stacked bar */}
+                <div className="flex h-6 overflow-hidden rounded-full">
+                  {bullPct > 0 && (
+                    <div
+                      className="flex items-center justify-center bg-green-500 text-[10px] font-bold text-white"
+                      style={{ width: `${bullPct}%` }}
+                      title={`${t("chart.bullish")} ${bullPct}%`}
+                    >
+                      {bullPct >= 12 ? `${bullPct}%` : ""}
+                    </div>
+                  )}
+                  {neutPct > 0 && (
+                    <div
+                      className="flex items-center justify-center bg-yellow-500/70 text-[10px] font-bold text-white"
+                      style={{ width: `${neutPct}%` }}
+                      title={`${t("chart.neutral")} ${neutPct}%`}
+                    >
+                      {neutPct >= 12 ? `${neutPct}%` : ""}
+                    </div>
+                  )}
+                  {bearPct > 0 && (
+                    <div
+                      className="flex items-center justify-center bg-red-500 text-[10px] font-bold text-white"
+                      style={{ width: `${bearPct}%` }}
+                      title={`${t("chart.bearish")} ${bearPct}%`}
+                    >
+                      {bearPct >= 12 ? `${bearPct}%` : ""}
+                    </div>
+                  )}
+                </div>
+
+                {/* Legend rows */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-green-500" />
+                      <span className="text-green-300">
+                        {t("chart.bullish")}
+                      </span>
+                    </div>
+                    <span className="text-white">
+                      {bullish}{" "}
+                      <span className="text-gray-400">({bullPct}%)</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-yellow-500/70" />
+                      <span className="text-yellow-300">
+                        {t("chart.neutral")}
+                      </span>
+                    </div>
+                    <span className="text-white">
+                      {neutral}{" "}
+                      <span className="text-gray-400">({neutPct}%)</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-block h-3 w-3 rounded-sm bg-red-500" />
+                      <span className="text-red-300">{t("chart.bearish")}</span>
+                    </div>
+                    <span className="text-white">
+                      {bearish}{" "}
+                      <span className="text-gray-400">({bearPct}%)</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Module Distribution */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <h3 className="mb-3 font-semibold text-white">
               {t("chart.moduleDist")}
             </h3>
@@ -160,8 +318,12 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 xl:col-span-1">
+        {/* ── System Status + Alerts Preview ── */}
+        <div className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {/* System Status */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <h3 className="mb-3 font-semibold text-white">
               {t("system.title")}
             </h3>
@@ -205,7 +367,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4 xl:col-span-1">
+          {/* Alerts Preview */}
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <h3 className="mb-3 font-semibold text-white">
               {t("alerts.previewTitle")}
             </h3>
@@ -306,6 +469,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Signal Filters ── */}
         <div className="mb-8 grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-gray-400">
@@ -361,6 +525,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Signal List ── */}
         <div className="mb-8">
           <h2 className="mb-2 text-2xl font-bold text-white">
             {t("dashboard.sectionTitle")}
