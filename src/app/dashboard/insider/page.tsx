@@ -159,12 +159,12 @@ export default function InsiderPage() {
                       </div>
                       {isAward && (
                         <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-400">
-                          🎁 Award / RSU
+                          {t("insider.awardBadge")}
                         </span>
                       )}
                       {isTaxWithhold && (
                         <span className="rounded-full bg-slate-500/30 px-2.5 py-0.5 text-xs font-medium text-slate-400">
-                          🏦 税款代扣
+                          {t("insider.taxBadge")}
                         </span>
                       )}
                     </div>
@@ -204,11 +204,11 @@ export default function InsiderPage() {
                       <p className="text-xs text-gray-500">Price</p>
                       {isAward ? (
                         <p className="text-xs font-medium text-amber-400">
-                          薪酬授予（无现金）
+                          {t("insider.awardPrice")}
                         </p>
                       ) : isTaxWithhold ? (
                         <p className="text-xs font-medium text-slate-400">
-                          税款代扣（非市场卖出）
+                          {t("insider.taxPrice")}
                         </p>
                       ) : trade.price != null ? (
                         <p className="font-medium text-white tabular-nums">
