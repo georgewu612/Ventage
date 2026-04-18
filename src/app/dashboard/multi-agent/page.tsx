@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
@@ -73,7 +74,7 @@ function AgentCard({
   );
 }
 
-export default function MultiAgentPage() {
+function MultiAgentInner() {
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const [inputValue, setInputValue] = useState(
@@ -278,5 +279,13 @@ export default function MultiAgentPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function MultiAgentPage() {
+  return (
+    <Suspense>
+      <MultiAgentInner />
+    </Suspense>
   );
 }
