@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Bot,
   Clock,
   Minus,
   TrendingDown,
@@ -245,6 +246,15 @@ export function SignalDetail({ signal }: { signal: Signal }) {
           {t(relatedLink.labelKey)}
         </Link>
       )}
+
+      {/* Multi-Agent quick trigger */}
+      <Link
+        href={`/dashboard/multi-agent?symbol=${signal.symbol}`}
+        className="flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-sm font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
+      >
+        <Bot className="h-4 w-4" />
+        {t("detail.triggerMultiAgent")}
+      </Link>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import {
@@ -74,7 +75,10 @@ function AgentCard({
 
 export default function MultiAgentPage() {
   const { t } = useI18n();
-  const [inputValue, setInputValue] = useState("NVDA");
+  const searchParams = useSearchParams();
+  const [inputValue, setInputValue] = useState(
+    searchParams.get("symbol")?.toUpperCase() || "NVDA",
+  );
   const { result, loading, error, analyze } = useMultiAgentAnalysis();
 
   const handleAnalyze = () => {
