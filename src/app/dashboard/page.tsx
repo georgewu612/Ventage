@@ -325,7 +325,10 @@ export default function DashboardPage() {
                   return (
                     <div key={module}>
                       <div className="mb-1 flex items-center justify-between text-xs text-gray-300">
-                        <span>{module}</span>
+                        <span>
+                          {t(`module.${module}` as Parameters<typeof t>[0]) ||
+                            module}
+                        </span>
                         <span>{count}</span>
                       </div>
                       <div className="h-2 overflow-hidden rounded bg-slate-700/80">
@@ -399,11 +402,12 @@ export default function DashboardPage() {
                       >
                         <span className="text-gray-400">
                           {icon}{" "}
-                          {c.job.replace("_collector", "").replace("_", " ")}
+                          {t(`module.${c.job}` as Parameters<typeof t>[0]) ||
+                            c.job}
                         </span>
                         <span className="text-gray-500">
                           {lagMin != null
-                            ? `${lagMin}m ago`
+                            ? `${lagMin}${t("system.minutesAgo")}`
                             : t("system.never")}
                         </span>
                       </div>
@@ -419,7 +423,10 @@ export default function DashboardPage() {
                   key={table.table}
                   className="flex items-center justify-between border-t border-white/5 pt-2 text-xs text-gray-300"
                 >
-                  <span>{table.table}</span>
+                  <span>
+                    {t(`module.${table.table}` as Parameters<typeof t>[0]) ||
+                      table.table}
+                  </span>
                   <span>
                     {table.total} | {t("system.dataLag")}:{" "}
                     {table.lag_seconds ?? "-"}
@@ -459,9 +466,9 @@ export default function DashboardPage() {
                   onChange={(e) => setAlertDirection(e.target.value)}
                   className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 text-white"
                 >
-                  <option value="bullish,bearish">bullish + bearish</option>
-                  <option value="bullish">bullish only</option>
-                  <option value="bearish">bearish only</option>
+                  <option value="bullish,bearish">{t("alerts.dirBoth")}</option>
+                  <option value="bullish">{t("alerts.dirBullish")}</option>
+                  <option value="bearish">{t("alerts.dirBearish")}</option>
                 </select>
               </div>
               <div>
@@ -475,7 +482,9 @@ export default function DashboardPage() {
                 >
                   {MODULE_OPTIONS.map((m) => (
                     <option key={m || "all"} value={m}>
-                      {m || t("filters.all")}
+                      {m
+                        ? t(`module.${m}` as Parameters<typeof t>[0]) || m
+                        : t("filters.all")}
                     </option>
                   ))}
                 </select>
@@ -555,7 +564,9 @@ export default function DashboardPage() {
             >
               {MODULE_OPTIONS.map((m) => (
                 <option key={m || "all"} value={m}>
-                  {m ? m : t("filters.all")}
+                  {m
+                    ? t(`module.${m}` as Parameters<typeof t>[0]) || m
+                    : t("filters.all")}
                 </option>
               ))}
             </select>
