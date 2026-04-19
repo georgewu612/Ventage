@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { ArrowDown, ArrowUp, Filter } from "lucide-react";
 
@@ -40,11 +41,14 @@ function OptionCardSkeleton() {
   );
 }
 
-export default function OptionsPage() {
+function OptionsInner() {
+  const searchParams = useSearchParams();
   const { options, loading, error } = useOptionsFlow(50);
   const { t, dateLocale } = useI18n();
   const [typeFilter, setTypeFilter] = useState<"" | "call" | "put">("");
-  const [symbolFilter, setSymbolFilter] = useState("");
+  const [symbolFilter, setSymbolFilter] = useState(
+    (searchParams.get("symbol") ?? "").toUpperCase(),
+  );
 
   const filtered = options.filter((o) => {
     if (typeFilter && o.option_type !== typeFilter) return false;
@@ -213,5 +217,13 @@ export default function OptionsPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function OptionsPage() {
+  return (
+    <Suspense>
+      <OptionsInner />
+    </Suspense>
   );
 }

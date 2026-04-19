@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Filter, TrendingDown, TrendingUp, User } from "lucide-react";
 
@@ -42,11 +43,14 @@ function InsiderCardSkeleton() {
   );
 }
 
-export default function InsiderPage() {
+function InsiderInner() {
+  const searchParams = useSearchParams();
   const { trades, loading, error } = useInsiderTrades(50);
   const { t, dateLocale } = useI18n();
   const [typeFilter, setTypeFilter] = useState<"" | "BUY" | "SELL">("");
-  const [symbolFilter, setSymbolFilter] = useState("");
+  const [symbolFilter, setSymbolFilter] = useState(
+    (searchParams.get("symbol") ?? "").toUpperCase(),
+  );
 
   const filtered = trades.filter((tr) => {
     if (typeFilter && tr.trade_type !== typeFilter) return false;
@@ -242,5 +246,13 @@ export default function InsiderPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function InsiderPage() {
+  return (
+    <Suspense>
+      <InsiderInner />
+    </Suspense>
   );
 }

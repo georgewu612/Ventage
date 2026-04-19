@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Filter, Frown, Heart, Meh } from "lucide-react";
 
@@ -62,10 +63,13 @@ function SentimentCardSkeleton() {
   );
 }
 
-export default function SentimentPage() {
+function SentimentInner() {
+  const searchParams = useSearchParams();
   const { sentiments, loading, error } = useMarketSentiment(30);
   const { t, dateLocale } = useI18n();
-  const [symbolFilter, setSymbolFilter] = useState("");
+  const [symbolFilter, setSymbolFilter] = useState(
+    (searchParams.get("symbol") ?? "").toUpperCase(),
+  );
   const [sentimentFilter, setSentimentFilter] = useState<
     "" | "bullish" | "bearish" | "neutral"
   >("");
@@ -271,5 +275,13 @@ export default function SentimentPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function SentimentPage() {
+  return (
+    <Suspense>
+      <SentimentInner />
+    </Suspense>
   );
 }
