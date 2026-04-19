@@ -57,6 +57,44 @@ function OptionsInner() {
     return true;
   });
 
+  // Symbol-level summary (based on unfiltered data)
+  const symbolGroups = Object.values(
+    options.reduce<
+      Record<
+        string,
+        {
+          symbol: string;
+          calls: number;
+          puts: number;
+          callPremium: number;
+          putPremium: number;
+          totalVolume: number;
+        }
+      >
+    >((acc, o) => {
+      if (!acc[o.symbol]) {
+        acc[o.symbol] = {
+          symbol: o.symbol,
+          calls: 0,
+          puts: 0,
+          callPremium: 0,
+          putPremium: 0,
+          totalVolume: 0,
+        };
+      }
+      const g = acc[o.symbol];
+      if (o.option_type === "call") {
+        g.calls++;
+        g.callPremium += o.premium ?? 0;
+      } else {
+        g.puts++;
+        g.putPremium += o.premium ?? 0;
+      }
+      g.totalVolume += o.volume ?? 0;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b.calls + b.puts - (a.calls + a.puts));
+
   return (
     <div>
       <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
@@ -78,6 +116,56 @@ function OptionsInner() {
       </header>
 
       <main className="container mx-auto px-6 py-8">
+        {/* Symbol Summary Strip */}
+        {symbolGroups.length > 0 && (
+          <div className="mb-6">
+            <p className="mb-2 text-xs font-medium tracking-wider text-gray-500 uppercase">
+              {t("summary.bySymbol")}
+            </p>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {symbolGroups.map((g) => {
+                const pcRatio =
+                  g.calls > 0 ? (g.puts / g.calls).toFixed(2) : "∞";
+                const totalPremium = g.callPremium + g.putPremium;
+                const isBullish = g.calls > g.puts;
+                const isActive = symbolFilter === g.symbol;
+                return (
+                  <button
+                    key={g.symbol}
+                    onClick={() => setSymbolFilter(isActive ? "" : g.symbol)}
+                    className={`flex min-w-[148px] flex-col rounded-xl border p-3 text-left transition-all ${
+                      isActive
+                        ? "border-cyan-500/60 bg-cyan-500/10"
+                        : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.08]"
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="font-bold text-white">${g.symbol}</span>
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                          isBullish
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : "bg-red-500/15 text-red-400"
+                        }`}
+                      >
+                        {isBullish ? "↑ CALL" : "↓ PUT"}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 text-xs">
+                      <span className="text-emerald-400">C {g.calls}</span>
+                      <span className="text-red-400">P {g.puts}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-400">
+                      {formatCurrency(totalPremium)}
+                      <span className="ml-2 text-gray-500">P/C {pcRatio}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <Filter className="h-4 w-4 text-gray-400" />
