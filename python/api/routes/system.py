@@ -13,11 +13,11 @@ router = APIRouter()
 TABLES = ["market_signals", "options_flow", "insider_trades", "market_sentiment"]
 
 JOB_NAMES = [
-    "darkpool_collector",
-    "insider_collector",
-    "news_collector",
-    "options_collector",
-    "sentiment_collector",
+    "dark_pool",
+    "insider_trades",
+    "market_news",
+    "options_flow",
+    "market_sentiment",
     "signal_engine",
     "alert_check",
 ]
