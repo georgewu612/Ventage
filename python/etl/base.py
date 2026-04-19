@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -42,7 +42,7 @@ class BaseCollector(abc.ABC):
 
     async def run(self) -> dict[str, Any]:
         """Execute full ETL cycle: collect -> transform -> load."""
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         result = {
             "collector": self.name,
             "started_at": started_at.isoformat(),
@@ -68,7 +68,7 @@ class BaseCollector(abc.ABC):
             loaded = await self.load(normalized)
             result["loaded"] = loaded
 
-            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+            elapsed = (datetime.now(UTC) - started_at).total_seconds()
             self.log.info("completed", loaded=loaded, elapsed_s=round(elapsed, 2))
 
         except Exception as exc:
@@ -76,7 +76,7 @@ class BaseCollector(abc.ABC):
             result["errors"].append(str(exc))
             self.log.error("failed", error=str(exc))
 
-        result["finished_at"] = datetime.now(timezone.utc).isoformat()
+        result["finished_at"] = datetime.now(UTC).isoformat()
         return result
 
     async def _collect_with_retry(self) -> list[dict[str, Any]]:

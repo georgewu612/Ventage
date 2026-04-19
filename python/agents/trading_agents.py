@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -77,9 +77,9 @@ class TradingAgentsAnalyzer:
                 llm_provider="openai",
                 deep_think_llm=self.settings.openai_model or "gpt-4o-mini",
                 quick_think_llm=self.settings.openai_model or "gpt-4o-mini",
-                max_debate_rounds=1,       # Keep costs low
+                max_debate_rounds=1,  # Keep costs low
                 max_risk_discuss_rounds=1,
-                max_recur_limit=150,       # 7 agents need many graph steps
+                max_recur_limit=150,  # 7 agents need many graph steps
             )
 
             self._graph = TradingAgentsGraph(debug=False, config=config)
@@ -105,7 +105,8 @@ class TradingAgentsAnalyzer:
 
         # Collect fields that need translation
         translatable = {
-            k: v for k, v in result.items()
+            k: v
+            for k, v in result.items()
             if k in _REPORT_FIELDS and isinstance(v, str) and v.strip()
         }
         if not translatable:
@@ -127,9 +128,7 @@ class TradingAgentsAnalyzer:
                     },
                 ],
             )
-            translated: dict[str, str] = json.loads(
-                response.choices[0].message.content or "{}"
-            )
+            translated: dict[str, str] = json.loads(response.choices[0].message.content or "{}")
             self.log.info(
                 "trading_agents_translated",
                 language=language,
@@ -162,7 +161,7 @@ class TradingAgentsAnalyzer:
             return None
 
         if not date:
-            date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            date = datetime.now(UTC).strftime("%Y-%m-%d")
 
         self.log.info("trading_agents_analyzing", symbol=symbol, date=date, language=language)
 
@@ -174,7 +173,7 @@ class TradingAgentsAnalyzer:
                 "symbol": symbol.upper(),
                 "date": date,
                 "decision": decision if isinstance(decision, str) else str(decision),
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "model": self.settings.openai_model,
             }
 

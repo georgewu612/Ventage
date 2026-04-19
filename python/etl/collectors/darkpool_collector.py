@@ -11,7 +11,7 @@ signals institutional accumulation or distribution.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -24,10 +24,26 @@ logger = structlog.get_logger()
 
 # Symbols to query when using FINRA (top liquid names)
 CORE_SYMBOLS = [
-    "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
-    "META", "GOOGL", "AMD", "NFLX", "PLTR",
-    "SPY", "QQQ", "MRVL", "AVGO", "CRM",
-    "ORCL", "ADBE", "INTC", "MU", "QCOM",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "TSLA",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AMD",
+    "NFLX",
+    "PLTR",
+    "SPY",
+    "QQQ",
+    "MRVL",
+    "AVGO",
+    "CRM",
+    "ORCL",
+    "ADBE",
+    "INTC",
+    "MU",
+    "QCOM",
 ]
 
 # Minimum dark-pool value (USD) worth recording
@@ -72,10 +88,7 @@ class DarkPoolCollector(BaseCollector):
 
     async def _collect_finra(self) -> list[dict[str, Any]]:
         """Fetch weekly OTC/dark-pool aggregates from FINRA transparency portal."""
-        url = (
-            "https://api.finra.org/data/group/otcMarket/name/weeklySummary"
-            "?limit=500&offset=0"
-        )
+        url = "https://api.finra.org/data/group/otcMarket/name/weeklySummary?limit=500&offset=0"
         headers = {"Accept": "application/json"}
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -94,7 +107,7 @@ class DarkPoolCollector(BaseCollector):
     def transform(self, raw_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Normalize raw records to dark_pool_orders schema."""
         transformed: list[dict[str, Any]] = []
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         for rec in raw_records:
             try:
@@ -164,7 +177,7 @@ class DarkPoolCollector(BaseCollector):
 
             return {
                 "symbol": symbol,
-                "price": 0.0,          # FINRA aggregates don't include price
+                "price": 0.0,  # FINRA aggregates don't include price
                 "size": avg_size,
                 "exchange": "FINRA_OTC",
                 "trade_time": f"{week_start}T00:00:00+00:00",

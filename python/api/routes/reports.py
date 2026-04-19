@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -39,7 +40,9 @@ def get_daily_report() -> dict[str, Any]:
 
     report = analyst.generate_daily_report()
     if not report:
-        raise HTTPException(status_code=404, detail="No market data available for report generation")
+        raise HTTPException(
+            status_code=404, detail="No market data available for report generation"
+        )
 
     return report
 
@@ -58,13 +61,7 @@ def get_signal_analysis(signal_id: str) -> dict[str, Any]:
 
     # Fetch the signal
     try:
-        result = (
-            supabase.table("market_signals")
-            .select("*")
-            .eq("id", signal_id)
-            .single()
-            .execute()
-        )
+        result = supabase.table("market_signals").select("*").eq("id", signal_id).single().execute()
         signal = result.data
     except Exception:
         raise HTTPException(status_code=404, detail=f"Signal not found: {signal_id}")
@@ -100,9 +97,9 @@ def analyze_symbol_signals(
             detail="OpenAI API not configured. Set OPENAI_API_KEY environment variable.",
         )
 
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
 
     result = (
         supabase.table("market_signals")
@@ -121,14 +118,16 @@ def analyze_symbol_signals(
     analyses = []
     for sig in signals:
         ai_text = analyst.analyze_signal(sig)
-        analyses.append({
-            "signal_id": sig.get("id"),
-            "module": sig.get("module"),
-            "direction": sig.get("direction"),
-            "signal_score": sig.get("signal_score"),
-            "original_analysis": sig.get("analysis"),
-            "ai_analysis": ai_text,
-        })
+        analyses.append(
+            {
+                "signal_id": sig.get("id"),
+                "module": sig.get("module"),
+                "direction": sig.get("direction"),
+                "signal_score": sig.get("signal_score"),
+                "original_analysis": sig.get("analysis"),
+                "ai_analysis": ai_text,
+            }
+        )
 
     return {
         "symbol": symbol.upper(),
@@ -154,8 +153,12 @@ def _get_ta_analyzer() -> Any:
 @router.get("/reports/multi-agent/{symbol}")
 def get_multi_agent_analysis(
     symbol: str,
-    date: str | None = Query(default=None, description="Analysis date (YYYY-MM-DD), defaults to today"),
-    language: str = Query(default="en", description="Response language: 'zh' for Chinese, 'en' for English"),
+    date: str | None = Query(
+        default=None, description="Analysis date (YYYY-MM-DD), defaults to today"
+    ),
+    language: str = Query(
+        default="en", description="Response language: 'zh' for Chinese, 'en' for English"
+    ),
 ) -> dict[str, Any]:
     """Run TradingAgents multi-agent analysis for a symbol.
 

@@ -6,7 +6,7 @@ based on configurable retention periods per table.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -16,12 +16,12 @@ logger = structlog.get_logger()
 
 # Retention periods per table (in days)
 RETENTION_DAYS = {
-    "insider_trades": 90,       # Keep 3 months of insider trades
-    "options_flow": 30,         # Keep 1 month of options data
-    "market_sentiment": 30,     # Keep 1 month of sentiment data
-    "market_news": 14,          # Keep 2 weeks of news (high volume)
-    "market_signals": 60,       # Keep 2 months of signals
-    "alert_history": 60,        # Keep 2 months of alert history
+    "insider_trades": 90,  # Keep 3 months of insider trades
+    "options_flow": 30,  # Keep 1 month of options data
+    "market_sentiment": 30,  # Keep 1 month of sentiment data
+    "market_news": 14,  # Keep 2 weeks of news (high volume)
+    "market_signals": 60,  # Keep 2 months of signals
+    "alert_history": 60,  # Keep 2 months of alert history
 }
 
 
@@ -32,7 +32,7 @@ async def cleanup_old_data(db: Client) -> dict[str, Any]:
     """
     log = logger.bind(component="data_cleaner")
     summary: dict[str, int] = {}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for table, days in RETENTION_DAYS.items():
         cutoff = (now - timedelta(days=days)).isoformat()
@@ -43,10 +43,7 @@ async def cleanup_old_data(db: Client) -> dict[str, Any]:
         try:
             # Count records to be deleted
             count_result = (
-                db.table(table)
-                .select("id", count="exact")
-                .lt(date_column, cutoff)
-                .execute()
+                db.table(table).select("id", count="exact").lt(date_column, cutoff).execute()
             )
             old_count = count_result.count if count_result.count else 0
 
@@ -61,11 +58,7 @@ async def cleanup_old_data(db: Client) -> dict[str, Any]:
             while deleted < old_count:
                 # Fetch IDs of old records
                 id_result = (
-                    db.table(table)
-                    .select("id")
-                    .lt(date_column, cutoff)
-                    .limit(batch_size)
-                    .execute()
+                    db.table(table).select("id").lt(date_column, cutoff).limit(batch_size).execute()
                 )
 
                 if not id_result.data:

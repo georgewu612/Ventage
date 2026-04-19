@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -22,30 +22,87 @@ SEC_USER_AGENT = "Ventage/1.0 (ventage-app; contact@ventage.app)"
 
 # Core symbols that are always tracked
 CORE_SYMBOLS = [
-    "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
-    "META", "GOOGL", "AMD", "NFLX", "PLTR",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "TSLA",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AMD",
+    "NFLX",
+    "PLTR",
 ]
 
 # Extended watchlist — major US stocks across sectors
 EXTENDED_SYMBOLS = [
     # Semiconductors
-    "INTC", "QCOM", "AVGO", "MU", "MRVL", "ON",
+    "INTC",
+    "QCOM",
+    "AVGO",
+    "MU",
+    "MRVL",
+    "ON",
     # Finance
-    "JPM", "GS", "BAC", "V", "MA", "C", "WFC", "MS",
+    "JPM",
+    "GS",
+    "BAC",
+    "V",
+    "MA",
+    "C",
+    "WFC",
+    "MS",
     # Healthcare
-    "JNJ", "PFE", "UNH", "LLY", "ABBV", "MRK", "BMY",
+    "JNJ",
+    "PFE",
+    "UNH",
+    "LLY",
+    "ABBV",
+    "MRK",
+    "BMY",
     # Tech
-    "CRM", "ORCL", "ADBE", "UBER", "COIN", "SNAP", "SQ", "SHOP",
-    "PYPL", "ROKU", "DDOG", "NET", "ZS", "CRWD",
+    "CRM",
+    "ORCL",
+    "ADBE",
+    "UBER",
+    "COIN",
+    "SNAP",
+    "SQ",
+    "SHOP",
+    "PYPL",
+    "ROKU",
+    "DDOG",
+    "NET",
+    "ZS",
+    "CRWD",
     # Consumer
-    "DIS", "NKE", "SBUX", "MCD", "WMT", "TGT", "COST", "HD",
+    "DIS",
+    "NKE",
+    "SBUX",
+    "MCD",
+    "WMT",
+    "TGT",
+    "COST",
+    "HD",
     # Energy
-    "XOM", "CVX", "COP",
+    "XOM",
+    "CVX",
+    "COP",
     # EV / Auto
-    "RIVN", "LCID", "F", "GM",
+    "RIVN",
+    "LCID",
+    "F",
+    "GM",
     # Other popular
-    "BA", "CAT", "DE", "RTX", "LMT",
-    "SOFI", "HOOD", "MARA", "RIOT",
+    "BA",
+    "CAT",
+    "DE",
+    "RTX",
+    "LMT",
+    "SOFI",
+    "HOOD",
+    "MARA",
+    "RIOT",
 ]
 
 # Maximum Form 4 filings to parse per symbol per run
@@ -82,14 +139,10 @@ class InsiderTradesCollector(BaseCollector):
                     continue
 
                 try:
-                    filings = await self._fetch_form4_for_cik(
-                        client, cik.zfill(10), symbol
-                    )
+                    filings = await self._fetch_form4_for_cik(client, cik.zfill(10), symbol)
                     all_filings.extend(filings)
                 except Exception as exc:
-                    self.log.warning(
-                        "symbol_fetch_failed", symbol=symbol, error=str(exc)
-                    )
+                    self.log.warning("symbol_fetch_failed", symbol=symbol, error=str(exc))
 
                 # SEC rate limit: max 10 requests/second
                 await asyncio.sleep(0.15)
@@ -117,9 +170,7 @@ class InsiderTradesCollector(BaseCollector):
             symbols.extend(selected)
 
             # Advance rotation offset for next run
-            InsiderTradesCollector._rotation_offset = (
-                start + remaining_slots
-            ) % len(extended)
+            InsiderTradesCollector._rotation_offset = (start + remaining_slots) % len(extended)
 
         return symbols
 
@@ -145,7 +196,7 @@ class InsiderTradesCollector(BaseCollector):
         accessions = recent.get("accessionNumber", [])
         primary_docs = recent.get("primaryDocument", [])
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
+        cutoff = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
 
         for i, form_type in enumerate(forms):
             if form_type != "4":
@@ -154,14 +205,16 @@ class InsiderTradesCollector(BaseCollector):
             if not filing_date or filing_date < cutoff:
                 continue
 
-            filings.append({
-                "symbol": symbol,
-                "cik": cik,
-                "filing_date": filing_date,
-                "accession": accessions[i] if i < len(accessions) else None,
-                "primary_doc": primary_docs[i] if i < len(primary_docs) else None,
-                "company_name": data.get("name", ""),
-            })
+            filings.append(
+                {
+                    "symbol": symbol,
+                    "cik": cik,
+                    "filing_date": filing_date,
+                    "accession": accessions[i] if i < len(accessions) else None,
+                    "primary_doc": primary_docs[i] if i < len(primary_docs) else None,
+                    "company_name": data.get("name", ""),
+                }
+            )
 
         # Fetch transaction details from each Form 4 XML
         detailed: list[dict[str, Any]] = []
@@ -193,9 +246,7 @@ class InsiderTradesCollector(BaseCollector):
         accession_path = accession.replace("-", "")
 
         # Try to find the XML document for this filing
-        xml_url = await self._find_form4_xml_url(
-            client, cik, accession_path, primary_doc
-        )
+        xml_url = await self._find_form4_xml_url(client, cik, accession_path, primary_doc)
         if not xml_url:
             self.log.debug("no_xml_found", accession=accession)
             return []
@@ -288,9 +339,7 @@ class InsiderTradesCollector(BaseCollector):
             f".//{ns}reportingOwner/{ns}reportingOwnerRelationship/{ns}officerTitle",
         )
 
-        rel_node = root.find(
-            f".//{ns}reportingOwner/{ns}reportingOwnerRelationship"
-        )
+        rel_node = root.find(f".//{ns}reportingOwner/{ns}reportingOwnerRelationship")
         relationship = self._determine_relationship(rel_node, ns)
 
         transactions: list[dict[str, Any]] = []
@@ -298,8 +347,14 @@ class InsiderTradesCollector(BaseCollector):
         # Parse non-derivative transactions (direct stock buys/sells)
         for txn in root.findall(f".//{ns}nonDerivativeTransaction"):
             record = self._parse_transaction_element(
-                txn, ns, symbol, owner_name, owner_title, relationship,
-                filing_date, accession,
+                txn,
+                ns,
+                symbol,
+                owner_name,
+                owner_title,
+                relationship,
+                filing_date,
+                accession,
             )
             if record:
                 transactions.append(record)
@@ -307,8 +362,14 @@ class InsiderTradesCollector(BaseCollector):
         # Also parse derivative transactions (options exercises, RSU vesting)
         for txn in root.findall(f".//{ns}derivativeTransaction"):
             record = self._parse_transaction_element(
-                txn, ns, symbol, owner_name, owner_title, relationship,
-                filing_date, accession,
+                txn,
+                ns,
+                symbol,
+                owner_name,
+                owner_title,
+                relationship,
+                filing_date,
+                accession,
             )
             if record:
                 transactions.append(record)
@@ -329,9 +390,7 @@ class InsiderTradesCollector(BaseCollector):
         """Parse a single <nonDerivativeTransaction> element."""
         txn_date = self._xml_text(txn, f"{ns}transactionDate/{ns}value")
 
-        shares_str = self._xml_text(
-            txn, f"{ns}transactionAmounts/{ns}transactionShares/{ns}value"
-        )
+        shares_str = self._xml_text(txn, f"{ns}transactionAmounts/{ns}transactionShares/{ns}value")
         shares = float(shares_str) if shares_str else 0
 
         price_str = self._xml_text(

@@ -8,8 +8,7 @@ Design principle (from CLAUDE.md):
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -24,8 +23,10 @@ logger = structlog.get_logger()
 
 # ── Structured Output Schemas ──────────────────────────────────────
 
+
 class SignalAnalysis(BaseModel):
     """AI-generated analysis for a single trading signal."""
+
     summary: str = Field(
         max_length=200,
         description="一句话总结信号含义，不要包含任何自己计算的数字",
@@ -46,6 +47,7 @@ class SignalAnalysis(BaseModel):
 
 class DailyReport(BaseModel):
     """AI-generated daily market summary report."""
+
     market_overview: str = Field(
         max_length=300,
         description="今日市场整体概况",
@@ -69,6 +71,7 @@ class DailyReport(BaseModel):
 
 
 # ── AI Analyst ─────────────────────────────────────────────────────
+
 
 class AIAnalyst:
     """Uses OpenAI to generate natural-language market analysis."""
@@ -199,7 +202,7 @@ class AIAnalyst:
                 "top_bearish": report.top_bearish,
                 "unusual_activity": report.unusual_activity,
                 "risk_warning": report.risk_warning,
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
                 "model": self.model,
                 "tokens": response.usage.total_tokens if response.usage else 0,
             }
@@ -240,10 +243,10 @@ class AIAnalyst:
 - 信号来源: {module}
 - 方向: {direction}
 - 综合评分: {score}/100
-- 置信度: {signal.get('confidence', 0)}
+- 置信度: {signal.get("confidence", 0)}
 
 ## 评分因子（系统计算）
-{chr(10).join(factor_lines) if factor_lines else '  无详细因子'}
+{chr(10).join(factor_lines) if factor_lines else "  无详细因子"}
 
 ## 原始数据摘要
 {analysis}
@@ -254,12 +257,14 @@ class AIAnalyst:
 
     def _build_daily_context(self) -> str | None:
         """Build context from all recent signals for daily report."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
 
         # Fetch recent signals
         result = (
             self.db.table("market_signals")
-            .select("symbol, direction, confidence, signal_type, module, signal_score, analysis, factors")
+            .select(
+                "symbol, direction, confidence, signal_type, module, signal_score, analysis, factors"
+            )
             .gte("created_at", cutoff)
             .order("signal_score", desc=True)
             .limit(50)
@@ -347,10 +352,10 @@ class AIAnalyst:
 {bearish_text}
 
 ## 大额期权异动（按权利金排序）
-{options_text or '  无数据'}
+{options_text or "  无数据"}
 
 ## 重要内部交易
-{insider_text or '  无数据'}
+{insider_text or "  无数据"}
 
 请生成每日市场分析报告。"""
 

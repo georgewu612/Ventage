@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from postgrest.exceptions import APIError
@@ -51,16 +51,18 @@ def _normalize_signal(row: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/signals")
 def get_signals(
-    symbol: Optional[str] = Query(default=None),
-    module: Optional[str] = Query(default=None),
-    signal_type: Optional[str] = Query(default=None),
-    min_score: Optional[int] = Query(default=None, ge=0, le=100),
+    symbol: str | None = Query(default=None),
+    module: str | None = Query(default=None),
+    signal_type: str | None = Query(default=None),
+    min_score: int | None = Query(default=None, ge=0, le=100),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        query = supabase.table("market_signals").select("*").order("created_at", desc=True).limit(1000)
+        query = (
+            supabase.table("market_signals").select("*").order("created_at", desc=True).limit(1000)
+        )
 
         if symbol:
             query = query.eq("symbol", symbol.upper())
@@ -97,15 +99,22 @@ def get_signals(
 def get_signals_summary() -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = datetime.now(UTC) - timedelta(hours=24)
 
-        response = supabase.table("market_signals").select("*").gte("created_at", since.isoformat()).execute()
+        response = (
+            supabase.table("market_signals")
+            .select("*")
+            .gte("created_at", since.isoformat())
+            .execute()
+        )
         items = [_normalize_signal(row) for row in (response.data or [])]
 
         bullish = sum(1 for item in items if item.get("signal_type") == "bullish")
         bearish = sum(1 for item in items if item.get("signal_type") == "bearish")
         neutral = len(items) - bullish - bearish
-        scores = [item.get("signal_score") for item in items if item.get("signal_score") is not None]
+        scores = [
+            item.get("signal_score") for item in items if item.get("signal_score") is not None
+        ]
         avg_score = round(sum(scores) / len(scores), 2) if scores else 0
 
         by_module: dict[str, int] = {}
@@ -159,11 +168,7 @@ def get_signal_by_id(signal_id: str) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
         response = (
-            supabase.table("market_signals")
-            .select("*")
-            .eq("id", signal_id)
-            .limit(1)
-            .execute()
+            supabase.table("market_signals").select("*").eq("id", signal_id).limit(1).execute()
         )
         items = response.data or []
         if not items:

@@ -1,7 +1,5 @@
 """Tests for the Telegram notifier."""
 
-import pytest
-
 from alerting.telegram import TelegramNotifier
 
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -18,8 +18,16 @@ from etl.base import BaseCollector
 
 # Core symbols that are always tracked
 CORE_SYMBOLS = [
-    "AAPL", "MSFT", "NVDA", "TSLA", "AMZN",
-    "META", "GOOGL", "AMD", "NFLX", "PLTR",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "TSLA",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AMD",
+    "NFLX",
+    "PLTR",
 ]
 
 # Maximum total symbols to query per run (CBOE rate limit friendly)
@@ -55,7 +63,7 @@ class OptionsFlowCollector(BaseCollector):
             result = (
                 self.db.table("insider_trades")
                 .select("symbol")
-                .gte("filing_date", (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d"))
+                .gte("filing_date", (datetime.now(UTC) - timedelta(days=3)).strftime("%Y-%m-%d"))
                 .execute()
             )
             if result.data:
@@ -86,9 +94,7 @@ class OptionsFlowCollector(BaseCollector):
                     options = await self._fetch_cboe_options(client, symbol)
                     all_options.extend(options)
                 except Exception as exc:
-                    self.log.warning(
-                        "cboe_fetch_failed", symbol=symbol, error=str(exc)
-                    )
+                    self.log.warning("cboe_fetch_failed", symbol=symbol, error=str(exc))
                 # CBOE rate limiting
                 await asyncio.sleep(0.5)
 
@@ -119,7 +125,7 @@ class OptionsFlowCollector(BaseCollector):
                 continue
 
             # Determine call/put from option symbol
-            option_type = "call" if "C" in option[len(symbol):] else "put"
+            option_type = "call" if "C" in option[len(symbol) :] else "put"
 
             # CBOE does NOT return strike or expiration_date fields directly.
             # Both are encoded in the OCC option symbol: SYMBOL + YYMMDD + C/P + 8-digit strike
@@ -129,10 +135,10 @@ class OptionsFlowCollector(BaseCollector):
 
             # Parse from OCC symbol if not provided by API
             if option and len(option) > len(symbol):
-                suffix = option[len(symbol):]  # e.g. "260417C00150000"
-                occ_match = re.match(r'(\d{6})[CP](\d{8})', suffix)
+                suffix = option[len(symbol) :]  # e.g. "260417C00150000"
+                occ_match = re.match(r"(\d{6})[CP](\d{8})", suffix)
                 if occ_match:
-                    date_part = occ_match.group(1)   # "260417"
+                    date_part = occ_match.group(1)  # "260417"
                     strike_part = occ_match.group(2)  # "00150000"
                     if not expiration:
                         expiration = f"20{date_part[:2]}-{date_part[2:4]}-{date_part[4:6]}"
@@ -143,7 +149,7 @@ class OptionsFlowCollector(BaseCollector):
             if expiration:
                 try:
                     exp_date = datetime.strptime(expiration, "%Y-%m-%d").date()
-                    if exp_date < datetime.now(timezone.utc).date():
+                    if exp_date < datetime.now(UTC).date():
                         continue
                 except ValueError:
                     pass
@@ -165,19 +171,21 @@ class OptionsFlowCollector(BaseCollector):
             else:
                 trade_type = "TRADE"
 
-            results.append({
-                "symbol": symbol,
-                "option_type": option_type,
-                "strike": strike,
-                "expiration": expiration,
-                "premium": last * volume * 100 if last else 0,
-                "volume": volume,
-                "open_interest": open_interest,
-                "implied_volatility": opt.get("iv", None),
-                "trade_type": trade_type,
-                "unusual_score": unusual_score,
-                "_source": "cboe",
-            })
+            results.append(
+                {
+                    "symbol": symbol,
+                    "option_type": option_type,
+                    "strike": strike,
+                    "expiration": expiration,
+                    "premium": last * volume * 100 if last else 0,
+                    "volume": volume,
+                    "open_interest": open_interest,
+                    "implied_volatility": opt.get("iv", None),
+                    "trade_type": trade_type,
+                    "unusual_score": unusual_score,
+                    "_source": "cboe",
+                }
+            )
 
         # Sort by unusual_score descending, take top 20 per symbol
         results.sort(key=lambda x: x.get("unusual_score", 0), reverse=True)
@@ -203,19 +211,25 @@ class OptionsFlowCollector(BaseCollector):
                 for trade in data.get("data", []):
                     symbol = trade.get("underlying_symbol", "")
 
-                    all_options.append({
-                        "symbol": symbol,
-                        "option_type": trade.get("put_call", "call").lower(),
-                        "strike": float(trade.get("strike_price", 0)),
-                        "expiration": trade.get("expires_date", ""),
-                        "premium": float(trade.get("premium", 0)),
-                        "volume": int(trade.get("volume", 0)),
-                        "open_interest": int(trade.get("open_interest", 0)),
-                        "implied_volatility": float(trade.get("iv", 0)) if trade.get("iv") else None,
-                        "trade_type": trade.get("trade_type", "TRADE"),
-                        "unusual_score": int(trade.get("unusual_score", 0)) if trade.get("unusual_score") else None,
-                        "_source": "unusual_whales",
-                    })
+                    all_options.append(
+                        {
+                            "symbol": symbol,
+                            "option_type": trade.get("put_call", "call").lower(),
+                            "strike": float(trade.get("strike_price", 0)),
+                            "expiration": trade.get("expires_date", ""),
+                            "premium": float(trade.get("premium", 0)),
+                            "volume": int(trade.get("volume", 0)),
+                            "open_interest": int(trade.get("open_interest", 0)),
+                            "implied_volatility": float(trade.get("iv", 0))
+                            if trade.get("iv")
+                            else None,
+                            "trade_type": trade.get("trade_type", "TRADE"),
+                            "unusual_score": int(trade.get("unusual_score", 0))
+                            if trade.get("unusual_score")
+                            else None,
+                            "_source": "unusual_whales",
+                        }
+                    )
             except Exception as exc:
                 self.log.error("unusual_whales_failed", error=str(exc))
 

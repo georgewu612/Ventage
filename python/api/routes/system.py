@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -46,11 +46,19 @@ def _iso_to_dt(value: str | None) -> datetime | None:
 def get_system_status() -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         tables: list[dict[str, Any]] = []
         for table in TABLES:
-            rows = supabase.table(table).select("created_at").order("created_at", desc=True).limit(1).execute().data or []
+            rows = (
+                supabase.table(table)
+                .select("created_at")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
             latest_created_at = rows[0].get("created_at") if rows else None
             latest_dt = _iso_to_dt(latest_created_at)
 
@@ -81,30 +89,35 @@ def get_system_status() -> dict[str, Any]:
                     .order("ran_at", desc=True)
                     .limit(1)
                     .execute()
-                    .data or []
+                    .data
+                    or []
                 )
                 if rows:
                     row = rows[0]
                     ran_at = row.get("ran_at")
                     ran_dt = _iso_to_dt(ran_at)
                     lag_seconds = int((now - ran_dt).total_seconds()) if ran_dt else None
-                    collectors.append({
-                        "job": job_name,
-                        "status": row.get("status"),
-                        "ran_at": ran_at,
-                        "lag_seconds": lag_seconds,
-                        "duration_ms": row.get("duration_ms"),
-                        "error_message": row.get("error_message"),
-                    })
+                    collectors.append(
+                        {
+                            "job": job_name,
+                            "status": row.get("status"),
+                            "ran_at": ran_at,
+                            "lag_seconds": lag_seconds,
+                            "duration_ms": row.get("duration_ms"),
+                            "error_message": row.get("error_message"),
+                        }
+                    )
                 else:
-                    collectors.append({
-                        "job": job_name,
-                        "status": "never",
-                        "ran_at": None,
-                        "lag_seconds": None,
-                        "duration_ms": None,
-                        "error_message": None,
-                    })
+                    collectors.append(
+                        {
+                            "job": job_name,
+                            "status": "never",
+                            "ran_at": None,
+                            "lag_seconds": None,
+                            "duration_ms": None,
+                            "error_message": None,
+                        }
+                    )
         except Exception:
             pass  # job_runs table may not exist yet; non-critical
 
@@ -119,4 +132,6 @@ def get_system_status() -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch system status: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch system status: {exc}"
+        ) from exc

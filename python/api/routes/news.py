@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from supabase import Client, create_client
@@ -36,9 +36,9 @@ def _paginate(items: list[dict[str, Any]], limit: int, offset: int) -> dict[str,
 
 @router.get("/market-news")
 def get_market_news(
-    channel: Optional[str] = Query(default=None),
-    importance: Optional[int] = Query(default=None, ge=1),
-    symbol: Optional[str] = Query(default=None),
+    channel: str | None = Query(default=None),
+    importance: int | None = Query(default=None, ge=1),
+    symbol: str | None = Query(default=None),
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -46,10 +46,7 @@ def get_market_news(
     try:
         supabase = _get_supabase_client()
         query = (
-            supabase.table("market_news")
-            .select("*")
-            .order("published_at", desc=True)
-            .limit(500)
+            supabase.table("market_news").select("*").order("published_at", desc=True).limit(500)
         )
 
         if importance:

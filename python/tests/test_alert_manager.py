@@ -1,8 +1,6 @@
 """Tests for the Alert Manager rules engine."""
 
-import pytest
-
-from alerting.manager import AlertManager, AlertRule, DEFAULT_RULES
+from alerting.manager import DEFAULT_RULES, AlertRule
 
 
 class TestAlertRule:
@@ -39,30 +37,58 @@ class TestAlertRule:
             symbols=["AAPL"],
         )
         # All conditions met
-        assert rule.matches({
-            "signal_score": 70, "direction": "bullish",
-            "module": "insider_trades", "symbol": "AAPL",
-        }) is True
+        assert (
+            rule.matches(
+                {
+                    "signal_score": 70,
+                    "direction": "bullish",
+                    "module": "insider_trades",
+                    "symbol": "AAPL",
+                }
+            )
+            is True
+        )
 
         # Score too low
-        assert rule.matches({
-            "signal_score": 50, "direction": "bullish",
-            "module": "insider_trades", "symbol": "AAPL",
-        }) is False
+        assert (
+            rule.matches(
+                {
+                    "signal_score": 50,
+                    "direction": "bullish",
+                    "module": "insider_trades",
+                    "symbol": "AAPL",
+                }
+            )
+            is False
+        )
 
         # Wrong direction
-        assert rule.matches({
-            "signal_score": 70, "direction": "bearish",
-            "module": "insider_trades", "symbol": "AAPL",
-        }) is False
+        assert (
+            rule.matches(
+                {
+                    "signal_score": 70,
+                    "direction": "bearish",
+                    "module": "insider_trades",
+                    "symbol": "AAPL",
+                }
+            )
+            is False
+        )
 
     def test_none_filters_match_all(self):
         """None filters should match any value."""
         rule = AlertRule(name="test", min_score=0)
-        assert rule.matches({
-            "signal_score": 10, "direction": "neutral",
-            "module": "anything", "symbol": "XYZ",
-        }) is True
+        assert (
+            rule.matches(
+                {
+                    "signal_score": 10,
+                    "direction": "neutral",
+                    "module": "anything",
+                    "symbol": "XYZ",
+                }
+            )
+            is True
+        )
 
 
 class TestDefaultRules:

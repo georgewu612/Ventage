@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -27,13 +27,66 @@ _valid_tickers: set[str] | None = None
 
 # Common words that look like tickers but aren't
 TICKER_BLACKLIST = {
-    "A", "I", "AM", "AN", "AT", "BE", "BY", "DO", "GO", "HE",
-    "IF", "IN", "IS", "IT", "ME", "MY", "NO", "OF", "ON", "OR",
-    "SO", "TO", "UP", "US", "WE", "DD", "CEO", "IPO", "ETF",
-    "ALL", "ARE", "CAN", "FOR", "HAS", "NOW", "OLD", "ONE",
-    "OUT", "OWN", "PUT", "RUN", "SAY", "TWO", "WAY", "WHO",
-    "BIG", "NEW", "TOP", "LOW", "HIGH", "BEST", "NEXT", "YOLO",
-    "HOLD", "CALL", "GAIN", "LOSS", "SELL", "LONG", "SHORT",
+    "A",
+    "I",
+    "AM",
+    "AN",
+    "AT",
+    "BE",
+    "BY",
+    "DO",
+    "GO",
+    "HE",
+    "IF",
+    "IN",
+    "IS",
+    "IT",
+    "ME",
+    "MY",
+    "NO",
+    "OF",
+    "ON",
+    "OR",
+    "SO",
+    "TO",
+    "UP",
+    "US",
+    "WE",
+    "DD",
+    "CEO",
+    "IPO",
+    "ETF",
+    "ALL",
+    "ARE",
+    "CAN",
+    "FOR",
+    "HAS",
+    "NOW",
+    "OLD",
+    "ONE",
+    "OUT",
+    "OWN",
+    "PUT",
+    "RUN",
+    "SAY",
+    "TWO",
+    "WAY",
+    "WHO",
+    "BIG",
+    "NEW",
+    "TOP",
+    "LOW",
+    "HIGH",
+    "BEST",
+    "NEXT",
+    "YOLO",
+    "HOLD",
+    "CALL",
+    "GAIN",
+    "LOSS",
+    "SELL",
+    "LONG",
+    "SHORT",
 }
 
 # Pattern to match stock ticker mentions like $AAPL or standalone AAPL
@@ -93,7 +146,12 @@ class SentimentCollector(BaseCollector):
                     continue
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                self.log.warning("reddit_http_error", subreddit=subreddit, sort=sort, status=exc.response.status_code)
+                self.log.warning(
+                    "reddit_http_error",
+                    subreddit=subreddit,
+                    sort=sort,
+                    status=exc.response.status_code,
+                )
                 continue
             await asyncio.sleep(1)  # Rate limit between requests
             data = resp.json()
@@ -109,17 +167,19 @@ class SentimentCollector(BaseCollector):
                 if not tickers:
                     continue
 
-                posts.append({
-                    "subreddit": subreddit,
-                    "title": title,
-                    "selftext": selftext[:500],  # Truncate long posts
-                    "text": text[:1000],
-                    "score": post.get("score", 0),
-                    "num_comments": post.get("num_comments", 0),
-                    "created_utc": post.get("created_utc", 0),
-                    "tickers": list(tickers),
-                    "permalink": post.get("permalink", ""),
-                })
+                posts.append(
+                    {
+                        "subreddit": subreddit,
+                        "title": title,
+                        "selftext": selftext[:500],  # Truncate long posts
+                        "text": text[:1000],
+                        "score": post.get("score", 0),
+                        "num_comments": post.get("num_comments", 0),
+                        "created_utc": post.get("created_utc", 0),
+                        "tickers": list(tickers),
+                        "permalink": post.get("permalink", ""),
+                    }
+                )
 
         return posts
 
@@ -154,7 +214,7 @@ class SentimentCollector(BaseCollector):
                 by_symbol.setdefault(ticker, []).append(post)
 
         # Compute aggregate sentiment per symbol
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         results: list[dict[str, Any]] = []
 
         for symbol, posts in by_symbol.items():
@@ -182,17 +242,19 @@ class SentimentCollector(BaseCollector):
             avg_polarity = sum(polarities) / len(polarities)
             magnitude = sum(abs(p) for p in polarities) / len(polarities)
 
-            results.append({
-                "symbol": symbol,
-                "source": "reddit",
-                "sentiment_score": round(avg_polarity, 4),
-                "magnitude": round(magnitude, 4),
-                "volume": len(posts),
-                "keywords": {"bullish": bullish_count, "bearish": bearish_count},
-                "sample_posts": sample_titles,
-                "analysis_window": "1h",
-                "created_at": now.isoformat(),
-            })
+            results.append(
+                {
+                    "symbol": symbol,
+                    "source": "reddit",
+                    "sentiment_score": round(avg_polarity, 4),
+                    "magnitude": round(magnitude, 4),
+                    "volume": len(posts),
+                    "keywords": {"bullish": bullish_count, "bearish": bearish_count},
+                    "sample_posts": sample_titles,
+                    "analysis_window": "1h",
+                    "created_at": now.isoformat(),
+                }
+            )
 
         return results
 

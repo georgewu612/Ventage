@@ -10,8 +10,7 @@ AI is only used for generating natural-language summaries.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -63,17 +62,21 @@ class SignalEngine:
 
         # Save to database
         loaded = self._save_signals(deduped)
-        self.log.info("signals_generated", total=len(deduped), loaded=loaded, ai_enhanced=ai_enhanced)
+        self.log.info(
+            "signals_generated", total=len(deduped), loaded=loaded, ai_enhanced=ai_enhanced
+        )
 
         return deduped
 
     def _insider_signals(self) -> list[dict[str, Any]]:
         """Generate signals from insider trading activity."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
 
         result = (
             self.db.table("insider_trades")
-            .select("symbol, trade_type, shares, value, price, insider_name, insider_title, filing_date")
+            .select(
+                "symbol, trade_type, shares, value, price, insider_name, insider_title, filing_date"
+            )
             .gte("filing_date", cutoff[:10])
             .order("filing_date", desc=True)
             .limit(200)
@@ -107,8 +110,6 @@ class SignalEngine:
 
             total_buy_value = sum(t.get("value") or 0 for t in buys)
             total_sell_value = sum(t.get("value") or 0 for t in sells)
-            total_buy_shares = sum(t.get("shares") or 0 for t in buys)
-            total_sell_shares = sum(t.get("shares") or 0 for t in sells)
 
             # Direction: net buy = bullish, net sell = bearish
             net_value = total_buy_value - total_sell_value
@@ -125,9 +126,12 @@ class SignalEngine:
             count_score = min(30, trade_count * 5)  # 6 trades = max 30
             # Bonus for C-suite insiders
             executive_trades = [
-                t for t in symbol_trades
-                if any(title in (t.get("insider_title") or "").upper()
-                       for title in ["CEO", "CFO", "COO", "CTO", "PRESIDENT", "CHAIRMAN"])
+                t
+                for t in symbol_trades
+                if any(
+                    title in (t.get("insider_title") or "").upper()
+                    for title in ["CEO", "CFO", "COO", "CTO", "PRESIDENT", "CHAIRMAN"]
+                )
             ]
             exec_score = min(20, len(executive_trades) * 10)
 
@@ -143,32 +147,36 @@ class SignalEngine:
             name_str = ", ".join(names[:2])
             analysis = f"Insider activity: {'; '.join(parts)}. Key insiders: {name_str}."
 
-            signals.append({
-                "id": str(uuid.uuid4()),
-                "symbol": symbol,
-                "direction": direction,
-                "confidence": confidence_decimal,
-                "signal_type": "insider_activity",
-                "module": "insider_trades",
-                "signal_score": confidence,
-                "analysis": analysis,
-                "factors": {
-                    "value_score": {"value": value_score, "max": 50, "label": "交易金额"},
-                    "count_score": {"value": count_score, "max": 30, "label": "交易笔数"},
-                    "exec_score": {"value": exec_score, "max": 20, "label": "高管级别"},
-                },
-                "valid_until": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
-            })
+            signals.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence_decimal,
+                    "signal_type": "insider_activity",
+                    "module": "insider_trades",
+                    "signal_score": confidence,
+                    "analysis": analysis,
+                    "factors": {
+                        "value_score": {"value": value_score, "max": 50, "label": "交易金额"},
+                        "count_score": {"value": count_score, "max": 30, "label": "交易笔数"},
+                        "exec_score": {"value": exec_score, "max": 20, "label": "高管级别"},
+                    },
+                    "valid_until": (datetime.now(UTC) + timedelta(days=3)).isoformat(),
+                }
+            )
 
         return signals
 
     def _options_signals(self) -> list[dict[str, Any]]:
         """Generate signals from unusual options activity."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
 
         result = (
             self.db.table("options_flow")
-            .select("symbol, option_type, strike, premium, volume, open_interest, unusual_score, trade_type")
+            .select(
+                "symbol, option_type, strike, premium, volume, open_interest, unusual_score, trade_type"
+            )
             .gte("created_at", cutoff)
             .order("unusual_score", desc=True)
             .limit(200)
@@ -209,7 +217,9 @@ class SignalEngine:
                 direction = "neutral"
 
             # Score based on unusual activity
-            avg_unusual = sum(o.get("unusual_score") or 0 for o in symbol_options) / len(symbol_options)
+            avg_unusual = sum(o.get("unusual_score") or 0 for o in symbol_options) / len(
+                symbol_options
+            )
             sweep_count = sum(1 for o in symbol_options if o.get("trade_type") == "SWEEP")
 
             volume_score = min(30, int(total_volume / 1000))
@@ -219,7 +229,6 @@ class SignalEngine:
             confidence = min(100, volume_score + unusual_base + sweep_bonus)
             confidence_decimal = round(confidence / 100, 2)
 
-            total_premium = call_premium + put_premium
             analysis = (
                 f"Options flow: {len(calls)} calls (${call_premium:,.0f}), "
                 f"{len(puts)} puts (${put_premium:,.0f}). "
@@ -227,28 +236,30 @@ class SignalEngine:
                 f"Avg unusual score: {avg_unusual:.0f}."
             )
 
-            signals.append({
-                "id": str(uuid.uuid4()),
-                "symbol": symbol,
-                "direction": direction,
-                "confidence": confidence_decimal,
-                "signal_type": "unusual_options",
-                "module": "options_flow",
-                "signal_score": confidence,
-                "analysis": analysis,
-                "factors": {
-                    "volume_score": {"value": volume_score, "max": 30, "label": "成交量"},
-                    "unusual_base": {"value": unusual_base, "max": 40, "label": "异常度"},
-                    "sweep_bonus": {"value": sweep_bonus, "max": 30, "label": "扫单加分"},
-                },
-                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
-            })
+            signals.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence_decimal,
+                    "signal_type": "unusual_options",
+                    "module": "options_flow",
+                    "signal_score": confidence,
+                    "analysis": analysis,
+                    "factors": {
+                        "volume_score": {"value": volume_score, "max": 30, "label": "成交量"},
+                        "unusual_base": {"value": unusual_base, "max": 40, "label": "异常度"},
+                        "sweep_bonus": {"value": sweep_bonus, "max": 30, "label": "扫单加分"},
+                    },
+                    "valid_until": (datetime.now(UTC) + timedelta(hours=12)).isoformat(),
+                }
+            )
 
         return signals
 
     def _sentiment_signals(self) -> list[dict[str, Any]]:
         """Generate signals from market sentiment data."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
 
         result = (
             self.db.table("market_sentiment")
@@ -270,13 +281,19 @@ class SignalEngine:
 
         signals = []
         for symbol, symbol_sentiments in by_symbol.items():
-            scores = [s["sentiment_score"] for s in symbol_sentiments if s.get("sentiment_score") is not None]
+            scores = [
+                s["sentiment_score"]
+                for s in symbol_sentiments
+                if s.get("sentiment_score") is not None
+            ]
             if not scores:
                 continue
 
             avg_score = sum(scores) / len(scores)
             total_volume = sum(s.get("volume") or 0 for s in symbol_sentiments)
-            avg_magnitude = sum(s.get("magnitude") or 0 for s in symbol_sentiments) / len(symbol_sentiments)
+            avg_magnitude = sum(s.get("magnitude") or 0 for s in symbol_sentiments) / len(
+                symbol_sentiments
+            )
 
             if avg_score > 0.2:
                 direction = "bullish"
@@ -300,28 +317,34 @@ class SignalEngine:
                 f"Total volume: {total_volume:,}. Magnitude: {avg_magnitude:.2f}."
             )
 
-            signals.append({
-                "id": str(uuid.uuid4()),
-                "symbol": symbol,
-                "direction": direction,
-                "confidence": confidence_decimal,
-                "signal_type": "social_sentiment",
-                "module": "market_sentiment",
-                "signal_score": confidence,
-                "analysis": analysis,
-                "factors": {
-                    "score_strength": {"value": score_strength, "max": 40, "label": "情绪强度"},
-                    "volume_score": {"value": volume_score, "max": 30, "label": "讨论量"},
-                    "magnitude_score": {"value": magnitude_score, "max": 30, "label": "波动幅度"},
-                },
-                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat(),
-            })
+            signals.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence_decimal,
+                    "signal_type": "social_sentiment",
+                    "module": "market_sentiment",
+                    "signal_score": confidence,
+                    "analysis": analysis,
+                    "factors": {
+                        "score_strength": {"value": score_strength, "max": 40, "label": "情绪强度"},
+                        "volume_score": {"value": volume_score, "max": 30, "label": "讨论量"},
+                        "magnitude_score": {
+                            "value": magnitude_score,
+                            "max": 30,
+                            "label": "波动幅度",
+                        },
+                    },
+                    "valid_until": (datetime.now(UTC) + timedelta(hours=6)).isoformat(),
+                }
+            )
 
         return signals
 
     def _darkpool_signals(self) -> list[dict[str, Any]]:
         """Generate signals from large dark-pool block trades."""
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
 
         result = (
             self.db.table("dark_pool_orders")
@@ -349,7 +372,8 @@ class SignalEngine:
             trade_count = len(symbol_orders)
             avg_price = (
                 sum(float(o.get("price") or 0) for o in symbol_orders) / trade_count
-                if trade_count > 0 else 0
+                if trade_count > 0
+                else 0
             )
 
             if total_value < 500_000:  # Skip sub-$500K symbols
@@ -361,8 +385,8 @@ class SignalEngine:
 
             # Score: larger blocks = more institutional interest = higher score
             # $1M = 10pts, $5M = 50pts, $10M = 100pts (capped)
-            value_score = min(50, int(total_value / 200_000))      # max 50 @ $10M
-            count_score = min(30, trade_count * 3)                  # max 30 @ 10 trades
+            value_score = min(50, int(total_value / 200_000))  # max 50 @ $10M
+            count_score = min(30, trade_count * 3)  # max 30 @ 10 trades
             # Bonus if trade is very large single block (whale print)
             max_single = max((float(o.get("value") or 0) for o in symbol_orders), default=0)
             whale_bonus = min(20, int(max_single / 1_000_000) * 4)  # max 20 @ $5M+
@@ -377,22 +401,24 @@ class SignalEngine:
                 f"total {total_size:,} shares."
             )
 
-            signals.append({
-                "id": str(uuid.uuid4()),
-                "symbol": symbol,
-                "direction": direction,
-                "confidence": confidence_decimal,
-                "signal_type": "dark_pool_block",
-                "module": "dark_pool",
-                "signal_score": confidence,
-                "analysis": analysis,
-                "factors": {
-                    "value_score": {"value": value_score, "max": 50, "label": "成交金额"},
-                    "count_score": {"value": count_score, "max": 30, "label": "成交笔数"},
-                    "whale_bonus": {"value": whale_bonus, "max": 20, "label": "大单加分"},
-                },
-                "valid_until": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-            })
+            signals.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "symbol": symbol,
+                    "direction": direction,
+                    "confidence": confidence_decimal,
+                    "signal_type": "dark_pool_block",
+                    "module": "dark_pool",
+                    "signal_score": confidence,
+                    "analysis": analysis,
+                    "factors": {
+                        "value_score": {"value": value_score, "max": 50, "label": "成交金额"},
+                        "count_score": {"value": count_score, "max": 30, "label": "成交笔数"},
+                        "whale_bonus": {"value": whale_bonus, "max": 20, "label": "大单加分"},
+                    },
+                    "valid_until": (datetime.now(UTC) + timedelta(hours=24)).isoformat(),
+                }
+            )
 
         return signals
 
@@ -414,17 +440,19 @@ class SignalEngine:
         # Prepare records for insertion (remove id, let DB generate)
         records = []
         for sig in signals:
-            records.append({
-                "symbol": sig["symbol"],
-                "direction": sig["direction"],
-                "confidence": sig["confidence"],
-                "signal_type": sig["signal_type"],
-                "module": sig["module"],
-                "signal_score": sig["signal_score"],
-                "analysis": sig.get("analysis"),
-                "factors": sig.get("factors"),
-                "valid_until": sig.get("valid_until"),
-            })
+            records.append(
+                {
+                    "symbol": sig["symbol"],
+                    "direction": sig["direction"],
+                    "confidence": sig["confidence"],
+                    "signal_type": sig["signal_type"],
+                    "module": sig["module"],
+                    "signal_score": sig["signal_score"],
+                    "analysis": sig.get("analysis"),
+                    "factors": sig.get("factors"),
+                    "valid_until": sig.get("valid_until"),
+                }
+            )
 
         try:
             result = self.db.table("market_signals").insert(records).execute()

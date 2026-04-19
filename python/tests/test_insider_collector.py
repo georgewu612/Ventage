@@ -2,10 +2,7 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from etl.collectors.insider_collector import InsiderTradesCollector
-
 
 SAMPLE_FORM4_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <ownershipDocument>
@@ -142,27 +139,59 @@ class TestTransform:
         self.collector = InsiderTradesCollector(MagicMock())
 
     def test_normalizes_symbol_to_upper(self):
-        records = [{"symbol": "aapl", "filing_date": "2026-04-01", "trade_type": "BUY",
-                     "_accession": "acc1", "insider_name": "Test", "shares": 100}]
+        records = [
+            {
+                "symbol": "aapl",
+                "filing_date": "2026-04-01",
+                "trade_type": "BUY",
+                "_accession": "acc1",
+                "insider_name": "Test",
+                "shares": 100,
+            }
+        ]
         result = self.collector.transform(records)
         assert result[0]["symbol"] == "AAPL"
 
     def test_dedup_by_composite_key(self):
         records = [
-            {"symbol": "AAPL", "filing_date": "2026-04-01", "trade_type": "BUY",
-             "_accession": "acc1", "insider_name": "Test", "shares": 100},
-            {"symbol": "AAPL", "filing_date": "2026-04-01", "trade_type": "BUY",
-             "_accession": "acc1", "insider_name": "Test", "shares": 100},  # duplicate
+            {
+                "symbol": "AAPL",
+                "filing_date": "2026-04-01",
+                "trade_type": "BUY",
+                "_accession": "acc1",
+                "insider_name": "Test",
+                "shares": 100,
+            },
+            {
+                "symbol": "AAPL",
+                "filing_date": "2026-04-01",
+                "trade_type": "BUY",
+                "_accession": "acc1",
+                "insider_name": "Test",
+                "shares": 100,
+            },  # duplicate
         ]
         result = self.collector.transform(records)
         assert len(result) == 1
 
     def test_different_trades_not_deduped(self):
         records = [
-            {"symbol": "AAPL", "filing_date": "2026-04-01", "trade_type": "BUY",
-             "_accession": "acc1", "insider_name": "Test", "shares": 100},
-            {"symbol": "AAPL", "filing_date": "2026-04-01", "trade_type": "SELL",
-             "_accession": "acc1", "insider_name": "Test", "shares": 200},
+            {
+                "symbol": "AAPL",
+                "filing_date": "2026-04-01",
+                "trade_type": "BUY",
+                "_accession": "acc1",
+                "insider_name": "Test",
+                "shares": 100,
+            },
+            {
+                "symbol": "AAPL",
+                "filing_date": "2026-04-01",
+                "trade_type": "SELL",
+                "_accession": "acc1",
+                "insider_name": "Test",
+                "shares": 200,
+            },
         ]
         result = self.collector.transform(records)
         assert len(result) == 2

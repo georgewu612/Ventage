@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -167,7 +167,9 @@ async def test_telegram() -> dict[str, Any]:
     )
 
     if not success:
-        raise HTTPException(status_code=500, detail="测试消息发送失败，请检查 Bot Token 和 Chat ID 是否正确")
+        raise HTTPException(
+            status_code=500, detail="测试消息发送失败，请检查 Bot Token 和 Chat ID 是否正确"
+        )
 
     return {"ok": True, "message": "测试消息已发送，请检查 Telegram"}
 
@@ -203,21 +205,16 @@ class AlertHistoryResponse(BaseModel):
 
 @router.get("/alerts/history")
 def get_alert_history(
-    symbol: Optional[str] = Query(default=None),
-    module: Optional[str] = Query(default=None),
-    direction: Optional[str] = Query(default=None),
+    symbol: str | None = Query(default=None),
+    module: str | None = Query(default=None),
+    direction: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     """Get recent alert history with optional filters."""
     try:
         supabase = _get_supabase_client()
-        query = (
-            supabase.table("alert_history")
-            .select("*")
-            .order("sent_at", desc=True)
-            .limit(1000)
-        )
+        query = supabase.table("alert_history").select("*").order("sent_at", desc=True).limit(1000)
         if symbol:
             query = query.eq("symbol", symbol.upper())
         if module:

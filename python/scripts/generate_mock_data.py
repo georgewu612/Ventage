@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import random
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from supabase import create_client
@@ -47,7 +47,7 @@ def _generate_market_signal() -> dict[str, object]:
     module = random.choice(MODULES)
     summary_pool = BULLISH_SUMMARIES if direction == "bullish" else BEARISH_SUMMARIES
 
-    created_at = datetime.now(timezone.utc) - timedelta(
+    created_at = datetime.now(UTC) - timedelta(
         days=random.randint(0, 6), hours=random.randint(0, 23), minutes=random.randint(0, 59)
     )
     score = random.randint(20, 95)
@@ -65,7 +65,9 @@ def _generate_market_signal() -> dict[str, object]:
 
 
 def _generate_option_row() -> dict[str, object]:
-    created_at = datetime.now(timezone.utc) - timedelta(days=random.randint(0, 6), hours=random.randint(0, 23))
+    created_at = datetime.now(UTC) - timedelta(
+        days=random.randint(0, 6), hours=random.randint(0, 23)
+    )
     return {
         "symbol": random.choice(SYMBOLS),
         "option_type": random.choice(["call", "put"]),
@@ -83,7 +85,7 @@ def _generate_option_row() -> dict[str, object]:
 
 
 def _generate_insider_row() -> dict[str, object]:
-    tx_date = datetime.now(timezone.utc).date() - timedelta(days=random.randint(1, 30))
+    tx_date = datetime.now(UTC).date() - timedelta(days=random.randint(1, 30))
     filing_date = tx_date + timedelta(days=random.randint(1, 5))
     shares = random.randint(1000, 120000)
     price = round(random.uniform(20, 500), 4)
@@ -101,7 +103,7 @@ def _generate_insider_row() -> dict[str, object]:
         "transaction_date": tx_date.isoformat(),
         "sec_form": "Form 4",
         "footnotes": None,
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
 
@@ -116,7 +118,7 @@ def _generate_sentiment_row() -> dict[str, object]:
         "keywords": {"bullish": random.randint(5, 100), "bearish": random.randint(5, 100)},
         "sample_posts": {"post1": "Sample post content", "post2": "Another post"},
         "analysis_window": random.choice(["1h", "24h", "7d"]),
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
 
 
@@ -146,10 +148,18 @@ def main() -> None:
 
     if settings.has_supabase_config:
         client = create_client(settings.supabase_url, settings.supabase_service_role_key)
-        inserted_signals = len(client.table("market_signals").insert(market_signals).execute().data or [])
-        inserted_options = len(client.table("options_flow").insert(options_flow).execute().data or [])
-        inserted_insider = len(client.table("insider_trades").insert(insider_trades).execute().data or [])
-        inserted_sentiment = len(client.table("market_sentiment").insert(market_sentiment).execute().data or [])
+        inserted_signals = len(
+            client.table("market_signals").insert(market_signals).execute().data or []
+        )
+        inserted_options = len(
+            client.table("options_flow").insert(options_flow).execute().data or []
+        )
+        inserted_insider = len(
+            client.table("insider_trades").insert(insider_trades).execute().data or []
+        )
+        inserted_sentiment = len(
+            client.table("market_sentiment").insert(market_sentiment).execute().data or []
+        )
 
         print("Inserted to Supabase:")
         print(f"- market_signals: {inserted_signals}")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from supabase import Client, create_client
@@ -36,14 +36,16 @@ def _paginate(items: list[dict[str, Any]], limit: int, offset: int) -> dict[str,
 
 @router.get("/options-flow")
 def get_options_flow(
-    symbol: Optional[str] = Query(default=None),
-    option_type: Optional[str] = Query(default=None),
+    symbol: str | None = Query(default=None),
+    option_type: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        query = supabase.table("options_flow").select("*").order("created_at", desc=True).limit(1000)
+        query = (
+            supabase.table("options_flow").select("*").order("created_at", desc=True).limit(1000)
+        )
         if symbol:
             query = query.eq("symbol", symbol.upper())
         if option_type:
@@ -59,14 +61,16 @@ def get_options_flow(
 
 @router.get("/insider-trades")
 def get_insider_trades(
-    symbol: Optional[str] = Query(default=None),
-    trade_type: Optional[str] = Query(default=None),
+    symbol: str | None = Query(default=None),
+    trade_type: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        query = supabase.table("insider_trades").select("*").order("filing_date", desc=True).limit(1000)
+        query = (
+            supabase.table("insider_trades").select("*").order("filing_date", desc=True).limit(1000)
+        )
         if symbol:
             query = query.eq("symbol", symbol.upper())
         if trade_type:
@@ -77,20 +81,27 @@ def get_insider_trades(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch insider trades: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch insider trades: {exc}"
+        ) from exc
 
 
 @router.get("/dark-pool-orders")
 def get_dark_pool_orders(
-    symbol: Optional[str] = Query(default=None),
-    exchange: Optional[str] = Query(default=None),
-    min_value: Optional[float] = Query(default=None, description="Min trade value in USD"),
+    symbol: str | None = Query(default=None),
+    exchange: str | None = Query(default=None),
+    min_value: float | None = Query(default=None, description="Min trade value in USD"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        query = supabase.table("dark_pool_orders").select("*").order("trade_time", desc=True).limit(1000)
+        query = (
+            supabase.table("dark_pool_orders")
+            .select("*")
+            .order("trade_time", desc=True)
+            .limit(1000)
+        )
         if symbol:
             query = query.eq("symbol", symbol.upper())
         if exchange:
@@ -103,19 +114,26 @@ def get_dark_pool_orders(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch dark pool orders: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch dark pool orders: {exc}"
+        ) from exc
 
 
 @router.get("/market-sentiment")
 def get_market_sentiment(
-    symbol: Optional[str] = Query(default=None),
-    source: Optional[str] = Query(default=None),
+    symbol: str | None = Query(default=None),
+    source: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
         supabase = _get_supabase_client()
-        query = supabase.table("market_sentiment").select("*").order("created_at", desc=True).limit(1000)
+        query = (
+            supabase.table("market_sentiment")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(1000)
+        )
         if symbol:
             query = query.eq("symbol", symbol.upper())
         if source:
@@ -126,4 +144,6 @@ def get_market_sentiment(
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch market sentiment: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch market sentiment: {exc}"
+        ) from exc

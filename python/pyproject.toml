@@ -1,0 +1,22 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade
+select = ["E", "W", "F", "I", "UP"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "UP007",  # Use X | Y for type annotations (keep compat with older runtime hints)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow unused imports in __init__ files
+"__init__.py" = ["F401"]
+# sys.path manipulation must precede local imports in entry-point scripts
+"etl/scheduler.py" = ["E402"]
+"scripts/generate_mock_data.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

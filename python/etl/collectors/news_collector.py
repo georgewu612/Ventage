@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -112,21 +112,21 @@ class NewsCollector(BaseCollector):
             title = (item.get("title") or "").strip()
             display_time = item.get("display_time", 0)
 
-            items.append({
-                "source": "wallstreetcn",
-                "source_id": str(item.get("id", "")),
-                "title": title or None,
-                "content": content[:2000],  # Cap content length
-                "channels": item.get("channels", []),
-                "importance": item.get("score", 1),
-                "symbols": item.get("symbols", []),
-                "published_at": datetime.fromtimestamp(
-                    display_time, tz=timezone.utc
-                ).isoformat()
-                if display_time
-                else datetime.now(timezone.utc).isoformat(),
-                "_channel": channel,  # Internal, stripped in transform
-            })
+            items.append(
+                {
+                    "source": "wallstreetcn",
+                    "source_id": str(item.get("id", "")),
+                    "title": title or None,
+                    "content": content[:2000],  # Cap content length
+                    "channels": item.get("channels", []),
+                    "importance": item.get("score", 1),
+                    "symbols": item.get("symbols", []),
+                    "published_at": datetime.fromtimestamp(display_time, tz=UTC).isoformat()
+                    if display_time
+                    else datetime.now(UTC).isoformat(),
+                    "_channel": channel,  # Internal, stripped in transform
+                }
+            )
 
         self.log.info(
             "channel_fetched",

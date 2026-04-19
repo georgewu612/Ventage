@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -33,11 +33,11 @@ INTERVAL_MAP = {
 
 # yfinance limits: max period for each interval
 INTERVAL_MAX_PERIOD = {
-    "1min": "5d",      # 1m data max 7 days
-    "5min": "1m",      # 5m data max 60 days
-    "15min": "1m",     # 15m data max 60 days
-    "1h": "3m",        # 1h data max 730 days
-    "1d": "2y",        # daily data unlimited
+    "1min": "5d",  # 1m data max 7 days
+    "5min": "1m",  # 5m data max 60 days
+    "15min": "1m",  # 15m data max 60 days
+    "1h": "3m",  # 1h data max 730 days
+    "1d": "2y",  # daily data unlimited
 }
 
 
@@ -90,11 +90,16 @@ def get_technical_analysis(
     """Fetch OHLC data and compute technical indicators for a symbol."""
     yf_period = PERIOD_MAP.get(period)
     if not yf_period:
-        raise HTTPException(status_code=400, detail=f"Invalid period: {period}. Use: {list(PERIOD_MAP.keys())}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid period: {period}. Use: {list(PERIOD_MAP.keys())}"
+        )
 
     yf_interval = INTERVAL_MAP.get(interval)
     if not yf_interval:
-        raise HTTPException(status_code=400, detail=f"Invalid interval: {interval}. Use: {list(INTERVAL_MAP.keys())}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid interval: {interval}. Use: {list(INTERVAL_MAP.keys())}",
+        )
 
     # Enforce yfinance period limits for intraday intervals
     max_period = INTERVAL_MAX_PERIOD.get(interval, "2y")
@@ -106,7 +111,9 @@ def get_technical_analysis(
         ticker = yf.Ticker(symbol.upper())
         df = ticker.history(period=yf_period, interval=yf_interval)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch data from Yahoo Finance: {exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Failed to fetch data from Yahoo Finance: {exc}"
+        ) from exc
 
     if df.empty:
         raise HTTPException(status_code=404, detail=f"No data found for symbol: {symbol.upper()}")
@@ -125,14 +132,16 @@ def get_technical_analysis(
     candles = []
     for idx, row in df.iterrows():
         ts = int(idx.timestamp())
-        candles.append({
-            "time": ts,
-            "open": _safe_float(row["Open"]),
-            "high": _safe_float(row["High"]),
-            "low": _safe_float(row["Low"]),
-            "close": _safe_float(row["Close"]),
-            "volume": int(row["Volume"]) if not np.isnan(row["Volume"]) else 0,
-        })
+        candles.append(
+            {
+                "time": ts,
+                "open": _safe_float(row["Open"]),
+                "high": _safe_float(row["High"]),
+                "low": _safe_float(row["Low"]),
+                "close": _safe_float(row["Close"]),
+                "volume": int(row["Volume"]) if not np.isnan(row["Volume"]) else 0,
+            }
+        )
 
     # Build indicator series (aligned with candles by timestamp)
     indicators: dict[str, list] = {
@@ -185,8 +194,12 @@ def get_technical_analysis(
         "bb_upper": _safe_float(bb_upper.iloc[-1]),
         "bb_lower": _safe_float(bb_lower.iloc[-1]),
         "volume": int(df["Volume"].iloc[-1]) if not np.isnan(df["Volume"].iloc[-1]) else 0,
-        "high_52w": _safe_float(close.rolling(252).max().iloc[-1]) if len(close) >= 252 else _safe_float(close.max()),
-        "low_52w": _safe_float(close.rolling(252).min().iloc[-1]) if len(close) >= 252 else _safe_float(close.min()),
+        "high_52w": _safe_float(close.rolling(252).max().iloc[-1])
+        if len(close) >= 252
+        else _safe_float(close.max()),
+        "low_52w": _safe_float(close.rolling(252).min().iloc[-1])
+        if len(close) >= 252
+        else _safe_float(close.min()),
     }
 
     # Simple technical signal
@@ -199,9 +212,13 @@ def get_technical_analysis(
 
     if latest["macd"] is not None and latest["macd_signal"] is not None:
         if latest["macd"] > latest["macd_signal"]:
-            signals.append({"indicator": "MACD", "signal": "bullish_crossover", "direction": "bullish"})
+            signals.append(
+                {"indicator": "MACD", "signal": "bullish_crossover", "direction": "bullish"}
+            )
         else:
-            signals.append({"indicator": "MACD", "signal": "bearish_crossover", "direction": "bearish"})
+            signals.append(
+                {"indicator": "MACD", "signal": "bearish_crossover", "direction": "bearish"}
+            )
 
     if latest["price"] is not None and latest["sma_20"] is not None:
         if latest["price"] > latest["sma_20"]:

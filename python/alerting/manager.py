@@ -6,7 +6,7 @@ via Telegram. Tracks sent alerts to avoid duplicates.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -105,7 +105,7 @@ class AlertManager:
         }
 
         # Get recent signals (last hour, to catch new ones)
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         try:
             resp = (
                 self.db.table("market_signals")
@@ -164,9 +164,7 @@ class AlertManager:
 
     async def _get_recent_alert_keys(self) -> set[str]:
         """Get dedup keys for recently sent alerts."""
-        cutoff = (
-            datetime.now(timezone.utc) - timedelta(hours=self.DEDUP_WINDOW_HOURS)
-        ).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(hours=self.DEDUP_WINDOW_HOURS)).isoformat()
 
         try:
             resp = (
@@ -185,13 +183,15 @@ class AlertManager:
         """Record sent alerts for deduplication."""
         records = []
         for sig in signals:
-            records.append({
-                "symbol": sig.get("symbol"),
-                "module": sig.get("module"),
-                "signal_score": sig.get("signal_score"),
-                "direction": sig.get("direction"),
-                "sent_at": datetime.now(timezone.utc).isoformat(),
-            })
+            records.append(
+                {
+                    "symbol": sig.get("symbol"),
+                    "module": sig.get("module"),
+                    "signal_score": sig.get("signal_score"),
+                    "direction": sig.get("direction"),
+                    "sent_at": datetime.now(UTC).isoformat(),
+                }
+            )
 
         try:
             self.db.table("alert_history").insert(records).execute()
