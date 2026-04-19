@@ -158,13 +158,13 @@ function InsiderInner() {
                     <div className="flex gap-3 text-xs">
                       <span className="text-emerald-400">
                         B {g.buys}{" "}
-                        <span className="text-emerald-600">
+                        <span className="text-emerald-300">
                           {formatValue(g.buyValue)}
                         </span>
                       </span>
                       <span className="text-red-400">
                         S {g.sells}{" "}
-                        <span className="text-red-600">
+                        <span className="text-red-300">
                           {formatValue(g.sellValue)}
                         </span>
                       </span>

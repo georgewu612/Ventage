@@ -154,13 +154,13 @@ function OptionsInner() {
                     <div className="flex gap-3 text-xs">
                       <span className="text-emerald-400">
                         C {g.calls}{" "}
-                        <span className="text-emerald-600">
+                        <span className="text-emerald-300">
                           {formatCurrency(g.callPremium)}
                         </span>
                       </span>
                       <span className="text-red-400">
                         P {g.puts}{" "}
-                        <span className="text-red-600">
+                        <span className="text-red-300">
                           {formatCurrency(g.putPremium)}
                         </span>
                       </span>
