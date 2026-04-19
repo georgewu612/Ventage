@@ -41,6 +41,233 @@ function OptionCardSkeleton() {
   );
 }
 
+// ── Chart: Call/Put Premium Donut ───────────────────────────────────────────
+interface DonutProps {
+  callPremium: number;
+  putPremium: number;
+}
+function PremiumDonut({ callPremium, putPremium }: DonutProps) {
+  const total = callPremium + putPremium || 1;
+  const callPct = (callPremium / total) * 100;
+  const putPct = 100 - callPct;
+
+  // SVG arc donut
+  const r = 40;
+  const cx = 50;
+  const cy = 50;
+  const circumference = 2 * Math.PI * r;
+  const callDash = (callPct / 100) * circumference;
+  const putDash = circumference - callDash;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          {/* Put arc (background) */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="14"
+            strokeOpacity="0.5"
+          />
+          {/* Call arc */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="14"
+            strokeDasharray={`${callDash} ${putDash}`}
+            strokeDashoffset={circumference / 4} /* start from top */
+            strokeLinecap="butt"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-bold text-white">
+            {callPct.toFixed(0)}%
+          </span>
+          <span className="text-[10px] text-emerald-400">CALL</span>
+        </div>
+      </div>
+      <div className="mt-2 flex gap-4 text-xs">
+        <span className="flex items-center gap-1 text-emerald-400">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+          {formatCurrency(callPremium)}
+        </span>
+        <span className="flex items-center gap-1 text-red-400">
+          <span className="inline-block h-2 w-2 rounded-full bg-red-500" />
+          {formatCurrency(putPremium)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Chart: OI by Strike Butterfly ───────────────────────────────────────────
+interface OIByStrikeProps {
+  options: Array<{
+    option_type: "call" | "put";
+    strike: number;
+    open_interest: number | null;
+    volume: number;
+  }>;
+}
+function OIByStrike({ options }: OIByStrikeProps) {
+  type StrikeRow = { strike: number; callOI: number; putOI: number };
+  const byStrike = options.reduce<Record<number, StrikeRow>>((acc, o) => {
+    if (!acc[o.strike])
+      acc[o.strike] = { strike: o.strike, callOI: 0, putOI: 0 };
+    const val = o.open_interest ?? o.volume;
+    if (o.option_type === "call") acc[o.strike].callOI += val;
+    else acc[o.strike].putOI += val;
+    return acc;
+  }, {});
+
+  const rows = Object.values(byStrike)
+    .sort((a, b) => b.callOI + b.putOI - (a.callOI + a.putOI))
+    .slice(0, 12);
+
+  if (rows.length === 0)
+    return <p className="text-xs text-gray-500">暂无 OI 数据</p>;
+
+  const maxVal = Math.max(...rows.flatMap((r) => [r.callOI, r.putOI]), 1);
+
+  return (
+    <div className="space-y-1.5">
+      {/* Header */}
+      <div className="mb-2 flex items-center gap-1 text-[11px] text-gray-500">
+        <span className="flex-1 text-right text-red-400">← PUT OI</span>
+        <span className="w-20 text-center">Strike</span>
+        <span className="flex-1 text-left text-emerald-400">CALL OI →</span>
+      </div>
+      {rows.map((row) => {
+        const callW = (row.callOI / maxVal) * 100;
+        const putW = (row.putOI / maxVal) * 100;
+        const dominant =
+          row.callOI > row.putOI
+            ? "call"
+            : row.putOI > row.callOI
+              ? "put"
+              : "neutral";
+        return (
+          <div key={row.strike} className="flex items-center gap-1 text-xs">
+            {/* Put bar (right-aligned, grows left) */}
+            <div className="flex flex-1 justify-end">
+              <div
+                style={{ width: `${putW}%` }}
+                className={`h-5 rounded-l-sm transition-all ${
+                  dominant === "put" ? "bg-red-500/70" : "bg-red-500/35"
+                } flex items-center justify-end pr-1`}
+              >
+                {putW > 25 && (
+                  <span className="text-[9px] text-red-200">
+                    {row.putOI >= 1000
+                      ? `${(row.putOI / 1000).toFixed(0)}K`
+                      : row.putOI}
+                  </span>
+                )}
+              </div>
+            </div>
+            {/* Strike price label */}
+            <div
+              className={`w-20 text-center font-mono text-[11px] ${
+                dominant === "call"
+                  ? "text-emerald-300"
+                  : dominant === "put"
+                    ? "text-red-300"
+                    : "text-gray-400"
+              }`}
+            >
+              ${row.strike}
+            </div>
+            {/* Call bar */}
+            <div className="flex flex-1 items-center">
+              <div
+                style={{ width: `${callW}%` }}
+                className={`h-5 rounded-r-sm transition-all ${
+                  dominant === "call"
+                    ? "bg-emerald-500/70"
+                    : "bg-emerald-500/35"
+                } flex items-center pl-1`}
+              >
+                {callW > 25 && (
+                  <span className="text-[9px] text-emerald-200">
+                    {row.callOI >= 1000
+                      ? `${(row.callOI / 1000).toFixed(0)}K`
+                      : row.callOI}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Chart: Top Symbols by Premium (market overview) ─────────────────────────
+interface TopSymbolsChartProps {
+  groups: Array<{
+    symbol: string;
+    callPremium: number;
+    putPremium: number;
+  }>;
+  onSelect: (symbol: string) => void;
+}
+function TopSymbolsChart({ groups, onSelect }: TopSymbolsChartProps) {
+  const top = groups.slice(0, 8);
+  const maxTotal = Math.max(...top.map((g) => g.callPremium + g.putPremium), 1);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] tracking-wider text-gray-500 uppercase">
+        按权利金排名
+      </p>
+      {top.map((g) => {
+        const total = g.callPremium + g.putPremium;
+        const callW = (g.callPremium / total) * 100;
+        const barW = (total / maxTotal) * 100;
+        return (
+          <button
+            key={g.symbol}
+            onClick={() => onSelect(g.symbol)}
+            className="group flex w-full items-center gap-2 text-xs hover:opacity-90"
+          >
+            <span className="w-14 text-right font-bold text-white group-hover:text-cyan-300">
+              ${g.symbol}
+            </span>
+            {/* Stacked bar: call (green) + put (red) */}
+            <div
+              className="h-5 overflow-hidden rounded"
+              style={{ width: `${barW}%`, minWidth: "20px" }}
+            >
+              <div className="flex h-full">
+                <div
+                  className="bg-emerald-500/60"
+                  style={{ width: `${callW}%` }}
+                />
+                <div
+                  className="bg-red-500/60"
+                  style={{ width: `${100 - callW}%` }}
+                />
+              </div>
+            </div>
+            <span className="text-gray-400">{formatCurrency(total)}</span>
+          </button>
+        );
+      })}
+      <p className="pt-1 text-[10px] text-gray-600">
+        绿 = Call 权利金 · 红 = Put 权利金 · 点击过滤
+      </p>
+    </div>
+  );
+}
+
 function OptionsInner() {
   const searchParams = useSearchParams();
   const { options, loading, error } = useOptionsFlow(50);
@@ -177,6 +404,43 @@ function OptionsInner() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Analytics Charts ─────────────────────────────────────────── */}
+        {!loading && options.length > 0 && (
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
+            {/* Left: Donut — filtered or global */}
+            <div className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-white/5 p-4 lg:col-span-1">
+              <p className="mb-3 text-xs font-medium tracking-wider text-gray-500 uppercase">
+                {symbolFilter ? `$${symbolFilter}` : "全市场"} 权利金
+              </p>
+              <PremiumDonut
+                callPremium={filtered
+                  .filter((o) => o.option_type === "call")
+                  .reduce((s, o) => s + (o.premium ?? 0), 0)}
+                putPremium={filtered
+                  .filter((o) => o.option_type === "put")
+                  .reduce((s, o) => s + (o.premium ?? 0), 0)}
+              />
+            </div>
+
+            {/* Right: OI by Strike (symbol selected) or Top Symbols bar */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 lg:col-span-4">
+              {symbolFilter ? (
+                <>
+                  <p className="mb-3 text-xs font-medium tracking-wider text-gray-500 uppercase">
+                    ${symbolFilter} · OI by Strike（绿 = Call · 红 = Put）
+                  </p>
+                  <OIByStrike options={filtered} />
+                </>
+              ) : (
+                <TopSymbolsChart
+                  groups={symbolGroups}
+                  onSelect={(sym) => setSymbolFilter(sym)}
+                />
+              )}
             </div>
           </div>
         )}
