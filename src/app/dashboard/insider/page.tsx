@@ -156,12 +156,22 @@ function InsiderInner() {
                       </span>
                     </div>
                     <div className="flex gap-3 text-xs">
-                      <span className="text-emerald-400">B {g.buys}</span>
-                      <span className="text-red-400">S {g.sells}</span>
+                      <span className="text-emerald-400">
+                        B {g.buys}{" "}
+                        <span className="text-emerald-600">
+                          {formatValue(g.buyValue)}
+                        </span>
+                      </span>
+                      <span className="text-red-400">
+                        S {g.sells}{" "}
+                        <span className="text-red-600">
+                          {formatValue(g.sellValue)}
+                        </span>
+                      </span>
                     </div>
-                    <div className="mt-1 text-xs text-gray-400">
+                    <div className="mt-1 text-xs text-gray-500">
+                      B-S {isBullish ? "+" : "-"}
                       {formatValue(Math.abs(netValue))}
-                      <span className="ml-1 text-gray-500">净额</span>
                     </div>
                   </button>
                 );

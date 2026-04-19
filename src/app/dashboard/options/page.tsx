@@ -152,12 +152,22 @@ function OptionsInner() {
                       </span>
                     </div>
                     <div className="flex gap-3 text-xs">
-                      <span className="text-emerald-400">C {g.calls}</span>
-                      <span className="text-red-400">P {g.puts}</span>
+                      <span className="text-emerald-400">
+                        C {g.calls}{" "}
+                        <span className="text-emerald-600">
+                          {formatCurrency(g.callPremium)}
+                        </span>
+                      </span>
+                      <span className="text-red-400">
+                        P {g.puts}{" "}
+                        <span className="text-red-600">
+                          {formatCurrency(g.putPremium)}
+                        </span>
+                      </span>
                     </div>
-                    <div className="mt-1 text-xs text-gray-400">
-                      {formatCurrency(totalPremium)}
-                      <span className="ml-2 text-gray-500">P/C {pcRatio}</span>
+                    <div className="mt-1 text-xs text-gray-500">
+                      C+P {formatCurrency(totalPremium)}
+                      <span className="ml-2">P/C {pcRatio}</span>
                     </div>
                   </button>
                 );
