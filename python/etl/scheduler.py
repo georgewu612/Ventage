@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 # Ensure python/ is in the path
@@ -40,9 +41,6 @@ def _create_supabase_client():
     if not settings.has_supabase_config:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env")
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
-
-
-import time
 
 
 def _write_job_run(db, job_name: str, status: str, collected: int = 0,
