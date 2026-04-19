@@ -38,7 +38,7 @@ def _paginate(items: list[dict[str, Any]], limit: int, offset: int) -> dict[str,
 def get_options_flow(
     symbol: str | None = Query(default=None),
     option_type: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
@@ -63,7 +63,7 @@ def get_options_flow(
 def get_insider_trades(
     symbol: str | None = Query(default=None),
     trade_type: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
@@ -91,7 +91,7 @@ def get_dark_pool_orders(
     symbol: str | None = Query(default=None),
     exchange: str | None = Query(default=None),
     min_value: float | None = Query(default=None, description="Min trade value in USD"),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     try:
