@@ -80,6 +80,7 @@ export function CandlestickChart({
       wickUpColor: "#10b981",
       wickDownColor: "#ef4444",
     });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     candleSeries.setData(data.candles as any);
 
     // Bollinger Bands
@@ -90,6 +91,7 @@ export function CandlestickChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       bbUpper.setData(data.indicators.bb_upper as any);
 
       const bbLower = chart.addSeries(LineSeries, {
@@ -98,6 +100,7 @@ export function CandlestickChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       bbLower.setData(data.indicators.bb_lower as any);
 
       const bbMid = chart.addSeries(LineSeries, {
@@ -107,6 +110,7 @@ export function CandlestickChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       bbMid.setData(data.indicators.bb_mid as any);
     }
 
@@ -119,6 +123,7 @@ export function CandlestickChart({
           priceLineVisible: false,
           lastValueVisible: false,
         });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sma20.setData(data.indicators.sma_20 as any);
       }
       if (data.indicators.sma_50.length > 0) {
@@ -128,6 +133,7 @@ export function CandlestickChart({
           priceLineVisible: false,
           lastValueVisible: false,
         });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sma50.setData(data.indicators.sma_50 as any);
       }
     }
@@ -153,6 +159,7 @@ export function CandlestickChart({
             c.close >= c.open
               ? "rgba(16,185,129,0.25)"
               : "rgba(239,68,68,0.25)",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         })) as any,
       );
     }

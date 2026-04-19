@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python virtual environments (contain large minified JS that OOMs ESLint)
+    ".venv-ta/**",
+    ".venv/**",
+    "python/**",
   ]),
 ]);
 

@@ -133,7 +133,7 @@ export function useMarketSignals(options: UseMarketSignalsOptions = {}) {
             typeof row.factors === "object" && row.factors !== null
               ? (row.factors as Record<string, unknown>)
               : {};
-          const module =
+          const signalModule =
             (row.module as string | undefined) ||
             (factors.module as string | undefined) ||
             "unknown";
@@ -141,7 +141,7 @@ export function useMarketSignals(options: UseMarketSignalsOptions = {}) {
             row.signal_score ?? Math.round((row.confidence ?? 0) * 100);
           const incoming: MarketSignal = {
             ...row,
-            module,
+            module: signalModule,
             signal_score,
             summary: row.summary || row.analysis || undefined,
           };

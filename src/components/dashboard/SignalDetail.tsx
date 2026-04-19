@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import {
   ArrowRight,
   Bot,
@@ -88,8 +89,10 @@ export function SignalDetail({ signal }: { signal: Signal }) {
   const hasFactor =
     factors && typeof factors === "object" && Object.keys(factors).length > 0;
 
+  // Capture current time once at render time via useState initializer (pure — runs only on mount)
+  const [now] = useState(() => Date.now());
   const isExpired = signal.valid_until
-    ? new Date(signal.valid_until).getTime() < Date.now()
+    ? new Date(signal.valid_until).getTime() < now
     : false;
 
   const moduleLinks: Record<string, { href: string; labelKey: string }> = {
