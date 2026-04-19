@@ -299,16 +299,23 @@ export default function DarkPoolPage() {
   const minValue =
     minValueM !== "" ? parseFloat(minValueM) * 1_000_000 : undefined;
 
-  // Fetch all orders (unfiltered) for analytics, filtered for table
-  const { orders: allOrders, loading } = useDarkPool({ limit: 300 });
-  const { orders, total, error } = useDarkPool({
-    symbol: symbolFilter || undefined,
-    exchange: exchangeFilter || undefined,
-    minValue,
-    limit: 100,
+  // Single fetch — all orders, client-side filtering
+  const { orders: allOrders, loading, error } = useDarkPool({ limit: 300 });
+
+  const orders = allOrders.filter((o) => {
+    if (symbolFilter && !o.symbol.includes(symbolFilter)) return false;
+    if (
+      exchangeFilter &&
+      !(o.exchange ?? "").toUpperCase().includes(exchangeFilter)
+    )
+      return false;
+    if (minValue != null && (o.value ?? 0) < minValue) return false;
+    return true;
   });
 
-  // Symbol groups for summary strip (from all orders)
+  const total = orders.length;
+
+  // Symbol groups for summary strip (always from full unfiltered set)
   const symbolGroups = Object.values(
     allOrders.reduce<Record<string, SymbolGroup>>((acc, o) => {
       if (!acc[o.symbol])
