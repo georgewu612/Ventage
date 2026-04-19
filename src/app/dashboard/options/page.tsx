@@ -124,10 +124,13 @@ function OptionsInner() {
             </p>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {symbolGroups.map((g) => {
-                const pcRatio =
-                  g.calls > 0 ? (g.puts / g.calls).toFixed(2) : "∞";
                 const totalPremium = g.callPremium + g.putPremium;
-                const isBullish = g.calls > g.puts;
+                // P/C by premium (more meaningful than by count for flow analysis)
+                const pcRatio =
+                  g.callPremium > 0
+                    ? (g.putPremium / g.callPremium).toFixed(2)
+                    : "∞";
+                const isBullish = g.callPremium >= g.putPremium;
                 const isActive = symbolFilter === g.symbol;
                 return (
                   <button
@@ -167,7 +170,9 @@ function OptionsInner() {
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
                       C+P {formatCurrency(totalPremium)}
-                      <span className="ml-2">P/C {pcRatio}</span>
+                      <span className="ml-2" title="按权利金计算">
+                        P/C$ {pcRatio}
+                      </span>
                     </div>
                   </button>
                 );
