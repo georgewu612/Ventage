@@ -163,12 +163,10 @@ function DarkPoolTimeline({ orders }: { orders: DarkPoolOrder[] }) {
           return (
             <div
               key={day.date}
-              className="group relative flex flex-1 flex-col items-center"
+              className="group relative flex-1"
+              style={{ height: `${hPct}%` }}
             >
-              <div
-                style={{ height: `${hPct}%` }}
-                className="w-full rounded-t bg-purple-500/50 transition-colors hover:bg-purple-400/80"
-              />
+              <div className="h-full w-full rounded-t bg-purple-500/50 transition-colors hover:bg-purple-400/80" />
               {/* Tooltip */}
               <div className="pointer-events-none absolute bottom-full mb-1 hidden rounded bg-slate-800 px-2 py-1 text-center text-[10px] text-white shadow-lg group-hover:block">
                 <div className="font-semibold">{formatValue(day.value)}</div>
