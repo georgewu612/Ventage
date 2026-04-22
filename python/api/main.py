@@ -11,6 +11,7 @@ from api.routes.market_data import router as market_data_router
 from api.routes.news import router as news_router
 from api.routes.reports import router as reports_router
 from api.routes.signals import router as signals_router
+from api.routes.execution import router as execution_router
 from api.routes.portfolio import router as portfolio_router
 from api.routes.strategies import router as strategies_router
 from api.routes.system import router as system_router
@@ -60,3 +61,4 @@ app.include_router(reports_router, prefix="/v1", tags=["reports"])
 app.include_router(strategies_router, prefix="/v1", tags=["quant-lab"])
 app.include_router(factors_router, prefix="/v1", tags=["quant-lab"])
 app.include_router(portfolio_router, prefix="/v1", tags=["portfolio"])
+app.include_router(execution_router, prefix="/v1", tags=["execution"])

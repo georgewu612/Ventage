@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   BarChart3,
   Bell,
   Brain,
@@ -132,6 +133,12 @@ export function Sidebar() {
       href: "/dashboard/portfolio",
       icon: Wallet,
       feature: "portfolio",
+    },
+    {
+      name: "执行层",
+      href: "/dashboard/execution",
+      icon: Activity,
+      feature: "execution",
     },
   ];
 
