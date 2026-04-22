@@ -33,6 +33,7 @@ import { Locale } from "@/lib/i18n/messages";
 import { useI18n } from "@/lib/i18n/provider";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { ManageSubscriptionButton } from "@/components/billing/ManageSubscriptionButton";
 
 interface NavItem {
   name: string;
@@ -332,6 +333,11 @@ export function Sidebar() {
               定价方案
             </Link>
           </div>
+          {plan !== "free" && (
+            <div onClick={close}>
+              <ManageSubscriptionButton />
+            </div>
+          )}
           {userEmail && (
             <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
               <User className="h-3.5 w-3.5 shrink-0 text-gray-400" />

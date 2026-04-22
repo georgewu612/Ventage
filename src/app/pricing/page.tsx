@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Check, X } from "lucide-react";
+import { CheckoutButton } from "@/components/billing/CheckoutButton";
 
 const PLANS = [
   {
@@ -142,18 +143,24 @@ export default function PricingPage() {
                   <span className="text-gray-400">{plan.period}</span>
                 </div>
               </div>
-              <Link
-                href={plan.href}
-                className={`block w-full rounded-xl py-3 text-center text-sm font-semibold transition-all ${
-                  plan.highlight
-                    ? "bg-cyan-500 text-white hover:bg-cyan-400"
-                    : plan.key === "premium"
-                      ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
-                      : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                {plan.cta}
-              </Link>
+              {plan.key === "free" ? (
+                <Link
+                  href={plan.href}
+                  className="block w-full rounded-xl border border-white/10 bg-white/5 py-3 text-center text-sm font-semibold text-white transition-all hover:bg-white/10"
+                >
+                  {plan.cta}
+                </Link>
+              ) : (
+                <CheckoutButton
+                  plan={plan.key as "pro" | "premium"}
+                  label={plan.cta}
+                  className={`rounded-xl py-3 text-sm font-semibold transition-all ${
+                    plan.highlight
+                      ? "bg-cyan-500 text-white hover:bg-cyan-400"
+                      : "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                  }`}
+                />
+              )}
             </div>
           ))}
         </div>
