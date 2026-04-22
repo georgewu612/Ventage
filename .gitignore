@@ -42,3 +42,4 @@ htmlcov/
 .web.pid
 .api.log
 .web.log
+.vercel
