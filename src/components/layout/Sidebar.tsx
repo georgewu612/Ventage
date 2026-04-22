@@ -9,6 +9,7 @@ import {
   CandlestickChart,
   ChevronDown,
   ChevronRight,
+  CreditCard,
   DollarSign,
   FlaskConical,
   Layers,
@@ -299,6 +300,18 @@ export function Sidebar() {
                 isActive={isActive(item.href)}
               />
             ))}
+            <Link
+              href="/pricing"
+              onClick={close}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                pathname === "/pricing"
+                  ? "bg-cyan-500/20 font-medium text-cyan-200"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <CreditCard className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">定价方案</span>
+            </Link>
           </div>
         </nav>
 
@@ -310,15 +323,14 @@ export function Sidebar() {
             >
               {planInfo.zh}
             </span>
-            {plan === "free" && (
-              <Link
-                href="/pricing"
-                onClick={close}
-                className="text-xs text-amber-400 hover:underline"
-              >
-                升级 →
-              </Link>
-            )}
+            <Link
+              href="/pricing"
+              onClick={close}
+              className="flex items-center gap-1 text-xs text-amber-400 hover:underline"
+            >
+              <CreditCard className="h-3 w-3" />
+              定价方案
+            </Link>
           </div>
           {userEmail && (
             <div className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2">
