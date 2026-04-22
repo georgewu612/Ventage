@@ -78,8 +78,8 @@ def get_signal_analysis(signal_id: str) -> dict[str, Any]:
         "symbol": signal.get("symbol"),
         "direction": signal.get("direction"),
         "signal_score": signal.get("signal_score"),
-        "ai_analysis": analysis,
         "model": analyst.model,
+        **analysis,  # spread structured AIAnalysisOutput fields
     }
 
 
@@ -117,17 +117,17 @@ def analyze_symbol_signals(
 
     analyses = []
     for sig in signals:
-        ai_text = analyst.analyze_signal(sig)
-        analyses.append(
-            {
-                "signal_id": sig.get("id"),
-                "module": sig.get("module"),
-                "direction": sig.get("direction"),
-                "signal_score": sig.get("signal_score"),
-                "original_analysis": sig.get("analysis"),
-                "ai_analysis": ai_text,
-            }
-        )
+        ai_output = analyst.analyze_signal(sig)
+        entry: dict[str, Any] = {
+            "signal_id": sig.get("id"),
+            "module": sig.get("module"),
+            "direction": sig.get("direction"),
+            "signal_score": sig.get("signal_score"),
+            "original_analysis": sig.get("analysis"),
+        }
+        if ai_output:
+            entry.update(ai_output)  # spread structured AIAnalysisOutput fields
+        analyses.append(entry)
 
     return {
         "symbol": symbol.upper(),

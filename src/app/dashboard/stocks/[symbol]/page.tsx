@@ -8,6 +8,7 @@ import {
   BookMarked,
   BookmarkPlus,
   Brain,
+  ChevronDown,
   Loader2,
   Search,
   TrendingDown,
@@ -77,7 +78,17 @@ interface SentimentItem {
 }
 
 interface AIAnalysis {
+  // Multi-agent fields (TradingAgents)
   decision?: string;
+  fundamentals_report?: string;
+  sentiment_report?: string;
+  news_report?: string;
+  technical_report?: string;
+  bull_report?: string;
+  bear_report?: string;
+  risk_report?: string;
+  trader_decision?: string;
+  // Legacy fields
   summary?: string;
   reasoning?: string;
   risk_assessment?: string;
@@ -658,17 +669,76 @@ function StockWorkbenchInner() {
 
               {aiResult && (
                 <div className="space-y-3 text-sm">
-                  {aiResult.decision && (
-                    <div className="rounded-lg border border-purple-500/20 bg-purple-500/10 p-3">
-                      <p className="mb-1 text-xs font-semibold text-purple-300">
+                  {/* 交易决策 */}
+                  {(aiResult.decision || aiResult.trader_decision) && (
+                    <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+                      <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase">
                         交易决策
                       </p>
-                      <p className="text-gray-200">
-                        {String(aiResult.decision)}
+                      <p className="text-xs leading-relaxed text-gray-200">
+                        {String(aiResult.trader_decision ?? aiResult.decision)}
                       </p>
                     </div>
                   )}
-                  {aiResult.summary && (
+
+                  {/* Agent 报告折叠区 */}
+                  {[
+                    {
+                      key: "fundamentals_report",
+                      label: "基本面",
+                      color: "text-blue-400",
+                    },
+                    {
+                      key: "technical_report",
+                      label: "技术面",
+                      color: "text-cyan-400",
+                    },
+                    {
+                      key: "sentiment_report",
+                      label: "情绪",
+                      color: "text-pink-400",
+                    },
+                    {
+                      key: "news_report",
+                      label: "新闻",
+                      color: "text-amber-400",
+                    },
+                    {
+                      key: "bull_report",
+                      label: "多方",
+                      color: "text-emerald-400",
+                    },
+                    {
+                      key: "bear_report",
+                      label: "空方",
+                      color: "text-red-400",
+                    },
+                    {
+                      key: "risk_report",
+                      label: "风控",
+                      color: "text-orange-400",
+                    },
+                  ]
+                    .filter(({ key }) => aiResult[key])
+                    .map(({ key, label, color }) => (
+                      <details
+                        key={key}
+                        className="group rounded-lg border border-white/10 bg-white/5"
+                      >
+                        <summary
+                          className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-semibold ${color}`}
+                        >
+                          <span className="flex-1">{label} Agent</span>
+                          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="px-3 pb-3 text-[11px] leading-relaxed whitespace-pre-wrap text-gray-400">
+                          {String(aiResult[key])}
+                        </div>
+                      </details>
+                    ))}
+
+                  {/* 旧格式兼容 */}
+                  {aiResult.summary && !aiResult.fundamentals_report && (
                     <div>
                       <p className="mb-1 text-xs font-semibold text-gray-400">
                         分析摘要
@@ -688,6 +758,7 @@ function StockWorkbenchInner() {
                       </p>
                     </div>
                   )}
+
                   <button
                     onClick={runAiAnalysis}
                     className="w-full rounded-lg border border-white/10 py-1.5 text-xs text-gray-400 hover:bg-white/5"

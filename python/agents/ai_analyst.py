@@ -16,33 +16,13 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from supabase import Client
 
+from agents.models import AIAnalysisOutput
 from config.settings import get_settings
 
 logger = structlog.get_logger()
 
 
 # ── Structured Output Schemas ──────────────────────────────────────
-
-
-class SignalAnalysis(BaseModel):
-    """AI-generated analysis for a single trading signal."""
-
-    summary: str = Field(
-        max_length=200,
-        description="一句话总结信号含义，不要包含任何自己计算的数字",
-    )
-    reasoning: str = Field(
-        max_length=600,
-        description="分析逻辑，引用提供的数据，不要自己计算",
-    )
-    risk_notes: str = Field(
-        max_length=200,
-        description="风险提示和注意事项",
-    )
-    action_suggestion: str = Field(
-        max_length=150,
-        description="建议操作（仅供参考，非投资建议）",
-    )
 
 
 class DailyReport(BaseModel):
@@ -96,10 +76,10 @@ class AIAnalyst:
 
     # ── Signal-level Analysis ──────────────────────────────────────
 
-    def analyze_signal(self, signal: dict[str, Any]) -> str | None:
-        """Generate AI analysis for a single market signal.
+    def analyze_signal(self, signal: dict[str, Any]) -> dict[str, Any] | None:
+        """Generate structured AI analysis for a single market signal.
 
-        Returns the enhanced analysis text, or None if AI is unavailable.
+        Returns an AIAnalysisOutput dict, or None if AI is unavailable.
         """
         if not self.is_available():
             return None
@@ -114,18 +94,19 @@ class AIAnalyst:
                     {
                         "role": "system",
                         "content": (
-                            "你是 Ventage 金融分析助手。根据提供的市场数据生成分析报告。\n"
+                            "你是 Ventage 金融分析助手。根据提供的市场数据生成结构化分析报告。\n"
                             "规则：\n"
                             "1. 只使用提供的数字，绝不自己计算任何数值\n"
-                            "2. 引用数据时使用原始值\n"
-                            "3. 分析要简洁专业\n"
-                            "4. 必须包含风险提示\n"
-                            "5. 使用中文回答"
+                            "2. 引用数据时使用原始值（如评分、置信度等直接引用）\n"
+                            "3. 分析要简洁专业，每条证据不超过 80 字\n"
+                            "4. risk_level 根据综合风险选择：low/medium/high/very_high\n"
+                            "5. confidence_score 参考信号置信度字段，不要自己估算\n"
+                            "6. 所有文字使用中文"
                         ),
                     },
                     {"role": "user", "content": context},
                 ],
-                response_format=SignalAnalysis,
+                response_format=AIAnalysisOutput,
                 temperature=0.3,
             )
 
@@ -133,21 +114,13 @@ class AIAnalyst:
             if analysis is None:
                 return None
 
-            # Combine into a single analysis text
-            result = (
-                f"{analysis.summary}\n\n"
-                f"📊 分析：{analysis.reasoning}\n\n"
-                f"⚠️ 风险：{analysis.risk_notes}\n\n"
-                f"💡 建议：{analysis.action_suggestion}"
-            )
-
             self.log.info(
                 "signal_analyzed",
                 symbol=signal.get("symbol"),
                 module=signal.get("module"),
                 tokens=response.usage.total_tokens if response.usage else 0,
             )
-            return result
+            return analysis.model_dump()
 
         except Exception as exc:
             self.log.error("signal_analysis_failed", error=str(exc), symbol=signal.get("symbol"))
