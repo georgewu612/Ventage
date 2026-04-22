@@ -20,3 +20,6 @@ yfinance>=0.2.30
 openai>=1.30.0
 # tradingagents requires Python 3.12+; install separately if available
 # tradingagents>=0.0.2
+
+# Quant Lab
+vectorbt>=0.26.0

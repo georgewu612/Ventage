@@ -6,10 +6,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.alerts import router as alerts_router
+from api.routes.factors import router as factors_router
 from api.routes.market_data import router as market_data_router
 from api.routes.news import router as news_router
 from api.routes.reports import router as reports_router
 from api.routes.signals import router as signals_router
+from api.routes.strategies import router as strategies_router
 from api.routes.system import router as system_router
 from api.routes.technical import router as technical_router
 from config.settings import get_settings
@@ -54,3 +56,5 @@ app.include_router(alerts_router, prefix="/v1", tags=["alerts"])
 app.include_router(news_router, prefix="/v1", tags=["news"])
 app.include_router(technical_router, prefix="/v1", tags=["technical"])
 app.include_router(reports_router, prefix="/v1", tags=["reports"])
+app.include_router(strategies_router, prefix="/v1", tags=["quant-lab"])
+app.include_router(factors_router, prefix="/v1", tags=["quant-lab"])
