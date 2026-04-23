@@ -17,6 +17,7 @@ import Link from "next/link";
 
 import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
+import { useI18n } from "@/lib/i18n/provider";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -97,10 +98,11 @@ function MetricCard({
 }
 
 function EquityChart({ data }: { data: { date: string; value: number }[] }) {
+  const { t } = useI18n();
   if (!data || data.length < 2)
     return (
       <div className="flex h-48 items-center justify-center text-sm text-gray-600">
-        无权益曲线数据
+        {t("quant.detail.noEquityCurve")}
       </div>
     );
 
@@ -179,6 +181,7 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
 }
 
 function StatusBadge({ status }: { status: RunInfo["status"] }) {
+  const { t } = useI18n();
   const cfg: Record<
     RunInfo["status"],
     { cls: string; icon: React.ReactNode; label: string }
@@ -186,22 +189,22 @@ function StatusBadge({ status }: { status: RunInfo["status"] }) {
     pending: {
       cls: "bg-gray-500/20 text-gray-300",
       icon: <Clock className="h-3 w-3" />,
-      label: "等待中",
+      label: t("quant.statusPending"),
     },
     running: {
       cls: "bg-blue-500/20 text-blue-400",
       icon: <Loader2 className="h-3 w-3 animate-spin" />,
-      label: "运行中",
+      label: t("quant.statusRunning"),
     },
     done: {
       cls: "bg-emerald-500/20 text-emerald-400",
       icon: <CheckCircle2 className="h-3 w-3" />,
-      label: "完成",
+      label: t("quant.statusDone"),
     },
     failed: {
       cls: "bg-red-500/20 text-red-400",
       icon: <XCircle className="h-3 w-3" />,
-      label: "失败",
+      label: t("quant.statusFailed"),
     },
   };
   const c = cfg[status];
@@ -220,6 +223,7 @@ function StatusBadge({ status }: { status: RunInfo["status"] }) {
 export default function StrategyDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { t } = useI18n();
   const runId = params.id as string;
 
   const [run, setRun] = useState<RunInfo | null>(null);
@@ -231,13 +235,13 @@ export default function StrategyDetailPage() {
   const fetchData = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/strategies/runs/${runId}`);
-      if (!res.ok) throw new Error("回测记录不存在");
+      if (!res.ok) throw new Error(t("quant.detail.notFound"));
       const data = await res.json();
       setRun(data.run);
       setResults(data.results ?? null);
       setTrades(data.trades ?? []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "加载失败");
+      setError(e instanceof Error ? e.message : t("quant.detail.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -268,23 +272,16 @@ export default function StrategyDetailPage() {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
         <div className="text-4xl">⚠️</div>
-        <p className="text-red-400">{error ?? "回测记录不存在"}</p>
+        <p className="text-red-400">{error ?? t("quant.detail.notFound")}</p>
         <button
           onClick={() => router.back()}
           className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
         >
-          返回
+          {t("common.back")}
         </button>
       </div>
     );
   }
-
-  const catMap: Record<string, string> = {
-    sma_crossover: "双均线交叉",
-    rsi_mean_reversion: "RSI 均值回归",
-    bollinger_band: "布林带突破",
-    macd_momentum: "MACD 动量",
-  };
 
   return (
     <FeatureGate feature="quant_lab" overlay>
@@ -301,7 +298,7 @@ export default function StrategyDetailPage() {
                 Quant Lab
               </Link>
               <h1 className="text-2xl font-bold text-white">
-                {catMap[run.template_name] ?? run.template_name}
+                {run.template_name}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-400">
                 <span className="font-mono font-semibold text-cyan-400">
@@ -320,7 +317,7 @@ export default function StrategyDetailPage() {
               className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
             >
               <Play className="h-4 w-4 text-cyan-400" />
-              新建回测
+              {t("quant.newBacktest")}
             </button>
           </div>
 
@@ -329,10 +326,12 @@ export default function StrategyDetailPage() {
             <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-8 text-center">
               <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-blue-400" />
               <p className="text-lg font-semibold text-white">
-                {run.status === "pending" ? "排队中，等待执行…" : "回测运行中…"}
+                {run.status === "pending"
+                  ? t("quant.detail.pendingMsg")
+                  : t("quant.detail.runningMsg")}
               </p>
               <p className="mt-1 text-sm text-gray-500">
-                每 5 秒自动刷新，完成后结果将显示在此处
+                {t("quant.detail.autoRefresh")}
               </p>
             </div>
           )}
@@ -340,7 +339,9 @@ export default function StrategyDetailPage() {
           {/* ── Failed state ── */}
           {run.status === "failed" && (
             <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
-              <p className="font-semibold text-red-400">回测执行失败</p>
+              <p className="font-semibold text-red-400">
+                {t("quant.detail.failedMsg")}
+              </p>
               {run.error_msg && (
                 <p className="mt-1 text-sm text-gray-500">{run.error_msg}</p>
               )}
@@ -353,53 +354,53 @@ export default function StrategyDetailPage() {
               {/* Key Metrics */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <MetricCard
-                  label="总收益率"
+                  label={t("quant.detail.totalReturnPct")}
                   value={`${sign(results.total_return)}${pct(results.total_return)}`}
                   positive={results.total_return > 0}
                 />
                 <MetricCard
-                  label="年化收益"
+                  label={t("quant.detail.annualReturn")}
                   value={`${sign(results.annualized_return)}${pct(results.annualized_return)}`}
                   positive={results.annualized_return > 0}
                 />
                 <MetricCard
-                  label="夏普比率"
+                  label={t("quant.detail.sharpe")}
                   value={results.sharpe_ratio.toFixed(2)}
                   positive={results.sharpe_ratio > 1}
                   sub={
                     results.sharpe_ratio > 2
-                      ? "优秀"
+                      ? t("quant.detail.excellent")
                       : results.sharpe_ratio > 1
-                        ? "良好"
-                        : "偏低"
+                        ? t("quant.detail.good")
+                        : t("quant.detail.low")
                   }
                 />
                 <MetricCard
-                  label="最大回撤"
+                  label={t("quant.detail.maxDrawdown")}
                   value={pct(Math.abs(results.max_drawdown))}
                   positive={false}
                 />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <MetricCard
-                  label="胜率"
+                  label={t("quant.detail.winRate")}
                   value={pct(results.win_rate)}
                   positive={results.win_rate > 0.5}
                 />
                 <MetricCard
-                  label="总交易次数"
+                  label={t("quant.detail.trades")}
                   value={String(results.total_trades)}
                 />
                 <MetricCard
-                  label="盈亏比"
+                  label={t("quant.detail.profitFactor")}
                   value={results.profit_factor.toFixed(2)}
                   positive={results.profit_factor > 1}
                   sub={
                     results.profit_factor > 2
-                      ? "优秀"
+                      ? t("quant.detail.excellent")
                       : results.profit_factor > 1.5
-                        ? "良好"
-                        : "偏低"
+                        ? t("quant.detail.good")
+                        : t("quant.detail.low")
                   }
                 />
               </div>
@@ -407,7 +408,9 @@ export default function StrategyDetailPage() {
               {/* Equity Curve */}
               <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="font-semibold text-white">权益曲线</h2>
+                  <h2 className="font-semibold text-white">
+                    {t("quant.detail.equityCurve")}
+                  </h2>
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     {results.total_return >= 0 ? (
                       <TrendingUp className="h-4 w-4 text-emerald-400" />
@@ -415,7 +418,7 @@ export default function StrategyDetailPage() {
                       <TrendingDown className="h-4 w-4 text-red-400" />
                     )}
                     <span>
-                      初始净值 1.0 →{" "}
+                      1.0 →{" "}
                       <span
                         className={
                           results.total_return >= 0
@@ -436,9 +439,9 @@ export default function StrategyDetailPage() {
                 <div className="rounded-2xl border border-white/10 bg-white/5">
                   <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
                     <h2 className="font-semibold text-white">
-                      交易记录{" "}
+                      {t("quant.detail.tradeLog")}{" "}
                       <span className="ml-2 text-sm text-gray-500">
-                        (最近 {trades.length} 笔)
+                        ({trades.length})
                       </span>
                     </h2>
                     <BarChart2 className="h-4 w-4 text-gray-600" />
@@ -448,17 +451,17 @@ export default function StrategyDetailPage() {
                       <thead>
                         <tr className="border-b border-white/5 text-xs text-gray-600">
                           {[
-                            "方向",
-                            "入场日期",
-                            "出场日期",
-                            "入场价",
-                            "出场价",
-                            "数量",
-                            "盈亏",
-                            "盈亏%",
-                          ].map((h) => (
+                            t("quant.detail.action"),
+                            t("quant.detail.entryDate"),
+                            t("quant.detail.exitDate"),
+                            t("quant.detail.entryPrice"),
+                            t("quant.detail.exitPrice"),
+                            t("quant.detail.qty"),
+                            t("quant.detail.pnl"),
+                            t("quant.detail.pnlPct"),
+                          ].map((h, i) => (
                             <th
-                              key={h}
+                              key={i}
                               className="px-4 py-3 text-left font-semibold"
                             >
                               {h}
@@ -467,53 +470,56 @@ export default function StrategyDetailPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {trades.map((t, i) => {
-                          const isWin = t.pnl >= 0;
+                        {trades.map((trade, i) => {
+                          const isWin = trade.pnl >= 0;
                           return (
                             <tr
-                              key={t.id ?? i}
+                              key={trade.id ?? i}
                               className="hover:bg-white/[0.03]"
                             >
                               <td className="px-4 py-2">
                                 <span
                                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                    t.side === "long"
+                                    trade.side === "long"
                                       ? "bg-emerald-500/15 text-emerald-400"
                                       : "bg-red-500/15 text-red-400"
                                   }`}
                                 >
-                                  {t.side === "long" ? "做多" : "做空"}
+                                  {trade.side === "long"
+                                    ? t("quant.detail.sideLong")
+                                    : t("quant.detail.sideShort")}
                                 </span>
                               </td>
                               <td className="px-4 py-2 text-gray-400">
-                                {t.entry_date?.slice(0, 10)}
+                                {trade.entry_date?.slice(0, 10)}
                               </td>
                               <td className="px-4 py-2 text-gray-400">
-                                {t.exit_date?.slice(0, 10)}
+                                {trade.exit_date?.slice(0, 10)}
                               </td>
                               <td className="px-4 py-2 text-gray-300 tabular-nums">
-                                ${t.entry_price?.toFixed(2)}
+                                ${trade.entry_price?.toFixed(2)}
                               </td>
                               <td className="px-4 py-2 text-gray-300 tabular-nums">
-                                ${t.exit_price?.toFixed(2)}
+                                ${trade.exit_price?.toFixed(2)}
                               </td>
                               <td className="px-4 py-2 text-gray-500 tabular-nums">
-                                {t.quantity?.toFixed(0)}
+                                {trade.quantity?.toFixed(0)}
                               </td>
                               <td
                                 className={`px-4 py-2 font-semibold tabular-nums ${
                                   isWin ? "text-emerald-400" : "text-red-400"
                                 }`}
                               >
-                                {sign(t.pnl)}${Math.abs(t.pnl).toFixed(0)}
+                                {sign(trade.pnl)}$
+                                {Math.abs(trade.pnl).toFixed(0)}
                               </td>
                               <td
                                 className={`px-4 py-2 tabular-nums ${
                                   isWin ? "text-emerald-400" : "text-red-400"
                                 }`}
                               >
-                                {sign(t.pnl_pct)}
-                                {(t.pnl_pct * 100).toFixed(2)}%
+                                {sign(trade.pnl_pct)}
+                                {(trade.pnl_pct * 100).toFixed(2)}%
                               </td>
                             </tr>
                           );
@@ -527,7 +533,9 @@ export default function StrategyDetailPage() {
               {/* Strategy Params used */}
               {run.params && Object.keys(run.params).length > 0 && (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <h2 className="mb-3 font-semibold text-white">使用参数</h2>
+                  <h2 className="mb-3 font-semibold text-white">
+                    {t("quant.detail.usedParams")}
+                  </h2>
                   <div className="flex flex-wrap gap-3">
                     {Object.entries(run.params).map(([k, v]) => (
                       <div
