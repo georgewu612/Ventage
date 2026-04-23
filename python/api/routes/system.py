@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from supabase import Client, create_client
 
+from agents.signal_engine import SignalEngine
 from config.settings import get_settings
 
 router = APIRouter()
@@ -134,4 +136,36 @@ def get_system_status() -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch system status: {exc}"
+        ) from exc
+
+
+@router.post("/system/signals/refresh")
+async def refresh_signals() -> dict[str, Any]:
+    """Clear all market signals and regenerate with fresh AI analysis.
+
+    Useful after deploying model changes (e.g. adding bilingual support).
+    """
+    try:
+        supabase = _get_supabase_client()
+
+        # Delete all existing signals
+        supabase.table("market_signals").delete().neq(
+            "id", "00000000-0000-0000-0000-000000000000"
+        ).execute()
+
+        # Regenerate
+        engine = SignalEngine(supabase)
+        signals = await engine.generate_all()
+
+        return {
+            "status": "ok",
+            "deleted_all": True,
+            "generated": len(signals),
+            "refreshed_at": datetime.now(UTC).isoformat(),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Signal refresh failed: {exc}"
         ) from exc
