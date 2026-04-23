@@ -145,7 +145,7 @@ class SignalEngine:
             parts = [p for p in [buy_summary, sell_summary] if p]
             names = list({t.get("insider_name", "Unknown") for t in symbol_trades[:3]})
             name_str = ", ".join(names[:2])
-            analysis = f"Insider activity: {'; '.join(parts)}. Key insiders: {name_str}."
+            analysis = f"内部交易：{'; '.join(parts)}。关键内部人：{name_str}。"
 
             signals.append(
                 {
@@ -230,10 +230,10 @@ class SignalEngine:
             confidence_decimal = round(confidence / 100, 2)
 
             analysis = (
-                f"Options flow: {len(calls)} calls (${call_premium:,.0f}), "
-                f"{len(puts)} puts (${put_premium:,.0f}). "
-                f"P/C ratio: {pc_ratio:.2f}. "
-                f"Avg unusual score: {avg_unusual:.0f}."
+                f"期权异动：{len(calls)} 份看涨（${call_premium:,.0f}），"
+                f"{len(puts)} 份看跌（${put_premium:,.0f}）。"
+                f"认沽/认购比率：{pc_ratio:.2f}。"
+                f"平均异常评分：{avg_unusual:.0f}。"
             )
 
             signals.append(
@@ -312,9 +312,8 @@ class SignalEngine:
 
             sources = list({s.get("source", "unknown") for s in symbol_sentiments})
             analysis = (
-                f"Sentiment avg: {avg_score:.2f} from {len(symbol_sentiments)} sources "
-                f"({', '.join(sources)}). "
-                f"Total volume: {total_volume:,}. Magnitude: {avg_magnitude:.2f}."
+                f"情绪均值：{avg_score:.2f}（来自 {len(symbol_sentiments)} 个来源：{', '.join(sources)}）。"
+                f"讨论总量：{total_volume:,}。情绪强度：{avg_magnitude:.2f}。"
             )
 
             signals.append(
@@ -395,10 +394,10 @@ class SignalEngine:
             confidence_decimal = round(confidence / 100, 2)
 
             analysis = (
-                f"Dark pool: {trade_count} block trade(s), "
-                f"total ${total_value:,.0f}. "
-                f"Avg price ${avg_price:,.2f}, "
-                f"total {total_size:,} shares."
+                f"暗池大单：{trade_count} 笔机构成交，"
+                f"合计 ${total_value:,.0f}。"
+                f"均价 ${avg_price:,.2f}，"
+                f"共 {total_size:,} 股。"
             )
 
             signals.append(
@@ -433,13 +432,37 @@ class SignalEngine:
         return list(best.values())
 
     def _save_signals(self, signals: list[dict[str, Any]]) -> int:
-        """Save generated signals to the market_signals table."""
+        """Save generated signals to the market_signals table.
+
+        Deduplication: skip any signal whose symbol+module already has a row
+        created within the last 4 hours, to prevent scheduler re-runs from
+        flooding the table with identical signals.
+        """
         if not signals:
             return 0
 
-        # Prepare records for insertion (remove id, let DB generate)
+        # Build a set of (symbol, module) combos already saved recently
+        cutoff = (datetime.now(UTC) - timedelta(hours=4)).isoformat()
+        try:
+            existing_res = (
+                self.db.table("market_signals")
+                .select("symbol, module")
+                .gte("created_at", cutoff)
+                .execute()
+            )
+            existing_keys: set[str] = {
+                f"{row['symbol']}|{row['module']}"
+                for row in (existing_res.data or [])
+            }
+        except Exception as exc:
+            self.log.warning("dedup_check_failed", error=str(exc))
+            existing_keys = set()
+
         records = []
         for sig in signals:
+            key = f"{sig['symbol']}|{sig['module']}"
+            if key in existing_keys:
+                continue  # already have a fresh signal for this symbol+module
             records.append(
                 {
                     "symbol": sig["symbol"],
@@ -454,9 +477,15 @@ class SignalEngine:
                 }
             )
 
+        if not records:
+            self.log.info("save_signals_skipped_all_duplicates", total=len(signals))
+            return 0
+
         try:
             result = self.db.table("market_signals").insert(records).execute()
-            return len(result.data) if result.data else 0
+            saved = len(result.data) if result.data else 0
+            self.log.info("save_signals_done", saved=saved, skipped=len(signals) - saved)
+            return saved
         except Exception as exc:
             self.log.error("save_signals_failed", error=str(exc))
             return 0
