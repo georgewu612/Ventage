@@ -1,29 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowRight,
   Bell,
   BookMarked,
   Brain,
+  ChevronRight,
   DollarSign,
   Layers,
   MessageSquare,
+  TrendingDown,
   TrendingUp,
   Users,
 } from "lucide-react";
 
-import {
-  SignalCard,
-  SignalCardSkeleton,
-} from "@/components/dashboard/SignalCard";
+import { RegimeBadge } from "@/components/dashboard/RegimeBadge";
+import { SignalCard } from "@/components/dashboard/SignalCard";
 import { SignalDetail } from "@/components/dashboard/SignalDetail";
 import { SlidePanel } from "@/components/ui/SlidePanel";
-import { ToastContainer, ToastItem } from "@/components/ui/Toast";
 import { PLAN_LABELS } from "@/lib/features/gates";
-import { useProfile } from "@/lib/hooks/useProfile";
+import { useMarketRegime } from "@/lib/hooks/useMarketRegime";
 import { useMarketSignals } from "@/lib/hooks/useMarketSignals";
+import { useProfile } from "@/lib/hooks/useProfile";
 import { useI18n } from "@/lib/i18n/provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -34,91 +35,66 @@ interface WatchlistItem {
   notes: string | null;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+interface AlertHistoryItem {
+  id: string;
+  symbol: string;
+  direction: string;
+  signal_score: number;
+  created_at: string;
+}
 
-const MODULE_OPTIONS = [
-  "",
-  "options_flow",
-  "insider_trades",
-  "market_sentiment",
-  "dark_pool",
-];
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  color = "text-white",
-  border = "border-white/10",
-  bg = "bg-white/5",
+function SectionHeader({
+  icon: Icon,
+  title,
+  href,
+  linkLabel,
+  iconColor = "text-cyan-400",
 }: {
-  label: string;
-  value: React.ReactNode;
-  color?: string;
-  border?: string;
-  bg?: string;
+  icon: React.ElementType;
+  title: string;
+  href?: string;
+  linkLabel?: string;
+  iconColor?: string;
 }) {
   return (
-    <div className={`rounded-2xl border ${border} ${bg} p-4`}>
-      <p
-        className={`mb-1 text-xs font-medium ${color === "text-white" ? "text-gray-400" : color}`}
-      >
-        {label}
-      </p>
-      <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+    <div className="mb-3 flex items-center justify-between">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-white/90">
+        <Icon className={`h-4 w-4 ${iconColor}`} />
+        {title}
+      </h2>
+      {href && linkLabel && (
+        <Link
+          href={href}
+          className="flex items-center gap-1 text-xs text-slate-400 transition-colors hover:text-cyan-400"
+        >
+          {linkLabel}
+          <ChevronRight className="h-3 w-3" />
+        </Link>
+      )}
     </div>
   );
 }
 
-function PutCallGauge({ ratio }: { ratio: number | null | undefined }) {
-  const { t } = useI18n();
-  if (ratio == null)
-    return (
-      <span className="text-2xl font-bold text-gray-500">
-        {t("summary.putCallNA")}
-      </span>
-    );
-  const color =
-    ratio > 1.2
-      ? "text-red-400"
-      : ratio < 0.8
-        ? "text-emerald-400"
-        : "text-cyan-300";
-  return (
-    <span className={`text-2xl font-bold tabular-nums ${color}`}>{ratio}</span>
-  );
-}
-
-function QuickAccessCard({
+function DataSourceShortcut({
   icon: Icon,
   label,
   href,
-  locked,
   color,
 }: {
   icon: React.ElementType;
   label: string;
   href: string;
-  locked?: boolean;
   color: string;
 }) {
-  const { t } = useI18n();
   return (
     <Link
-      href={locked ? "/pricing" : href}
-      title={locked ? t("home.locked") : undefined}
-      className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all ${
-        locked
-          ? "border-white/5 bg-white/[0.03] text-gray-600 hover:border-white/10"
-          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.08]"
-      }`}
+      href={href}
+      className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-300 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
     >
-      <Icon className={`h-6 w-6 ${locked ? "text-gray-700" : color}`} />
-      <span className="text-xs font-medium">{label}</span>
-      {locked && (
-        <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-600">
-          {t("home.locked")}
-        </span>
-      )}
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      {label}
     </Link>
   );
 }
@@ -129,576 +105,342 @@ export default function DashboardPage() {
   const { t, locale } = useI18n();
   const { plan, can } = useProfile();
 
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
-  const [symbolInput, setSymbolInput] = useState("");
-  const [moduleFilter, setModuleFilter] = useState("");
-  const [minScore, setMinScore] = useState(20);
+  const [alerts, setAlerts] = useState<AlertHistoryItem[]>([]);
   const [selectedSignal, setSelectedSignal] = useState<
-    (typeof signals)[number] | null
+    ReturnType<typeof useMarketSignals>["signals"][number] | null
   >(null);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  // Load user info + watchlist
+  // ── Data hooks ─────────────────────────────────────────────────────
+  const { regime, loading: regimeLoading } = useMarketRegime();
+
+  const { signals, loading: signalsLoading } = useMarketSignals({
+    minScore: 60,
+    limit: 20,
+  });
+
+  // ── Load watchlist + alert history ─────────────────────────────────
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return;
-      setUserEmail(user.email ?? null);
-      const { data } = await supabase
-        .from("watchlists")
-        .select("symbol, notes")
-        .eq("user_id", user.id)
-        .order("added_at", { ascending: false })
-        .limit(8);
-      if (data) setWatchlist(data);
+
+      const [wl, al] = await Promise.all([
+        supabase
+          .from("watchlists")
+          .select("symbol, notes")
+          .eq("user_id", user.id)
+          .order("added_at", { ascending: false })
+          .limit(8),
+        supabase
+          .from("alert_history")
+          .select("id, symbol, direction, signal_score, created_at")
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+
+      if (wl.data) setWatchlist(wl.data);
+      if (al.data) setAlerts(al.data);
     });
   }, []);
 
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  // ── Derived signal buckets ──────────────────────────────────────────
+  const bullishSignals = signals
+    .filter((s) => s.direction === "bullish" && (s.signal_score ?? 0) >= 65)
+    .slice(0, 5);
 
-  const handleNewSignals = useCallback((count: number) => {
-    const id = `toast-${Date.now()}`;
-    setToasts((prev) => [
-      ...prev,
-      {
-        id,
-        message: `🆕 ${count} ${t("toast.newSignals")}`,
-        type: "success" as const,
-      },
-    ]);
-  }, []);
+  const bearishSignals = signals
+    .filter(
+      (s) =>
+        s.direction === "bearish" ||
+        (s.direction === "neutral" && (s.signal_score ?? 0) >= 75),
+    )
+    .slice(0, 4);
 
-  const filters = useMemo(
-    () => ({
-      symbol: symbolInput.trim() || undefined,
-      module: moduleFilter || undefined,
-      minScore,
-      limit: 30,
-      offset: 0,
-    }),
-    [symbolInput, moduleFilter, minScore],
-  );
-
-  const { signals, summary, total, loading, error } = useMarketSignals({
-    ...filters,
-    onNewSignals: handleNewSignals,
-  });
-
-  const planInfo =
-    PLAN_LABELS[plan as keyof typeof PLAN_LABELS] ?? PLAN_LABELS.free;
-
-  const bullish = summary?.bullish ?? 0;
-  const bearish = summary?.bearish ?? 0;
-  const neutral = summary?.neutral ?? 0;
-  const totalDir = bullish + bearish + neutral || 1;
-  const bullPct = Math.round((bullish / totalDir) * 100);
-  const bearPct = Math.round((bearish / totalDir) * 100);
-  const neutPct = 100 - bullPct - bearPct;
-
-  const topSymbols = summary?.top_symbols ?? [];
-  const maxSymbolCount = topSymbols.length
-    ? Math.max(...topSymbols.map((s) => s.count))
-    : 1;
-
-  const moduleEntries = Object.entries(summary?.by_module ?? {}).sort(
-    (a, b) => b[1] - a[1],
-  );
-  const maxModuleCount = moduleEntries.length
-    ? Math.max(...moduleEntries.map(([, count]) => count))
-    : 1;
-
-  // Greeting
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 5
-      ? t("home.greetLate")
-      : hour < 12
-        ? t("home.greetMorning")
-        : hour < 18
-          ? t("home.greetAfternoon")
-          : t("home.greetEvening");
-  const displayName = userEmail?.split("@")[0] ?? "—";
-
-  if (error) {
-    return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
-        <div className="text-4xl">⚠️</div>
-        <div className="text-xl text-red-400">{error.message}</div>
-        <button
-          onClick={() => window.location.reload()}
-          className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20"
-        >
-          {t("common.retry")}
-        </button>
-      </div>
-    );
-  }
+  // ── Plan badge ─────────────────────────────────────────────────────
+  const planInfo = PLAN_LABELS[plan as keyof typeof PLAN_LABELS];
+  const planLabel = planInfo
+    ? locale === "zh"
+      ? planInfo.zh
+      : planInfo.en
+    : plan;
 
   return (
-    <div>
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-
-      <main className="container mx-auto space-y-8 px-6 py-8">
-        {/* ── Welcome Banner ── */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-gradient-to-r from-slate-800/80 to-slate-900/80 px-6 py-5">
-          <div>
-            <p className="text-sm text-gray-400">{greeting}</p>
-            <h1 className="mt-0.5 text-2xl font-bold text-white">
-              {displayName}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {t("home.signalSummary")
-                .replace("{total}", String(total))
-                .replace("{bull}", String(bullish))
-                .replace("{bear}", String(bearish))}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${planInfo.color}`}
-            >
-              {locale === "zh" ? planInfo.zh : planInfo.en}
-            </span>
-            {plan === "free" && (
-              <Link
-                href="/pricing"
-                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/20"
-              >
-                {t("home.upgradePro")}
-              </Link>
-            )}
-          </div>
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-8">
+        {/* ── Top: welcome + plan badge ── */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-white">
+            {t("home.marketPulse")}
+          </h1>
+          <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-400">
+            {planLabel}
+          </span>
         </div>
 
-        {/* ── Watchlist Strip ── */}
-        {watchlist.length > 0 && (
-          <div>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-                <BookMarked className="h-4 w-4 text-cyan-400" />
-                {t("home.watchlist")}
-              </h2>
-              <Link
-                href="/dashboard/stocks/NVDA"
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300"
-              >
-                {t("home.watchlistManage")} <ArrowRight className="h-3 w-3" />
-              </Link>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {watchlist.map(({ symbol }) => (
-                <Link
-                  key={symbol}
-                  href={`/dashboard/stocks/${symbol}`}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-sm font-semibold text-cyan-300 transition-colors hover:border-cyan-500/30 hover:bg-cyan-500/10"
-                >
-                  ${symbol}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Summary Metrics ── */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-          <StatCard
-            label={t("summary.total24h")}
-            value={summary?.total_signals ?? 0}
+        {/* ════════════════════════════════════════════════════════
+            SECTION 1: Market Pulse
+        ════════════════════════════════════════════════════════ */}
+        <section>
+          <SectionHeader
+            icon={TrendingUp}
+            title={t("home.marketPulse")}
+            iconColor="text-cyan-400"
           />
-          <StatCard
-            label={t("summary.bullish")}
-            value={bullish}
-            color="text-emerald-400"
-            border="border-emerald-500/20"
-            bg="bg-emerald-500/10"
-          />
-          <StatCard
-            label={t("summary.bearish")}
-            value={bearish}
-            color="text-red-400"
-            border="border-red-500/20"
-            bg="bg-red-500/10"
-          />
-          <StatCard
-            label={t("summary.avgScore")}
-            value={summary?.average_score ?? 0}
-            color="text-cyan-300"
-            border="border-cyan-500/20"
-            bg="bg-cyan-500/10"
-          />
-          <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
-            <p className="mb-1 text-xs font-medium text-purple-300">
-              {t("summary.putCallRatio")}
-            </p>
-            <PutCallGauge ratio={summary?.put_call_ratio} />
-          </div>
-        </div>
-
-        {/* ── Analytics Row ── */}
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          {/* Top Symbols */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <h3 className="mb-4 font-semibold text-white">
-              {t("chart.topSymbols")}
-            </h3>
-            {topSymbols.length === 0 ? (
-              <p className="text-sm text-gray-500">{t("common.noData")}</p>
-            ) : (
-              <div className="space-y-3">
-                {topSymbols.map(({ symbol, count }, i) => {
-                  const width = Math.max(
-                    8,
-                    Math.round((count / maxSymbolCount) * 100),
-                  );
-                  const medal = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"][i] ?? "";
-                  return (
-                    <Link
-                      key={symbol}
-                      href={`/dashboard/stocks/${symbol}`}
-                      className="block"
-                    >
-                      <div className="mb-1 flex items-center justify-between text-xs">
-                        <span className="text-gray-300">
-                          {medal}{" "}
-                          <span className="font-bold text-white">
-                            ${symbol}
-                          </span>
-                        </span>
-                        <span className="text-gray-400">
-                          {count} {t("chart.signals")}
-                        </span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-slate-700/80">
-                        <div
-                          className="h-full bg-cyan-400 transition-all"
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Direction Distribution */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <h3 className="mb-4 font-semibold text-white">
-              {t("chart.directionDist")}
-            </h3>
-            {(summary?.total_signals ?? 0) === 0 ? (
-              <p className="text-sm text-gray-500">{t("common.noData")}</p>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex h-7 overflow-hidden rounded-full">
-                  {bullPct > 0 && (
-                    <div
-                      className="flex items-center justify-center bg-emerald-500 text-[10px] font-bold text-white"
-                      style={{ width: `${bullPct}%` }}
-                    >
-                      {bullPct >= 12 ? `${bullPct}%` : ""}
-                    </div>
-                  )}
-                  {neutPct > 0 && (
-                    <div
-                      className="flex items-center justify-center bg-yellow-500/70 text-[10px] font-bold text-white"
-                      style={{ width: `${neutPct}%` }}
-                    >
-                      {neutPct >= 12 ? `${neutPct}%` : ""}
-                    </div>
-                  )}
-                  {bearPct > 0 && (
-                    <div
-                      className="flex items-center justify-center bg-red-500 text-[10px] font-bold text-white"
-                      style={{ width: `${bearPct}%` }}
-                    >
-                      {bearPct >= 12 ? `${bearPct}%` : ""}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2 text-sm">
-                  {[
-                    {
-                      label: t("chart.bullish"),
-                      count: bullish,
-                      pct: bullPct,
-                      color: "bg-emerald-500 text-emerald-300",
-                    },
-                    {
-                      label: t("chart.neutral"),
-                      count: neutral,
-                      pct: neutPct,
-                      color: "bg-yellow-500/70 text-yellow-300",
-                    },
-                    {
-                      label: t("chart.bearish"),
-                      count: bearish,
-                      pct: bearPct,
-                      color: "bg-red-500 text-red-300",
-                    },
-                  ].map(({ label, count, pct, color }) => (
-                    <div
-                      key={label}
-                      className="flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block h-3 w-3 rounded-sm ${color.split(" ")[0]}`}
-                        />
-                        <span className={color.split(" ")[1]}>{label}</span>
-                      </div>
-                      <span className="text-white">
-                        {count} <span className="text-gray-500">({pct}%)</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Module Distribution */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <h3 className="mb-4 font-semibold text-white">
-              {t("chart.moduleDist")}
-            </h3>
-            {moduleEntries.length === 0 ? (
-              <p className="text-sm text-gray-500">{t("dashboard.empty")}</p>
-            ) : (
-              <div className="space-y-3">
-                {moduleEntries.map(([module, count]) => {
-                  const width = Math.max(
-                    8,
-                    Math.round((count / maxModuleCount) * 100),
-                  );
-                  return (
-                    <div key={module}>
-                      <div className="mb-1 flex items-center justify-between text-xs">
-                        <span className="text-gray-300">
-                          {t(`module.${module}` as Parameters<typeof t>[0]) ||
-                            module}
-                        </span>
-                        <span className="text-gray-500">{count}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-slate-700/80">
-                        <div
-                          className="h-full bg-cyan-400"
-                          style={{ width: `${width}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Quick Access ── */}
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-white">
-              {t("home.dataSources")}
-            </h2>
-            {plan === "free" && (
-              <Link
-                href="/pricing"
-                className="text-xs text-amber-400 hover:underline"
-              >
-                {t("home.unlockAll")}
-              </Link>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-            <QuickAccessCard
-              icon={DollarSign}
-              label={t("ds.options")}
-              href="/dashboard/options"
-              locked={!can("options_flow")}
-              color="text-emerald-400"
-            />
-            <QuickAccessCard
-              icon={Users}
-              label={t("ds.insider")}
-              href="/dashboard/insider"
-              locked={!can("insider_trades")}
-              color="text-blue-400"
-            />
-            <QuickAccessCard
-              icon={Layers}
-              label={t("ds.darkpool")}
-              href="/dashboard/darkpool"
-              locked={!can("dark_pool")}
-              color="text-purple-400"
-            />
-            <QuickAccessCard
-              icon={MessageSquare}
-              label={t("ds.sentiment")}
-              href="/dashboard/sentiment"
-              locked={!can("sentiment")}
-              color="text-yellow-400"
-            />
-            <QuickAccessCard
-              icon={TrendingUp}
-              label={t("ds.technical")}
-              href="/dashboard/technical"
-              locked={!can("technical")}
-              color="text-cyan-400"
-            />
-            <QuickAccessCard
-              icon={Brain}
-              label={t("ds.aiReports")}
-              href="/dashboard/reports"
-              locked={!can("ai_reports")}
-              color="text-pink-400"
-            />
-          </div>
-        </div>
-
-        {/* ── Alert Banner for free plan ── */}
-        {plan === "free" && (
-          <div className="flex items-center gap-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-5 py-4">
-            <Bell className="h-5 w-5 shrink-0 text-amber-400" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-300">
-                {t("home.upgradeTitle")}
-              </p>
-              <p className="text-xs text-amber-600">{t("home.upgradeDesc")}</p>
-            </div>
-            <Link
-              href="/pricing"
-              className="shrink-0 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30"
-            >
-              {t("home.upgradeCta")}
-            </Link>
-          </div>
-        )}
-
-        {/* ── Signal Filters ── */}
-        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
-          <div>
-            <label className="mb-1 block text-xs text-gray-400">
-              {t("filters.symbol")}
-            </label>
-            <input
-              value={symbolInput}
-              onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
-              placeholder="AAPL"
-              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-400">
-              {t("filters.module")}
-            </label>
-            <select
-              value={moduleFilter}
-              onChange={(e) => setModuleFilter(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
-            >
-              {MODULE_OPTIONS.map((m) => (
-                <option key={m || "all"} value={m}>
-                  {m
-                    ? t(`module.${m}` as Parameters<typeof t>[0]) || m
-                    : t("filters.all")}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-400">
-              {t("filters.minScore")}
-            </label>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={minScore}
-              onChange={(e) => setMinScore(Number(e.target.value) || 0)}
-              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={() => {
-                setSymbolInput("");
-                setModuleFilter("");
-                setMinScore(20);
-              }}
-              className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
-            >
-              {t("filters.reset")}
-            </button>
-          </div>
-        </div>
-
-        {/* ── Signal List ── */}
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white">
-              {t("dashboard.sectionTitle")}
-            </h2>
-            <span className="text-sm text-gray-500">
-              {t("home.signalHint")}
-            </span>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SignalCardSkeleton key={i} />
-              ))}
-            </div>
-          ) : signals.length === 0 ? (
-            <div className="flex flex-col items-center py-20 text-center">
-              <div className="mb-4 text-5xl opacity-40">📭</div>
-              <p className="text-lg text-gray-400">{t("dashboard.empty")}</p>
-              <p className="mt-2 text-sm text-gray-500">
-                {t("dashboard.emptyHint")}
-              </p>
-            </div>
+          {regimeLoading ? (
+            <div className="h-32 animate-pulse rounded-xl bg-white/5" />
+          ) : regime ? (
+            <RegimeBadge regime={regime} />
           ) : (
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {signals.map((signal) => (
-                <SignalCard
-                  key={signal.id}
-                  signal={signal}
-                  onClick={() => setSelectedSignal(signal)}
-                />
-              ))}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center">
+              <p className="text-sm text-slate-400">{t("regime.noData")}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {t("regime.noDataHint")}
+              </p>
             </div>
           )}
-        </div>
-      </main>
+        </section>
 
+        {/* ════════════════════════════════════════════════════════
+            SECTION 2 + 3: High Conviction | Risk Desk (side by side)
+        ════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* ── High Conviction Setups ── */}
+          <section>
+            <SectionHeader
+              icon={TrendingUp}
+              title={t("home.highConviction")}
+              href="/dashboard/signals"
+              linkLabel={t("home.viewAll")}
+              iconColor="text-emerald-400"
+            />
+            <div className="space-y-2">
+              {signalsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-20 animate-pulse rounded-xl bg-white/5"
+                  />
+                ))
+              ) : bullishSignals.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center text-sm text-slate-400">
+                  {t("home.noConviction")}
+                </div>
+              ) : (
+                bullishSignals.map((sig) => (
+                  <div
+                    key={sig.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedSignal(sig)}
+                  >
+                    <SignalCard
+                      signal={sig}
+                      onClick={() => setSelectedSignal(sig)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* ── Risk Desk ── */}
+          <section>
+            <SectionHeader
+              icon={AlertTriangle}
+              title={t("home.riskDesk")}
+              href="/dashboard/signals"
+              linkLabel={t("home.viewAll")}
+              iconColor="text-red-400"
+            />
+
+            {/* VIX warning banner */}
+            {regime && regime.volatility === "very_high" && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                VIX {regime.vix?.toFixed(1)} — elevated volatility regime
+              </div>
+            )}
+            {regime && regime.volatility === "high" && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-xs text-orange-300">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                VIX {regime.vix?.toFixed(1)} — high volatility, caution advised
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {signalsLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-20 animate-pulse rounded-xl bg-white/5"
+                  />
+                ))
+              ) : bearishSignals.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-center text-sm text-slate-400">
+                  {t("home.noRisk")}
+                </div>
+              ) : (
+                bearishSignals.map((sig) => (
+                  <div
+                    key={sig.id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedSignal(sig)}
+                  >
+                    <SignalCard
+                      signal={sig}
+                      onClick={() => setSelectedSignal(sig)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* ════════════════════════════════════════════════════════
+            SECTION 4: My Desk
+        ════════════════════════════════════════════════════════ */}
+        <section>
+          <SectionHeader
+            icon={BookMarked}
+            title={t("home.myDesk")}
+            iconColor="text-violet-400"
+          />
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Watchlist */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <h3 className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-400">
+                {t("home.watchlist")}
+                <Link
+                  href="/dashboard/signals"
+                  className="flex items-center gap-0.5 text-cyan-500 hover:text-cyan-400"
+                >
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              </h3>
+              {watchlist.length === 0 ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-slate-500">
+                    {t("home.noWatchlist")}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    {t("home.addToWatchlist")}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {watchlist.map((w) => (
+                    <Link
+                      key={w.symbol}
+                      href={`/dashboard/stocks/${w.symbol}`}
+                      className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm transition-colors hover:bg-white/10"
+                    >
+                      <span className="font-semibold text-white">
+                        {w.symbol}
+                      </span>
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Alerts */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <h3 className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-400">
+                {t("home.recentAlerts")}
+                <Link
+                  href="/dashboard/alerts"
+                  className="flex items-center gap-0.5 text-cyan-500 hover:text-cyan-400"
+                >
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              </h3>
+              {alerts.length === 0 ? (
+                <p className="text-xs text-slate-500">{t("home.noAlerts")}</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {alerts.map((al) => (
+                    <Link
+                      key={al.id}
+                      href={`/dashboard/stocks/${al.symbol}`}
+                      className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 transition-colors hover:bg-white/10"
+                    >
+                      <div className="flex items-center gap-2">
+                        {al.direction === "bullish" ? (
+                          <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                        ) : (
+                          <TrendingDown className="h-3.5 w-3.5 text-red-400" />
+                        )}
+                        <span className="text-sm font-semibold text-white">
+                          {al.symbol}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-400">
+                        {al.signal_score}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Data source shortcuts */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <h3 className="mb-3 text-xs font-semibold text-slate-400">
+                Data Sources
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                <DataSourceShortcut
+                  icon={DollarSign}
+                  label="Options"
+                  href="/dashboard/options"
+                  color="text-cyan-400"
+                />
+                <DataSourceShortcut
+                  icon={Users}
+                  label="Insider"
+                  href="/dashboard/insider"
+                  color="text-violet-400"
+                />
+                <DataSourceShortcut
+                  icon={Layers}
+                  label="Dark Pool"
+                  href="/dashboard/darkpool"
+                  color="text-amber-400"
+                />
+                <DataSourceShortcut
+                  icon={MessageSquare}
+                  label="Sentiment"
+                  href="/dashboard/sentiment"
+                  color="text-pink-400"
+                />
+                <DataSourceShortcut
+                  icon={Brain}
+                  label="Reports"
+                  href="/dashboard/reports"
+                  color="text-emerald-400"
+                />
+                <DataSourceShortcut
+                  icon={Bell}
+                  label="Alerts"
+                  href="/dashboard/alerts"
+                  color="text-orange-400"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* Signal detail panel */}
       <SlidePanel
         isOpen={!!selectedSignal}
         onClose={() => setSelectedSignal(null)}
-        title={t("detail.title")}
       >
         {selectedSignal && <SignalDetail signal={selectedSignal} />}
       </SlidePanel>
-
-      <footer className="mt-16 border-t border-white/10 bg-white/5 py-5 backdrop-blur-sm">
-        <div className="container mx-auto px-6 text-center text-sm text-gray-600">
-          <p>
-            {t("footer.text")} ·{" "}
-            <Link href="/pricing" className="text-gray-500 hover:text-gray-300">
-              {t("footer.viewPricing")}
-            </Link>{" "}
-            ·{" "}
-            <Link
-              href="/dashboard/admin"
-              className="text-gray-500 hover:text-gray-300"
-            >
-              {t("footer.systemStatus")}
-            </Link>
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

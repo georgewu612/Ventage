@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.alerts import router as alerts_router
+from api.routes.market import router as market_router
 from api.routes.factors import router as factors_router
 from api.routes.market_data import router as market_data_router
 from api.routes.news import router as news_router
@@ -51,6 +52,7 @@ def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(market_router, prefix="/v1", tags=["market"])
 app.include_router(signals_router, prefix="/v1", tags=["signals"])
 app.include_router(market_data_router, prefix="/v1", tags=["market-data"])
 app.include_router(system_router, prefix="/v1", tags=["system"])

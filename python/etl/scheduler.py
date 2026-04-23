@@ -22,6 +22,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 
 from agents.signal_engine import SignalEngine
+from services.regime_engine import RegimeEngine
 from alerting.manager import AlertManager
 from config.settings import get_settings
 from etl.collectors.darkpool_collector import DarkPoolCollector
@@ -166,6 +167,40 @@ async def run_alert_check(db):
         raise
 
 
+async def run_regime_refresh(db):
+    """Compute and persist a fresh market regime snapshot."""
+    t0 = time.monotonic()
+    try:
+        engine = RegimeEngine(db)
+        snapshot = await engine.compute_and_save()
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info(
+            "regime_refresh_result",
+            regime=snapshot.regime,
+            vix=snapshot.vix,
+            duration_ms=duration_ms,
+        )
+        _write_job_run(
+            db,
+            job_name="regime_refresh",
+            status="success",
+            loaded=1,
+            duration_ms=duration_ms,
+        )
+        return snapshot
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("regime_refresh_error", error=str(exc))
+        _write_job_run(
+            db,
+            job_name="regime_refresh",
+            status="error",
+            error_message=str(exc),
+            duration_ms=duration_ms,
+        )
+        raise
+
+
 async def run_data_cleanup(db):
     """Clean up old data to stay within Supabase storage limits."""
     result = await cleanup_old_data(db)
@@ -276,6 +311,19 @@ def start_scheduler():
         args=[db],
         id="alert_check",
         name="Alert Check (Telegram)",
+        max_instances=1,
+    )
+
+    # Market regime: daily at 09:31 ET (30 min after open, after signal data arrives)
+    scheduler.add_job(
+        run_regime_refresh,
+        "cron",
+        hour=14,        # 14:31 UTC = 09:31 ET (EST) / 10:31 ET (EDT)
+        minute=31,
+        timezone="UTC",
+        args=[db],
+        id="regime_refresh",
+        name="Market Regime Refresh (Daily)",
         max_instances=1,
     )
 

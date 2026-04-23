@@ -92,6 +92,38 @@ interface AIAnalysis {
   [key: string]: unknown;
 }
 
+interface StrategyFit {
+  strategy_name: string;
+  strategy_name_en: string;
+  fit_score: number;
+  reason: string;
+  reason_en: string;
+}
+
+interface DeskConsensusData {
+  symbol: string;
+  conclusion: string;
+  conclusion_en: string;
+  final_action: string;
+  conviction: "high" | "medium" | "low";
+  time_horizon: string;
+  risk_level: string;
+  confidence_score: number;
+  supporting_evidence: string[];
+  risk_evidence: string[];
+  invalidation_conditions: string[];
+  technical_desk: string;
+  technical_desk_en: string;
+  flow_desk: string;
+  flow_desk_en: string;
+  event_desk: string;
+  event_desk_en: string;
+  risk_desk: string;
+  risk_desk_en: string;
+  strategy_fit: StrategyFit[];
+  generated_at: string;
+}
+
 // ── Formatters ────────────────────────────────────────────────────────────────
 
 function fmt(v: number | null, prefix = "$"): string {
@@ -180,6 +212,258 @@ function SectionCard({
 
 function EmptyRow({ text }: { text: string }) {
   return <p className="py-4 text-center text-sm text-gray-500">{text}</p>;
+}
+
+// ── Desk Consensus Card ───────────────────────────────────────────────────────
+
+const ACTION_CONFIG: Record<
+  string,
+  { label: string; bg: string; text: string }
+> = {
+  strong_buy: {
+    label: "Strong Buy",
+    bg: "bg-emerald-500/20",
+    text: "text-emerald-300",
+  },
+  buy: { label: "Buy", bg: "bg-emerald-500/15", text: "text-emerald-400" },
+  hold: { label: "Hold", bg: "bg-yellow-500/15", text: "text-yellow-400" },
+  watch: { label: "Watch", bg: "bg-cyan-500/15", text: "text-cyan-400" },
+  sell: { label: "Sell", bg: "bg-red-500/15", text: "text-red-400" },
+  strong_sell: {
+    label: "Strong Sell",
+    bg: "bg-red-500/20",
+    text: "text-red-300",
+  },
+  avoid: { label: "Avoid", bg: "bg-gray-500/15", text: "text-gray-400" },
+};
+
+const CONVICTION_COLOR: Record<string, string> = {
+  high: "text-emerald-400",
+  medium: "text-yellow-400",
+  low: "text-gray-400",
+};
+
+function DeskConsensusCard({
+  desk,
+  loading,
+  error,
+  onRefresh,
+  locale,
+}: {
+  desk: DeskConsensusData | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  locale: string;
+}) {
+  const { t } = useI18n();
+
+  if (loading) {
+    return (
+      <div className="space-y-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-6 text-center">
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-violet-400" />
+        <p className="text-sm text-violet-300">{t("desk.loading")}</p>
+        <p className="text-xs text-slate-500">{t("desk.loadingNote")}</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-between rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+        <span className="text-sm text-red-400">
+          {t("desk.failed")}: {error}
+        </span>
+        <button
+          onClick={onRefresh}
+          className="ml-3 text-xs text-slate-400 hover:text-white"
+        >
+          {t("desk.refresh")}
+        </button>
+      </div>
+    );
+  }
+
+  if (!desk) return null;
+
+  const actionCfg = ACTION_CONFIG[desk.final_action] ?? {
+    label: desk.final_action,
+    bg: "bg-slate-500/15",
+    text: "text-slate-300",
+  };
+  const conclusion =
+    locale === "zh" ? desk.conclusion : desk.conclusion_en || desk.conclusion;
+
+  const desks = [
+    {
+      key: "technical",
+      label: t("desk.technicalDesk"),
+      color: "text-cyan-400",
+      text: locale === "zh" ? desk.technical_desk : desk.technical_desk_en,
+    },
+    {
+      key: "flow",
+      label: t("desk.flowDesk"),
+      color: "text-violet-400",
+      text: locale === "zh" ? desk.flow_desk : desk.flow_desk_en,
+    },
+    {
+      key: "event",
+      label: t("desk.eventDesk"),
+      color: "text-amber-400",
+      text: locale === "zh" ? desk.event_desk : desk.event_desk_en,
+    },
+    {
+      key: "risk",
+      label: t("desk.riskDesk"),
+      color: "text-red-400",
+      text: locale === "zh" ? desk.risk_desk : desk.risk_desk_en,
+    },
+  ];
+
+  return (
+    <div className="space-y-4 rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="mb-1.5 text-xs font-semibold tracking-wider text-violet-300/70 uppercase">
+            {t("desk.title")}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-lg px-3 py-1 text-sm font-bold ${actionCfg.bg} ${actionCfg.text}`}
+            >
+              {actionCfg.label}
+            </span>
+            <span
+              className={`text-xs font-semibold ${CONVICTION_COLOR[desk.conviction]}`}
+            >
+              {t("desk.conviction")}: {desk.conviction}
+            </span>
+            <span className="text-xs text-slate-400">
+              {t("desk.timeHorizon")}: {desk.time_horizon}
+            </span>
+            <span className="text-xs text-slate-400">
+              {t("desk.confidence")}: {Math.round(desk.confidence_score)}%
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="shrink-0 text-xs text-slate-500 transition-colors hover:text-violet-300"
+        >
+          {t("desk.refresh")}
+        </button>
+      </div>
+
+      {/* Conclusion */}
+      <p className="text-sm leading-relaxed text-slate-200">{conclusion}</p>
+
+      {/* Four desk panels */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {desks.map((d) => (
+          <details
+            key={d.key}
+            className="group rounded-lg border border-white/10 bg-white/5"
+          >
+            <summary
+              className={`flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-semibold ${d.color}`}
+            >
+              {d.label}
+              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-white/10 px-3 py-2 text-xs leading-relaxed text-slate-300">
+              {d.text}
+            </div>
+          </details>
+        ))}
+      </div>
+
+      {/* Strategy fit */}
+      {desk.strategy_fit.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold text-slate-400">
+            {t("desk.strategyFit")}
+          </p>
+          <div className="space-y-2">
+            {desk.strategy_fit.map((sf) => (
+              <div
+                key={sf.strategy_name_en}
+                className="rounded-lg bg-white/5 px-3 py-2"
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-200">
+                    {locale === "zh" ? sf.strategy_name : sf.strategy_name_en}
+                  </span>
+                  <span className="text-xs font-bold text-violet-300">
+                    {Math.round(sf.fit_score)}
+                  </span>
+                </div>
+                <div className="mb-1 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full bg-violet-500 transition-all"
+                    style={{ width: `${sf.fit_score}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  {locale === "zh" ? sf.reason : sf.reason_en}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Evidence + invalidation */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {desk.supporting_evidence.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold text-emerald-400/80 uppercase">
+              {t("desk.supportingEvidence")}
+            </p>
+            <ul className="space-y-1">
+              {desk.supporting_evidence.map((e, i) => (
+                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
+                  <span className="mt-0.5 text-emerald-500">•</span>
+                  {e}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {desk.risk_evidence.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold text-red-400/80 uppercase">
+              {t("desk.riskEvidence")}
+            </p>
+            <ul className="space-y-1">
+              {desk.risk_evidence.map((e, i) => (
+                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
+                  <span className="mt-0.5 text-red-500">•</span>
+                  {e}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {desk.invalidation_conditions.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold text-orange-400/80 uppercase">
+              {t("desk.invalidation")}
+            </p>
+            <ul className="space-y-1">
+              {desk.invalidation_conditions.map((e, i) => (
+                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
+                  <span className="mt-0.5 text-orange-500">•</span>
+                  {e}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Price Bar ─────────────────────────────────────────────────────────────────
@@ -306,6 +590,31 @@ function StockWorkbenchInner() {
       setDataLoading(false);
     });
   }, [symbol]);
+
+  // Desk Consensus (auto-fetched on load)
+  const [deskLoading, setDeskLoading] = useState(false);
+  const [deskResult, setDeskResult] = useState<DeskConsensusData | null>(null);
+  const [deskError, setDeskError] = useState<string | null>(null);
+
+  const fetchDesk = useCallback(async () => {
+    if (!symbol) return;
+    setDeskLoading(true);
+    setDeskError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/reports/desk/${symbol}`);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data = await res.json();
+      setDeskResult(data);
+    } catch (e) {
+      setDeskError((e as Error).message);
+    } finally {
+      setDeskLoading(false);
+    }
+  }, [symbol]);
+
+  useEffect(() => {
+    fetchDesk();
+  }, [fetchDesk]);
 
   // AI Analysis
   const [aiLoading, setAiLoading] = useState(false);
@@ -459,6 +768,15 @@ function StockWorkbenchInner() {
                 </div>
               )}
             </div>
+
+            {/* Desk Consensus */}
+            <DeskConsensusCard
+              desk={deskResult}
+              loading={deskLoading}
+              error={deskError}
+              onRefresh={fetchDesk}
+              locale={locale}
+            />
 
             {/* Options + Insider */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

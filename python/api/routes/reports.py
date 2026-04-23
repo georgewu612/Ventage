@@ -137,6 +137,40 @@ def analyze_symbol_signals(
     }
 
 
+# ── Desk Consensus Analysis ────────────────────────────────────────
+
+
+@router.get("/reports/desk/{symbol}")
+async def get_desk_consensus(symbol: str) -> dict[str, Any]:
+    """Generate a multi-desk consensus analysis for the given stock symbol.
+
+    Aggregates signals, options flow, insider trades, dark pool, sentiment, and
+    the current market regime into a single structured DeskConsensus verdict.
+    May take 10–20 s on first call (LLM inference).
+    """
+    supabase = _get_supabase_client()
+    analyst = AIAnalyst(supabase)
+
+    if not analyst.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI API not configured. Set OPENAI_API_KEY environment variable.",
+        )
+
+    result = await analyst.analyze_desk(symbol.upper())
+    if not result:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Desk analysis failed for {symbol.upper()}. Check server logs.",
+        )
+
+    return {
+        "symbol": symbol.upper(),
+        "model": analyst.model,
+        **result,
+    }
+
+
 # ── TradingAgents multi-agent analysis ─────────────────────────────
 
 # Singleton instance (heavy init, reuse across requests)

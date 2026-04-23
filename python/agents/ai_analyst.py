@@ -16,7 +16,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 from supabase import Client
 
-from agents.models import AIAnalysisOutput
+from agents.models import AIAnalysisOutput, DeskConsensus
 from config.settings import get_settings
 
 logger = structlog.get_logger()
@@ -228,6 +228,255 @@ class AIAnalyst:
 请根据以上数据生成分析报告。"""
 
         return context
+
+    # ── Desk Consensus Analysis ────────────────────────────────────
+
+    async def analyze_desk(self, symbol: str) -> dict[str, Any] | None:
+        """Generate a multi-desk DeskConsensus for the given symbol.
+
+        Aggregates signals, options flow, insider trades, dark pool, sentiment,
+        and the latest market regime into a single structured verdict.
+        Returns a DeskConsensus dict, or None if AI is unavailable.
+        """
+        if not self.is_available():
+            return None
+
+        context = await self._build_desk_context(symbol)
+
+        try:
+            response = self.client.beta.chat.completions.parse(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是 Ventage 机构研究部首席策略师。你需要代表四个分析台（Technical / Flow / Event / Risk）"
+                            "对单只股票给出统一的多台联席共识报告。\n"
+                            "规则：\n"
+                            "1. 所有数字已由系统提供，直接引用，绝不自行计算\n"
+                            "2. 每个分析台观点独立、简洁，不超过 3 句话\n"
+                            "3. final_action 必须是以下之一：strong_buy / buy / hold / watch / sell / strong_sell / avoid\n"
+                            "4. strategy_fit 最多 4 个，只选择与当前信号最相关的策略\n"
+                            "5. conclusion 和 conclusion_en 要保持一致，一句话点出核心判断\n"
+                            "6. 中文字段使用中文，英文字段使用英文\n"
+                            "7. 本报告仅供研究参考，不构成投资建议"
+                        ),
+                    },
+                    {"role": "user", "content": context},
+                ],
+                response_format=DeskConsensus,
+                temperature=0.25,
+            )
+
+            desk = response.choices[0].message.parsed
+            if desk is None:
+                return None
+
+            self.log.info(
+                "desk_analyzed",
+                symbol=symbol,
+                action=desk.final_action,
+                conviction=desk.conviction,
+                tokens=response.usage.total_tokens if response.usage else 0,
+            )
+            return desk.model_dump()
+
+        except Exception as exc:
+            self.log.error("desk_analysis_failed", error=str(exc), symbol=symbol)
+            return None
+
+    async def _build_desk_context(self, symbol: str) -> str:
+        """Aggregate all data sources for the given symbol into a prompt context."""
+        cutoff_48h = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
+        cutoff_7d  = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+        sym = symbol.upper()
+
+        # ── 1. Market regime ──────────────────────────────────────
+        regime_text = "N/A"
+        try:
+            r = (
+                self.db.table("market_regime_snapshots")
+                .select("regime,volatility,breadth,style,recommendation,vix,spy_vs_200ma_pct,chief_summary_en")
+                .order("generated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if r.data:
+                rg = r.data[0]
+                regime_text = (
+                    f"Regime={rg['regime']} | Vol={rg['volatility']} | "
+                    f"Breadth={rg['breadth']} | Style={rg['style']} | "
+                    f"Rec={rg['recommendation']} | VIX={rg.get('vix', 'N/A')} | "
+                    f"SPY_vs_200MA={rg.get('spy_vs_200ma_pct', 'N/A')}%\n"
+                    f"  Summary: {rg.get('chief_summary_en', '')}"
+                )
+        except Exception:
+            pass
+
+        # ── 2. Market signals (48h) ───────────────────────────────
+        signals_text = "No signals"
+        try:
+            r = (
+                self.db.table("market_signals")
+                .select("direction,signal_score,confidence,module,analysis")
+                .eq("symbol", sym)
+                .gte("created_at", cutoff_48h)
+                .order("signal_score", desc=True)
+                .limit(5)
+                .execute()
+            )
+            sigs = r.data or []
+            if sigs:
+                lines = [
+                    f"  [{s['module']}] {s['direction']} score={s['signal_score']} "
+                    f"conf={s['confidence']} | {s.get('analysis', '')}"
+                    for s in sigs
+                ]
+                signals_text = "\n".join(lines)
+        except Exception:
+            pass
+
+        # ── 3. Options flow (48h) ─────────────────────────────────
+        options_text = "No data"
+        try:
+            r = (
+                self.db.table("options_flow")
+                .select("option_type,strike,expiry,premium,volume,trade_type,sentiment")
+                .eq("symbol", sym)
+                .gte("created_at", cutoff_48h)
+                .order("premium", desc=True)
+                .limit(5)
+                .execute()
+            )
+            opts = r.data or []
+            if opts:
+                lines = []
+                for o in opts:
+                    p = o.get("premium", 0) or 0
+                    p_str = f"${p/1e6:.2f}M" if p >= 1e6 else f"${p/1e3:.0f}K"
+                    lines.append(
+                        f"  {o['option_type'].upper()} ${o.get('strike')} exp={o.get('expiry')} "
+                        f"prem={p_str} vol={o.get('volume',0):,} type={o.get('trade_type','')} "
+                        f"sentiment={o.get('sentiment','')}"
+                    )
+                options_text = "\n".join(lines)
+        except Exception:
+            pass
+
+        # ── 4. Insider trades (7d) ────────────────────────────────
+        insider_text = "No data"
+        try:
+            r = (
+                self.db.table("insider_trades")
+                .select("insider_name,insider_title,trade_type,value,shares,filing_date")
+                .eq("symbol", sym)
+                .gte("filing_date", cutoff_7d[:10])
+                .order("value", desc=True)
+                .limit(5)
+                .execute()
+            )
+            ins = r.data or []
+            if ins:
+                lines = [
+                    f"  {i.get('insider_name','')} ({i.get('insider_title','')}) "
+                    f"{i.get('trade_type','')} ${(i.get('value') or 0):,.0f} "
+                    f"({(i.get('shares') or 0):,}sh) filed={i.get('filing_date','')}"
+                    for i in ins
+                ]
+                insider_text = "\n".join(lines)
+        except Exception:
+            pass
+
+        # ── 5. Dark pool (48h) ────────────────────────────────────
+        darkpool_text = "No data"
+        try:
+            r = (
+                self.db.table("dark_pool_orders")
+                .select("price,size,notional,side,exchange")
+                .eq("symbol", sym)
+                .gte("created_at", cutoff_48h)
+                .order("notional", desc=True)
+                .limit(5)
+                .execute()
+            )
+            dp = r.data or []
+            if dp:
+                lines = [
+                    f"  {d.get('side','')} size={d.get('size',0):,} "
+                    f"@ ${d.get('price',0)} notional=${(d.get('notional') or 0)/1e6:.2f}M "
+                    f"exch={d.get('exchange','')}"
+                    for d in dp
+                ]
+                darkpool_text = "\n".join(lines)
+        except Exception:
+            pass
+
+        # ── 6. Sentiment (48h) ────────────────────────────────────
+        sentiment_text = "No data"
+        try:
+            r = (
+                self.db.table("market_sentiment")
+                .select("sentiment_score,mention_count,bullish_count,bearish_count,source")
+                .eq("symbol", sym)
+                .gte("created_at", cutoff_48h)
+                .order("created_at", desc=True)
+                .limit(3)
+                .execute()
+            )
+            sent = r.data or []
+            if sent:
+                lines = [
+                    f"  [{s.get('source','')}] score={s.get('sentiment_score',0):.2f} "
+                    f"mentions={s.get('mention_count',0)} bull={s.get('bullish_count',0)} "
+                    f"bear={s.get('bearish_count',0)}"
+                    for s in sent
+                ]
+                sentiment_text = "\n".join(lines)
+        except Exception:
+            pass
+
+        # ── 7. Strategy templates (for fit scoring reference) ─────
+        strategy_names = "Momentum Breakout, Low Volatility Defense, SMA Crossover, RSI Mean Reversion"
+        try:
+            r = (
+                self.db.table("strategy_templates")
+                .select("name,name_zh,category")
+                .limit(8)
+                .execute()
+            )
+            tmpl = r.data or []
+            if tmpl:
+                strategy_names = ", ".join(
+                    f"{t['name']} ({t['name_zh']})" for t in tmpl
+                )
+        except Exception:
+            pass
+
+        return f"""请对 ${sym} 生成多台联席共识报告（Desk Consensus）。
+所有数字已由系统提供，直接引用即可，不要自行计算。
+
+## 宏观市场环境
+{regime_text}
+
+## 市场信号（近48小时，按评分排序）
+{signals_text}
+
+## 期权异动（近48小时，按权利金排序）
+{options_text}
+
+## 内部人交易（近7日）
+{insider_text}
+
+## 暗池大单（近48小时）
+{darkpool_text}
+
+## 社交媒体情绪（近48小时）
+{sentiment_text}
+
+## 可用策略模板（用于 strategy_fit 评分）
+{strategy_names}
+
+请综合以上全部数据，生成 DeskConsensus 报告，涵盖四个分析台的观点及最终结论。"""
 
     def _build_daily_context(self) -> str | None:
         """Build context from all recent signals for daily report."""
