@@ -16,6 +16,39 @@ interface Signal {
   created_at: string;
 }
 
+/**
+ * Parse analysis text — may be a raw string or a JSON object.
+ * Extracts `conclusion` / `summary` / first string value found.
+ */
+function parseAnalysis(
+  raw: string | null | undefined,
+  locale?: string,
+): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  // Try JSON parse
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj && typeof obj === "object") {
+        // Prefer locale-specific conclusion when available
+        const text =
+          (locale === "en"
+            ? obj.conclusion_en || obj.conclusion
+            : obj.conclusion || obj.conclusion_en) ??
+          obj.summary ??
+          obj.analysis ??
+          obj.reasoning ??
+          Object.values(obj).find((v) => typeof v === "string");
+        if (typeof text === "string" && text.length > 0) return text;
+      }
+    } catch {
+      // not valid JSON, fall through
+    }
+  }
+  return trimmed;
+}
+
 function timeAgo(dateStr: string, locale: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -41,7 +74,7 @@ export function SignalCard({
   signal: Signal;
   onClick?: () => void;
 }) {
-  const { t, dateLocale } = useI18n();
+  const { t, locale, dateLocale } = useI18n();
 
   const directionConfig = {
     bullish: {
@@ -103,13 +136,17 @@ export function SignalCard({
         </span>
       </div>
 
-      {signal.analysis && (
-        <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-gray-300">
-          {signal.analysis}
-        </p>
-      )}
+      {signal.analysis &&
+        (() => {
+          const text = parseAnalysis(signal.analysis, locale);
+          return text ? (
+            <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-gray-100">
+              {text}
+            </p>
+          ) : null;
+        })()}
 
-      <div className="flex items-center justify-between text-xs text-gray-500">
+      <div className="flex items-center justify-between text-xs text-gray-400">
         <div className="flex items-center gap-3">
           {signal.module && (
             <span className="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">

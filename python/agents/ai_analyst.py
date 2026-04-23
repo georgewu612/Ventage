@@ -101,7 +101,8 @@ class AIAnalyst:
                             "3. 分析要简洁专业，每条证据不超过 80 字\n"
                             "4. risk_level 根据综合风险选择：low/medium/high/very_high\n"
                             "5. confidence_score 参考信号置信度字段，不要自己估算\n"
-                            "6. 所有文字使用中文"
+                            "6. conclusion 字段使用中文\n"
+                            "7. conclusion_en 字段必须使用英文，是 conclusion 的英文版本"
                         ),
                     },
                     {"role": "user", "content": context},

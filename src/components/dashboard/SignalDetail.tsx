@@ -13,6 +13,33 @@ import {
 
 import { useI18n } from "@/lib/i18n/provider";
 
+function parseAnalysis(
+  raw: string | null | undefined,
+  locale?: string,
+): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj && typeof obj === "object") {
+        const text =
+          (locale === "en"
+            ? obj.conclusion_en || obj.conclusion
+            : obj.conclusion || obj.conclusion_en) ??
+          obj.summary ??
+          obj.analysis ??
+          obj.reasoning ??
+          Object.values(obj).find((v) => typeof v === "string");
+        if (typeof text === "string" && text.length > 0) return text;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return trimmed;
+}
+
 interface Factor {
   value: number;
   max: number;
@@ -52,7 +79,7 @@ function timeAgo(dateStr: string, locale: string): string {
 }
 
 export function SignalDetail({ signal }: { signal: Signal }) {
-  const { t, dateLocale } = useI18n();
+  const { t, locale, dateLocale } = useI18n();
 
   const directionConfig = {
     bullish: {
@@ -145,8 +172,8 @@ export function SignalDetail({ signal }: { signal: Signal }) {
         <h3 className="mb-2 text-sm font-semibold text-gray-300">
           {t("detail.analysis")}
         </h3>
-        <p className="leading-relaxed text-gray-200">
-          {signal.analysis || "-"}
+        <p className="leading-relaxed text-gray-100">
+          {parseAnalysis(signal.analysis, locale) || "-"}
         </p>
       </div>
 

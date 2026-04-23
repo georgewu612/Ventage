@@ -24,7 +24,12 @@ class AIAnalysisOutput(BaseModel):
 
     conclusion: str = Field(
         max_length=300,
-        description="核心结论：一句话总结当前信号的交易含义，引用提供的数据，不要自己计算",
+        description="核心结论（中文）：一句话总结当前信号的交易含义，引用提供的数据，不要自己计算",
+    )
+    conclusion_en: str = Field(
+        default="",
+        max_length=300,
+        description="Core conclusion (English): one-sentence summary of the signal's trading implication, citing provided data only",
     )
     time_horizon: str = Field(
         max_length=20,

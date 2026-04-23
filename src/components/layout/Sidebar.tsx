@@ -54,6 +54,7 @@ function NavLink({
   onClick: () => void;
   isActive: boolean;
 }) {
+  const { t } = useI18n();
   const Icon = item.icon;
   const isLocked = item.feature ? !canAccess : false;
 
@@ -61,7 +62,7 @@ function NavLink({
     <Link
       href={isLocked ? "/pricing" : item.href}
       onClick={onClick}
-      title={isLocked ? "升级解锁此功能" : undefined}
+      title={isLocked ? t("nav.upgradeTooltip") : undefined}
       className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
         isActive && !isLocked
           ? "bg-cyan-500/20 font-medium text-cyan-200"
@@ -115,27 +116,33 @@ export function Sidebar() {
   const close = () => setIsOpen(false);
 
   const mainNav: NavItem[] = [
-    { name: "市场雷达", href: "/dashboard", icon: Radio },
+    { name: t("nav.marketRadar"), href: "/dashboard", icon: Radio },
     {
-      name: "单票工作台",
+      name: t("nav.stockWorkbench"),
       href: "/dashboard/stocks/NVDA",
       icon: TrendingUp,
       feature: "stock_workbench",
     },
     {
-      name: "Quant Lab",
+      name: t("nav.quantLab"),
       href: "/dashboard/quant-lab",
       icon: FlaskConical,
       feature: "quant_lab",
     },
     {
-      name: "组合监控",
+      name: t("nav.strategies"),
+      href: "/dashboard/strategies",
+      icon: BarChart3,
+      feature: "quant_lab",
+    },
+    {
+      name: t("nav.portfolio"),
       href: "/dashboard/portfolio",
       icon: Wallet,
       feature: "portfolio",
     },
     {
-      name: "执行层",
+      name: t("nav.execution"),
       href: "/dashboard/execution",
       icon: Activity,
       feature: "execution",
@@ -196,7 +203,7 @@ export function Sidebar() {
       feature: "alerts",
     },
     {
-      name: "系统管理",
+      name: t("nav.admin"),
       href: "/dashboard/admin",
       icon: Settings,
       feature: "admin",
@@ -256,7 +263,7 @@ export function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <p className="mb-1 px-3 text-[10px] font-semibold tracking-wider text-gray-600 uppercase">
-            主功能
+            {t("nav.mainFeatures")}
           </p>
           {mainNav.map((item) => (
             <NavLink
@@ -278,7 +285,7 @@ export function Sidebar() {
               ) : (
                 <ChevronRight className="h-3 w-3" />
               )}
-              数据源
+              {t("nav.dataSourcesSection")}
             </button>
             {dataSourceOpen && (
               <div className="mt-1 space-y-0.5">
@@ -297,7 +304,7 @@ export function Sidebar() {
 
           <div className="mt-3">
             <p className="mb-1 px-3 text-[10px] font-semibold tracking-wider text-gray-600 uppercase">
-              工具
+              {t("nav.tools")}
             </p>
             {toolsNav.map((item) => (
               <NavLink
@@ -318,7 +325,7 @@ export function Sidebar() {
               }`}
             >
               <CreditCard className="h-4 w-4 shrink-0" />
-              <span className="flex-1 truncate">定价方案</span>
+              <span className="flex-1 truncate">{t("nav.pricing")}</span>
             </Link>
           </div>
         </nav>
@@ -329,7 +336,7 @@ export function Sidebar() {
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${planInfo.color}`}
             >
-              {planInfo.zh}
+              {locale === "zh" ? planInfo.zh : planInfo.en}
             </span>
             <Link
               href="/pricing"
@@ -337,7 +344,7 @@ export function Sidebar() {
               className="flex items-center gap-1 text-xs text-amber-400 hover:underline"
             >
               <CreditCard className="h-3 w-3" />
-              定价方案
+              {t("nav.pricing")}
             </Link>
           </div>
           {plan !== "free" && (

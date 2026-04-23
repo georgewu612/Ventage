@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { CreditCard, Loader2 } from "lucide-react";
 
+import { useI18n } from "@/lib/i18n/provider";
+
 export function ManageSubscriptionButton() {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
 
   async function handleClick() {
@@ -30,7 +33,7 @@ export function ManageSubscriptionButton() {
       ) : (
         <CreditCard className="h-4 w-4" />
       )}
-      管理订阅
+      {t("billing.manageSubscription")}
     </button>
   );
 }

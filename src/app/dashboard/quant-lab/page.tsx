@@ -10,9 +10,9 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { API_BASE_URL } from "@/lib/config";
-import { useProfile } from "@/lib/hooks/useProfile";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -47,17 +47,6 @@ interface Run {
   created_at: string;
 }
 
-interface BacktestResults {
-  total_return: number;
-  annualized_return: number;
-  sharpe_ratio: number;
-  max_drawdown: number;
-  win_rate: number;
-  total_trades: number;
-  profit_factor: number;
-  equity_curve: { date: string; value: number }[];
-}
-
 // ── Category config ───────────────────────────────────────────────────────────
 
 const CAT: Record<string, { label: string; color: string; bg: string }> = {
@@ -70,33 +59,6 @@ const CAT: Record<string, { label: string; color: string; bg: string }> = {
   momentum: { label: "动量", color: "text-amber-400", bg: "bg-amber-500/10" },
   volatility: { label: "波动率", color: "text-pink-400", bg: "bg-pink-500/10" },
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`;
-}
-
-function MetricCard({
-  label,
-  value,
-  positive,
-}: {
-  label: string;
-  value: string;
-  positive?: boolean;
-}) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-      <p className="mb-1 text-[10px] text-gray-500">{label}</p>
-      <p
-        className={`text-base font-bold ${positive === undefined ? "text-white" : positive ? "text-emerald-400" : "text-red-400"}`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function StatusBadge({ status }: { status: Run["status"] }) {
   const cfg = {
@@ -120,54 +82,10 @@ function StatusBadge({ status }: { status: Run["status"] }) {
   );
 }
 
-function EquityChart({ data }: { data: { date: string; value: number }[] }) {
-  if (!data || data.length < 2) return null;
-  const values = data.map((d) => d.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const W = 600;
-  const H = 100;
-  const pad = 8;
-  const pts = data
-    .map((d, i) => {
-      const x = pad + (i / (data.length - 1)) * (W - 2 * pad);
-      const y = pad + ((max - d.value) / range) * (H - 2 * pad);
-      return `${x},${y}`;
-    })
-    .join(" ");
-  const isUp = values[values.length - 1] >= values[0];
-  return (
-    <div className="w-full overflow-hidden rounded-lg bg-black/20">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        preserveAspectRatio="none"
-      >
-        <polyline
-          points={pts}
-          fill="none"
-          stroke={isUp ? "#34d399" : "#f87171"}
-          strokeWidth="2"
-        />
-        <line
-          x1={pad}
-          y1={pad + ((max - 1) / range) * (H - 2 * pad)}
-          x2={W - pad}
-          y2={pad + ((max - 1) / range) * (H - 2 * pad)}
-          stroke="#ffffff20"
-          strokeWidth="1"
-          strokeDasharray="4 4"
-        />
-      </svg>
-    </div>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function QuantLabPage() {
-  const { can } = useProfile();
+  const router = useRouter();
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -182,12 +100,6 @@ export default function QuantLabPage() {
   const [endDate, setEndDate] = useState("2024-12-31");
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
-
-  const [selectedRun, setSelectedRun] = useState<{
-    run: Run;
-    results: BacktestResults;
-  } | null>(null);
-  const [loadingResult, setLoadingResult] = useState(false);
 
   useEffect(() => {
     createSupabaseBrowserClient()
@@ -260,15 +172,8 @@ export default function QuantLabPage() {
     }
   }
 
-  async function viewResult(run: Run) {
-    if (run.status !== "done") return;
-    setLoadingResult(true);
-    try {
-      const r = await fetch(`${API_BASE_URL}/v1/strategies/runs/${run.id}`);
-      const data = await r.json();
-      if (data.results) setSelectedRun({ run, results: data.results });
-    } catch {}
-    setLoadingResult(false);
+  function viewResult(run: Run) {
+    router.push(`/dashboard/strategies/${run.id}`);
   }
 
   return (
@@ -392,11 +297,7 @@ export default function QuantLabPage() {
                               onClick={() => viewResult(run)}
                               className="flex items-center gap-1 rounded-lg bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400 hover:bg-cyan-500/20"
                             >
-                              {loadingResult ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <ChevronRight className="h-3 w-3" />
-                              )}
+                              <ChevronRight className="h-3 w-3" />
                               查看结果
                             </button>
                           )}
@@ -539,78 +440,6 @@ export default function QuantLabPage() {
               <p className="mt-2 text-center text-[10px] text-gray-600">
                 回测在后台运行，完成后在历史列表查看结果
               </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Results Modal */}
-      {selectedRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 p-5">
-              <div>
-                <h2 className="font-bold text-white">
-                  {selectedRun.run.template_name} · {selectedRun.run.symbol}
-                </h2>
-                <p className="text-xs text-gray-500">
-                  {selectedRun.run.start_date} → {selectedRun.run.end_date}
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedRun(null)}
-                className="text-gray-500 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="mb-3 grid grid-cols-4 gap-3">
-                <MetricCard
-                  label="总收益"
-                  value={pct(selectedRun.results.total_return)}
-                  positive={selectedRun.results.total_return > 0}
-                />
-                <MetricCard
-                  label="年化收益"
-                  value={pct(selectedRun.results.annualized_return)}
-                  positive={selectedRun.results.annualized_return > 0}
-                />
-                <MetricCard
-                  label="夏普比率"
-                  value={selectedRun.results.sharpe_ratio.toFixed(2)}
-                  positive={selectedRun.results.sharpe_ratio > 1}
-                />
-                <MetricCard
-                  label="最大回撤"
-                  value={pct(selectedRun.results.max_drawdown)}
-                  positive={false}
-                />
-              </div>
-              <div className="mb-4 grid grid-cols-3 gap-3">
-                <MetricCard
-                  label="胜率"
-                  value={pct(selectedRun.results.win_rate)}
-                  positive={selectedRun.results.win_rate > 0.5}
-                />
-                <MetricCard
-                  label="总交易次数"
-                  value={String(selectedRun.results.total_trades)}
-                />
-                <MetricCard
-                  label="盈亏比"
-                  value={selectedRun.results.profit_factor.toFixed(2)}
-                  positive={selectedRun.results.profit_factor > 1}
-                />
-              </div>
-              {selectedRun.results.equity_curve.length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold text-gray-500">
-                    权益曲线
-                  </p>
-                  <EquityChart data={selectedRun.results.equity_curve} />
-                </div>
-              )}
             </div>
           </div>
         </div>

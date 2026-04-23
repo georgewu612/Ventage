@@ -1,8 +1,11 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
+  Bell,
+  BookMarked,
   Brain,
   DollarSign,
   Layers,
@@ -22,6 +25,16 @@ import { PLAN_LABELS } from "@/lib/features/gates";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { useMarketSignals } from "@/lib/hooks/useMarketSignals";
 import { useI18n } from "@/lib/i18n/provider";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface WatchlistItem {
+  symbol: string;
+  notes: string | null;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 const MODULE_OPTIONS = [
   "",
@@ -45,7 +58,7 @@ function StatCard({
   bg?: string;
 }) {
   return (
-    <div className={`rounded-xl border ${border} ${bg} p-4`}>
+    <div className={`rounded-2xl border ${border} ${bg} p-4`}>
       <p
         className={`mb-1 text-xs font-medium ${color === "text-white" ? "text-gray-400" : color}`}
       >
@@ -88,13 +101,14 @@ function QuickAccessCard({
   locked?: boolean;
   color: string;
 }) {
+  const { t } = useI18n();
   return (
     <Link
       href={locked ? "/pricing" : href}
-      title={locked ? "升级解锁" : undefined}
+      title={locked ? t("home.locked") : undefined}
       className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-center transition-all ${
         locked
-          ? "border-white/5 bg-white/3 text-gray-600 hover:border-white/10"
+          ? "border-white/5 bg-white/[0.03] text-gray-600 hover:border-white/10"
           : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.08]"
       }`}
     >
@@ -102,17 +116,21 @@ function QuickAccessCard({
       <span className="text-xs font-medium">{label}</span>
       {locked && (
         <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-600">
-          升级
+          {t("home.locked")}
         </span>
       )}
     </Link>
   );
 }
 
+// ── Main Page ──────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { plan, can } = useProfile();
 
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [symbolInput, setSymbolInput] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [minScore, setMinScore] = useState(20);
@@ -120,6 +138,22 @@ export default function DashboardPage() {
     (typeof signals)[number] | null
   >(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  // Load user info + watchlist
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      setUserEmail(user.email ?? null);
+      const { data } = await supabase
+        .from("watchlists")
+        .select("symbol, notes")
+        .eq("user_id", user.id)
+        .order("added_at", { ascending: false })
+        .limit(8);
+      if (data) setWatchlist(data);
+    });
+  }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -129,7 +163,11 @@ export default function DashboardPage() {
     const id = `toast-${Date.now()}`;
     setToasts((prev) => [
       ...prev,
-      { id, message: `🆕 ${count} 条新信号到达`, type: "success" as const },
+      {
+        id,
+        message: `🆕 ${count} ${t("toast.newSignals")}`,
+        type: "success" as const,
+      },
     ]);
   }, []);
 
@@ -172,6 +210,18 @@ export default function DashboardPage() {
     ? Math.max(...moduleEntries.map(([, count]) => count))
     : 1;
 
+  // Greeting
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 5
+      ? t("home.greetLate")
+      : hour < 12
+        ? t("home.greetMorning")
+        : hour < 18
+          ? t("home.greetAfternoon")
+          : t("home.greetEvening");
+  const displayName = userEmail?.split("@")[0] ?? "—";
+
   if (error) {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4">
@@ -191,42 +241,67 @@ export default function DashboardPage() {
     <div>
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* ── Header ── */}
-      <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-white">市场雷达</h1>
-                <span
-                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${planInfo.color}`}
-                >
-                  {planInfo.zh}
-                </span>
-              </div>
-              <p className="mt-1 text-gray-400">AI 实时市场信号监控中心</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-                <span className="font-medium text-white">{total}</span>
-                <span className="ml-1 text-sm text-gray-400">
-                  {t("common.signals")}
-                </span>
-              </div>
-              {plan === "free" && (
-                <Link
-                  href="/pricing"
-                  className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/20"
-                >
-                  升级 Pro →
-                </Link>
-              )}
-            </div>
+      <main className="container mx-auto space-y-8 px-6 py-8">
+        {/* ── Welcome Banner ── */}
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-gradient-to-r from-slate-800/80 to-slate-900/80 px-6 py-5">
+          <div>
+            <p className="text-sm text-gray-400">{greeting}</p>
+            <h1 className="mt-0.5 text-2xl font-bold text-white">
+              {displayName}
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              {t("home.signalSummary")
+                .replace("{total}", String(total))
+                .replace("{bull}", String(bullish))
+                .replace("{bear}", String(bearish))}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${planInfo.color}`}
+            >
+              {locale === "zh" ? planInfo.zh : planInfo.en}
+            </span>
+            {plan === "free" && (
+              <Link
+                href="/pricing"
+                className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-300 transition-colors hover:bg-amber-500/20"
+              >
+                {t("home.upgradePro")}
+              </Link>
+            )}
           </div>
         </div>
-      </header>
 
-      <main className="container mx-auto space-y-8 px-6 py-8">
+        {/* ── Watchlist Strip ── */}
+        {watchlist.length > 0 && (
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+                <BookMarked className="h-4 w-4 text-cyan-400" />
+                {t("home.watchlist")}
+              </h2>
+              <Link
+                href="/dashboard/stocks/NVDA"
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300"
+              >
+                {t("home.watchlistManage")} <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {watchlist.map(({ symbol }) => (
+                <Link
+                  key={symbol}
+                  href={`/dashboard/stocks/${symbol}`}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-sm font-semibold text-cyan-300 transition-colors hover:border-cyan-500/30 hover:bg-cyan-500/10"
+                >
+                  ${symbol}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Summary Metrics ── */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
           <StatCard
@@ -254,7 +329,7 @@ export default function DashboardPage() {
             border="border-cyan-500/20"
             bg="bg-cyan-500/10"
           />
-          <div className="rounded-xl border border-purple-500/20 bg-purple-500/10 p-4">
+          <div className="rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
             <p className="mb-1 text-xs font-medium text-purple-300">
               {t("summary.putCallRatio")}
             </p>
@@ -265,12 +340,12 @@ export default function DashboardPage() {
         {/* ── Analytics Row ── */}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           {/* Top Symbols */}
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h3 className="mb-4 font-semibold text-white">
               {t("chart.topSymbols")}
             </h3>
             {topSymbols.length === 0 ? (
-              <p className="text-sm text-gray-500">暂无数据</p>
+              <p className="text-sm text-gray-500">{t("common.noData")}</p>
             ) : (
               <div className="space-y-3">
                 {topSymbols.map(({ symbol, count }, i) => {
@@ -310,12 +385,12 @@ export default function DashboardPage() {
           </div>
 
           {/* Direction Distribution */}
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h3 className="mb-4 font-semibold text-white">
               {t("chart.directionDist")}
             </h3>
             {(summary?.total_signals ?? 0) === 0 ? (
-              <p className="text-sm text-gray-500">暂无数据</p>
+              <p className="text-sm text-gray-500">{t("common.noData")}</p>
             ) : (
               <div className="space-y-4">
                 <div className="flex h-7 overflow-hidden rounded-full">
@@ -386,12 +461,12 @@ export default function DashboardPage() {
           </div>
 
           {/* Module Distribution */}
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h3 className="mb-4 font-semibold text-white">
               {t("chart.moduleDist")}
             </h3>
             {moduleEntries.length === 0 ? (
-              <p className="text-sm text-gray-500">暂无数据</p>
+              <p className="text-sm text-gray-500">{t("dashboard.empty")}</p>
             ) : (
               <div className="space-y-3">
                 {moduleEntries.map(([module, count]) => {
@@ -422,58 +497,60 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Quick Access to Data Sources ── */}
+        {/* ── Quick Access ── */}
         <div>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-white">数据源快捷入口</h2>
+            <h2 className="font-semibold text-white">
+              {t("home.dataSources")}
+            </h2>
             {plan === "free" && (
               <Link
                 href="/pricing"
                 className="text-xs text-amber-400 hover:underline"
               >
-                解锁全部 →
+                {t("home.unlockAll")}
               </Link>
             )}
           </div>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
             <QuickAccessCard
               icon={DollarSign}
-              label="期权异动"
+              label={t("ds.options")}
               href="/dashboard/options"
               locked={!can("options_flow")}
               color="text-emerald-400"
             />
             <QuickAccessCard
               icon={Users}
-              label="内部交易"
+              label={t("ds.insider")}
               href="/dashboard/insider"
               locked={!can("insider_trades")}
               color="text-blue-400"
             />
             <QuickAccessCard
               icon={Layers}
-              label="暗池大单"
+              label={t("ds.darkpool")}
               href="/dashboard/darkpool"
               locked={!can("dark_pool")}
               color="text-purple-400"
             />
             <QuickAccessCard
               icon={MessageSquare}
-              label="市场情绪"
+              label={t("ds.sentiment")}
               href="/dashboard/sentiment"
               locked={!can("sentiment")}
               color="text-yellow-400"
             />
             <QuickAccessCard
               icon={TrendingUp}
-              label="技术分析"
+              label={t("ds.technical")}
               href="/dashboard/technical"
               locked={!can("technical")}
               color="text-cyan-400"
             />
             <QuickAccessCard
               icon={Brain}
-              label="AI 报告"
+              label={t("ds.aiReports")}
               href="/dashboard/reports"
               locked={!can("ai_reports")}
               color="text-pink-400"
@@ -481,8 +558,27 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* ── Alert Banner for free plan ── */}
+        {plan === "free" && (
+          <div className="flex items-center gap-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-5 py-4">
+            <Bell className="h-5 w-5 shrink-0 text-amber-400" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-300">
+                {t("home.upgradeTitle")}
+              </p>
+              <p className="text-xs text-amber-600">{t("home.upgradeDesc")}</p>
+            </div>
+            <Link
+              href="/pricing"
+              className="shrink-0 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30"
+            >
+              {t("home.upgradeCta")}
+            </Link>
+          </div>
+        )}
+
         {/* ── Signal Filters ── */}
-        <div className="grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-gray-400">
               {t("filters.symbol")}
@@ -491,7 +587,7 @@ export default function DashboardPage() {
               value={symbolInput}
               onChange={(e) => setSymbolInput(e.target.value.toUpperCase())}
               placeholder="AAPL"
-              className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
             />
           </div>
           <div>
@@ -501,7 +597,7 @@ export default function DashboardPage() {
             <select
               value={moduleFilter}
               onChange={(e) => setModuleFilter(e.target.value)}
-              className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
             >
               {MODULE_OPTIONS.map((m) => (
                 <option key={m || "all"} value={m}>
@@ -522,7 +618,7 @@ export default function DashboardPage() {
               max={100}
               value={minScore}
               onChange={(e) => setMinScore(Number(e.target.value) || 0)}
-              className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
+              className="w-full rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-sm text-white"
             />
           </div>
           <div className="flex items-end">
@@ -532,7 +628,7 @@ export default function DashboardPage() {
                 setModuleFilter("");
                 setMinScore(20);
               }}
-              className="w-full rounded border border-white/10 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
+              className="w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/20"
             >
               {t("filters.reset")}
             </button>
@@ -546,7 +642,7 @@ export default function DashboardPage() {
               {t("dashboard.sectionTitle")}
             </h2>
             <span className="text-sm text-gray-500">
-              点击信号卡片查看详情 · 点击标的跳转工作台
+              {t("home.signalHint")}
             </span>
           </div>
 
@@ -565,14 +661,13 @@ export default function DashboardPage() {
               </p>
             </div>
           ) : (
-            <div className="animate-stagger grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
               {signals.map((signal) => (
-                <div key={signal.id} className="animate-slide-up">
-                  <SignalCard
-                    signal={signal}
-                    onClick={() => setSelectedSignal(signal)}
-                  />
-                </div>
+                <SignalCard
+                  key={signal.id}
+                  signal={signal}
+                  onClick={() => setSelectedSignal(signal)}
+                />
               ))}
             </div>
           )}
@@ -587,19 +682,19 @@ export default function DashboardPage() {
         {selectedSignal && <SignalDetail signal={selectedSignal} />}
       </SlidePanel>
 
-      <footer className="mt-20 border-t border-white/10 bg-white/5 py-6 backdrop-blur-sm">
+      <footer className="mt-16 border-t border-white/10 bg-white/5 py-5 backdrop-blur-sm">
         <div className="container mx-auto px-6 text-center text-sm text-gray-600">
           <p>
             {t("footer.text")} ·{" "}
             <Link href="/pricing" className="text-gray-500 hover:text-gray-300">
-              查看定价
+              {t("footer.viewPricing")}
             </Link>{" "}
             ·{" "}
             <Link
               href="/dashboard/admin"
               className="text-gray-500 hover:text-gray-300"
             >
-              系统状态
+              {t("footer.systemStatus")}
             </Link>
           </p>
         </div>

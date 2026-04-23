@@ -10,7 +10,6 @@ import {
   Brain,
   ChevronDown,
   Loader2,
-  Search,
   TrendingDown,
   TrendingUp,
   User,
@@ -78,7 +77,6 @@ interface SentimentItem {
 }
 
 interface AIAnalysis {
-  // Multi-agent fields (TradingAgents)
   decision?: string;
   fundamentals_report?: string;
   sentiment_report?: string;
@@ -88,7 +86,6 @@ interface AIAnalysis {
   bear_report?: string;
   risk_report?: string;
   trader_decision?: string;
-  // Legacy fields
   summary?: string;
   reasoning?: string;
   risk_assessment?: string;
@@ -103,6 +100,33 @@ function fmt(v: number | null, prefix = "$"): string {
     return `${prefix}${(v / 1_000_000).toFixed(1)}M`;
   if (Math.abs(v) >= 1_000) return `${prefix}${(v / 1_000).toFixed(0)}K`;
   return `${prefix}${v.toFixed(0)}`;
+}
+
+function parseAnalysis(
+  raw: string | null | undefined,
+  locale?: string,
+): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj && typeof obj === "object") {
+        const text =
+          (locale === "en"
+            ? obj.conclusion_en || obj.conclusion
+            : obj.conclusion || obj.conclusion_en) ??
+          obj.summary ??
+          obj.analysis ??
+          obj.reasoning ??
+          Object.values(obj).find((v) => typeof v === "string");
+        if (typeof text === "string" && text.length > 0) return text;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return trimmed;
 }
 
 // ── Small sub-components ──────────────────────────────────────────────────────
@@ -174,7 +198,11 @@ function PriceBar({ symbol }: { symbol: string }) {
       {rsi != null && (
         <span className="text-xs text-gray-400">
           RSI{" "}
-          <span className="font-semibold text-gray-200">{rsi.toFixed(0)}</span>
+          <span
+            className={`font-semibold ${rsi > 70 ? "text-red-300" : rsi < 30 ? "text-emerald-300" : "text-gray-200"}`}
+          >
+            {rsi.toFixed(0)}
+          </span>
         </span>
       )}
       {volume > 0 && (
@@ -193,15 +221,7 @@ function StockWorkbenchInner() {
   const params = useParams();
   const router = useRouter();
   const symbol = ((params.symbol as string) ?? "").toUpperCase();
-  const { dateLocale } = useI18n();
-
-  // Search box
-  const [searchInput, setSearchInput] = useState(symbol);
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const s = searchInput.trim().toUpperCase();
-    if (s) router.push(`/dashboard/stocks/${s}`);
-  };
+  const { locale, dateLocale } = useI18n();
 
   // Watchlist state
   const [inWatchlist, setInWatchlist] = useState(false);
@@ -243,7 +263,7 @@ function StockWorkbenchInner() {
     setWatchlistLoading(false);
   };
 
-  // Data fetch helpers
+  // Data fetching
   const [signals, setSignals] = useState<Signal[]>([]);
   const [options, setOptions] = useState<OptionsItem[]>([]);
   const [insiders, setInsiders] = useState<InsiderItem[]>([]);
@@ -317,113 +337,84 @@ function StockWorkbenchInner() {
   if (!symbol) {
     return (
       <div className="flex h-64 items-center justify-center text-gray-500">
-        请输入股票代码
+        请在上方搜索框输入股票代码
       </div>
     );
   }
 
   return (
     <div>
-      {/* Header */}
-      <header className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => router.back()}
-              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+      {/* ── Compact Header ── */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-white/5 px-6 py-3">
+        <button
+          onClick={() => router.back()}
+          className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
 
-            {/* Symbol */}
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">${symbol}</span>
-            </div>
+        <span className="text-xl font-bold text-white">${symbol}</span>
 
-            {/* Search */}
-            <form onSubmit={handleSearch} className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value.toUpperCase())}
-                  placeholder="跳转到..."
-                  className="w-28 rounded-lg border border-white/10 bg-slate-900/70 py-1.5 pr-3 pl-8 text-sm text-white placeholder:text-gray-500"
-                />
-              </div>
-              <button
-                type="submit"
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300 hover:bg-white/10"
-              >
-                跳转
-              </button>
-            </form>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={toggleWatchlist}
+            disabled={watchlistLoading}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all ${
+              inWatchlist
+                ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
+                : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20 hover:text-white"
+            }`}
+          >
+            {inWatchlist ? (
+              <BookMarked className="h-4 w-4" />
+            ) : (
+              <BookmarkPlus className="h-4 w-4" />
+            )}
+            {inWatchlist ? "已自选" : "加自选"}
+          </button>
 
-            <div className="ml-auto flex items-center gap-2">
-              {/* Watchlist toggle */}
-              <button
-                onClick={toggleWatchlist}
-                disabled={watchlistLoading}
-                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-all ${
-                  inWatchlist
-                    ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
-                    : "border-white/10 bg-white/5 text-gray-400 hover:border-white/20 hover:text-white"
-                }`}
-              >
-                {inWatchlist ? (
-                  <BookMarked className="h-4 w-4" />
-                ) : (
-                  <BookmarkPlus className="h-4 w-4" />
-                )}
-                {inWatchlist ? "已自选" : "加自选"}
-              </button>
-
-              {/* AI Analyze */}
-              <button
-                onClick={runAiAnalysis}
-                disabled={aiLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-purple-500/20 px-3 py-1.5 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-50"
-              >
-                {aiLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Brain className="h-4 w-4" />
-                )}
-                {aiLoading ? "分析中..." : "AI 深度分析"}
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={runAiAnalysis}
+            disabled={aiLoading}
+            className="flex items-center gap-1.5 rounded-lg bg-purple-500/20 px-3 py-1.5 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30 disabled:opacity-50"
+          >
+            {aiLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Brain className="h-4 w-4" />
+            )}
+            {aiLoading ? "分析中…" : "AI 深度分析"}
+          </button>
         </div>
-      </header>
+      </div>
 
-      <main className="container mx-auto space-y-4 px-6 py-6">
+      <main className="container mx-auto space-y-4 px-6 py-5">
         {/* Price bar */}
         <PriceBar symbol={symbol} />
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {/* ── Left col (2/3): Chart + data panels ── */}
-          <div className="space-y-4 lg:col-span-2">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          {/* ── Left / Center (2 cols): Chart + data panels ── */}
+          <div className="space-y-4 xl:col-span-2">
             {/* K-line chart */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                K 线图 — {symbol}
+                K 线图 &mdash; {symbol} · 3 个月
               </p>
               {techLoading ? (
-                <div className="flex h-48 items-center justify-center">
+                <div className="flex h-52 items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
                 </div>
               ) : techData ? (
                 <CandlestickChart data={techData} />
               ) : (
-                <div className="flex h-48 items-center justify-center text-sm text-gray-500">
+                <div className="flex h-52 items-center justify-center text-sm text-gray-500">
                   暂无技术数据
                 </div>
               )}
             </div>
 
-            {/* Options + Insider grid */}
+            {/* Options + Insider */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {/* Options Flow */}
               <SectionCard title="期权异动">
                 {options.length === 0 ? (
                   <EmptyRow text="暂无期权数据" />
@@ -463,7 +454,6 @@ function StockWorkbenchInner() {
                 </a>
               </SectionCard>
 
-              {/* Insider Trades */}
               <SectionCard title="内部交易">
                 {insiders.length === 0 ? (
                   <EmptyRow text="暂无内部交易" />
@@ -507,9 +497,8 @@ function StockWorkbenchInner() {
               </SectionCard>
             </div>
 
-            {/* Dark Pool + Sentiment grid */}
+            {/* Dark Pool + Sentiment */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {/* Dark Pool */}
               <SectionCard title="暗池大单">
                 {darkpool.length === 0 ? (
                   <EmptyRow text="暂无暗池数据" />
@@ -541,7 +530,6 @@ function StockWorkbenchInner() {
                 </a>
               </SectionCard>
 
-              {/* Sentiment */}
               <SectionCard title="市场情绪">
                 {sentiment.length === 0 ? (
                   <EmptyRow text="暂无情绪数据" />
@@ -574,7 +562,7 @@ function StockWorkbenchInner() {
                           </div>
                           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                             <div
-                              className={`h-full ${color}`}
+                              className={`h-full transition-all ${color}`}
                               style={{ width: `${pct}%` }}
                             />
                           </div>
@@ -593,7 +581,7 @@ function StockWorkbenchInner() {
             </div>
           </div>
 
-          {/* ── Right col (1/3): Signals + AI Analysis ── */}
+          {/* ── Right col: Signals + AI ── */}
           <div className="space-y-4">
             {/* Signals Feed */}
             <SectionCard title={`信号 · ${symbol}`}>
@@ -617,12 +605,16 @@ function StockWorkbenchInner() {
                             Math.round((sig.confidence ?? 0) * 100)}
                         </span>
                       </div>
-                      {sig.analysis && (
-                        <p className="line-clamp-2 text-xs text-gray-400">
-                          {sig.analysis}
-                        </p>
-                      )}
-                      <p className="mt-1 text-[10px] text-gray-600">
+                      {sig.analysis &&
+                        (() => {
+                          const text = parseAnalysis(sig.analysis, locale);
+                          return text ? (
+                            <p className="line-clamp-2 text-xs text-gray-200">
+                              {text}
+                            </p>
+                          ) : null;
+                        })()}
+                      <p className="mt-1 text-[10px] text-gray-400">
                         {new Date(sig.created_at).toLocaleDateString(
                           dateLocale,
                         )}
@@ -636,26 +628,29 @@ function StockWorkbenchInner() {
             {/* AI Analysis Panel */}
             <SectionCard title="AI 深度分析">
               {!aiLoading && !aiResult && !aiError && (
-                <div className="flex flex-col items-center gap-3 py-4 text-center">
-                  <Brain className="h-8 w-8 text-purple-400/50" />
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <Brain className="h-10 w-10 text-purple-400/40" />
                   <p className="text-sm text-gray-500">
                     7 个专业 AI Agent 协作分析
                   </p>
+                  <p className="text-xs text-gray-600">
+                    基本面 · 技术面 · 情绪 · 新闻 · 多空 · 风控
+                  </p>
                   <button
                     onClick={runAiAnalysis}
-                    className="w-full rounded-lg bg-purple-500/20 py-2 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30"
+                    className="w-full rounded-xl bg-purple-500/20 py-2.5 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30"
                   >
                     启动深度分析
                   </button>
                   <p className="text-[10px] text-gray-600">
-                    约消耗 $0.05–0.10 API 费用
+                    约需 30–60 秒 · 消耗 $0.05–0.10 API 费用
                   </p>
                 </div>
               )}
 
               {aiLoading && (
-                <div className="flex flex-col items-center gap-3 py-6 text-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+                <div className="flex flex-col items-center gap-3 py-8 text-center">
+                  <Loader2 className="h-7 w-7 animate-spin text-purple-400" />
                   <p className="text-sm text-gray-400">多 Agent 协作分析中…</p>
                   <p className="text-xs text-gray-600">通常需要 30–60 秒</p>
                 </div>
@@ -668,10 +663,10 @@ function StockWorkbenchInner() {
               )}
 
               {aiResult && (
-                <div className="space-y-3 text-sm">
-                  {/* 交易决策 */}
+                <div className="space-y-2 text-sm">
+                  {/* 交易决策 — always at top */}
                   {(aiResult.decision || aiResult.trader_decision) && (
-                    <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3">
+                    <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3">
                       <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase">
                         交易决策
                       </p>
@@ -681,7 +676,7 @@ function StockWorkbenchInner() {
                     </div>
                   )}
 
-                  {/* Agent 报告折叠区 */}
+                  {/* Agent report collapsibles */}
                   {[
                     {
                       key: "fundamentals_report",
@@ -705,17 +700,17 @@ function StockWorkbenchInner() {
                     },
                     {
                       key: "bull_report",
-                      label: "多方",
+                      label: "多方论据",
                       color: "text-emerald-400",
                     },
                     {
                       key: "bear_report",
-                      label: "空方",
+                      label: "空方论据",
                       color: "text-red-400",
                     },
                     {
                       key: "risk_report",
-                      label: "风控",
+                      label: "风控评估",
                       color: "text-orange-400",
                     },
                   ]
@@ -726,42 +721,20 @@ function StockWorkbenchInner() {
                         className="group rounded-lg border border-white/10 bg-white/5"
                       >
                         <summary
-                          className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-semibold ${color}`}
+                          className={`flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-semibold ${color}`}
                         >
-                          <span className="flex-1">{label} Agent</span>
+                          {label}
                           <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
                         </summary>
-                        <div className="px-3 pb-3 text-[11px] leading-relaxed whitespace-pre-wrap text-gray-400">
+                        <div className="border-t border-white/10 px-3 py-2.5 text-xs leading-relaxed text-gray-300">
                           {String(aiResult[key])}
                         </div>
                       </details>
                     ))}
 
-                  {/* 旧格式兼容 */}
-                  {aiResult.summary && !aiResult.fundamentals_report && (
-                    <div>
-                      <p className="mb-1 text-xs font-semibold text-gray-400">
-                        分析摘要
-                      </p>
-                      <p className="text-xs leading-relaxed text-gray-300">
-                        {String(aiResult.summary)}
-                      </p>
-                    </div>
-                  )}
-                  {aiResult.risk_assessment && (
-                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
-                      <p className="mb-1 text-xs font-semibold text-amber-400">
-                        风险评估
-                      </p>
-                      <p className="text-xs text-gray-300">
-                        {String(aiResult.risk_assessment)}
-                      </p>
-                    </div>
-                  )}
-
                   <button
                     onClick={runAiAnalysis}
-                    className="w-full rounded-lg border border-white/10 py-1.5 text-xs text-gray-400 hover:bg-white/5"
+                    className="mt-1 w-full rounded-lg border border-white/10 py-1.5 text-xs text-gray-500 hover:text-gray-300"
                   >
                     重新分析
                   </button>
@@ -777,7 +750,13 @@ function StockWorkbenchInner() {
 
 export default function StockWorkbenchPage() {
   return (
-    <Suspense>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+        </div>
+      }
+    >
       <StockWorkbenchInner />
     </Suspense>
   );
