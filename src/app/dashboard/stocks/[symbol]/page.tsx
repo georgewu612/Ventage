@@ -132,6 +132,7 @@ function parseAnalysis(
 // ── Small sub-components ──────────────────────────────────────────────────────
 
 function DirectionBadge({ dir }: { dir: string }) {
+  const { t } = useI18n();
   const cfg =
     dir === "bullish"
       ? {
@@ -144,12 +145,18 @@ function DirectionBadge({ dir }: { dir: string }) {
             icon: <TrendingDown className="h-3 w-3" />,
           }
         : { cls: "bg-gray-500/15 text-gray-400", icon: null };
+  const label =
+    dir === "bullish"
+      ? t("signal.bullish")
+      : dir === "bearish"
+        ? t("signal.bearish")
+        : t("signal.neutral");
   return (
     <span
       className={`flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.cls}`}
     >
       {cfg.icon}
-      {dir === "bullish" ? "看涨" : dir === "bearish" ? "看跌" : "中性"}
+      {label}
     </span>
   );
 }
@@ -221,7 +228,7 @@ function StockWorkbenchInner() {
   const params = useParams();
   const router = useRouter();
   const symbol = ((params.symbol as string) ?? "").toUpperCase();
-  const { locale, dateLocale } = useI18n();
+  const { t, locale, dateLocale } = useI18n();
 
   // Watchlist state
   const [inWatchlist, setInWatchlist] = useState(false);
@@ -313,8 +320,9 @@ function StockWorkbenchInner() {
     setAiError(null);
     setAiResult(null);
     try {
+      const lang = locale === "zh" ? "zh" : "en";
       const res = await fetch(
-        `${API_BASE_URL}/v1/reports/multi-agent/${symbol}?language=zh`,
+        `${API_BASE_URL}/v1/reports/multi-agent/${symbol}?language=${lang}`,
         { signal: abortRef.current.signal },
       );
       if (!res.ok) throw new Error(`API ${res.status}`);
@@ -325,7 +333,7 @@ function StockWorkbenchInner() {
     } finally {
       setAiLoading(false);
     }
-  }, [symbol]);
+  }, [symbol, locale]);
 
   // Technical chart
   const { data: techData, loading: techLoading } = useTechnicalAnalysis(
@@ -334,10 +342,49 @@ function StockWorkbenchInner() {
     "1d",
   );
 
+  // Agent report config
+  const agentReports = [
+    {
+      key: "fundamentals_report",
+      label: t("stock.fundamentals"),
+      color: "text-blue-400",
+    },
+    {
+      key: "technical_report",
+      label: t("stock.technical"),
+      color: "text-cyan-400",
+    },
+    {
+      key: "sentiment_report",
+      label: t("stock.sentimentReport"),
+      color: "text-pink-400",
+    },
+    {
+      key: "news_report",
+      label: t("stock.newsReport"),
+      color: "text-amber-400",
+    },
+    {
+      key: "bull_report",
+      label: t("stock.bullCase"),
+      color: "text-emerald-400",
+    },
+    {
+      key: "bear_report",
+      label: t("stock.bearCase"),
+      color: "text-red-400",
+    },
+    {
+      key: "risk_report",
+      label: t("stock.riskAssessment"),
+      color: "text-orange-400",
+    },
+  ];
+
   if (!symbol) {
     return (
       <div className="flex h-64 items-center justify-center text-gray-500">
-        请在上方搜索框输入股票代码
+        {t("stock.enterSymbol")}
       </div>
     );
   }
@@ -370,7 +417,7 @@ function StockWorkbenchInner() {
             ) : (
               <BookmarkPlus className="h-4 w-4" />
             )}
-            {inWatchlist ? "已自选" : "加自选"}
+            {inWatchlist ? t("stock.watchlistAdded") : t("stock.watchlistAdd")}
           </button>
 
           <button
@@ -383,7 +430,7 @@ function StockWorkbenchInner() {
             ) : (
               <Brain className="h-4 w-4" />
             )}
-            {aiLoading ? "分析中…" : "AI 深度分析"}
+            {aiLoading ? t("stock.aiAnalyzing") : t("stock.aiAnalysis")}
           </button>
         </div>
       </div>
@@ -398,7 +445,7 @@ function StockWorkbenchInner() {
             {/* K-line chart */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                K 线图 &mdash; {symbol} · 3 个月
+                {t("stock.chartTitle")} &mdash; {symbol} · 3m
               </p>
               {techLoading ? (
                 <div className="flex h-52 items-center justify-center">
@@ -408,16 +455,16 @@ function StockWorkbenchInner() {
                 <CandlestickChart data={techData} />
               ) : (
                 <div className="flex h-52 items-center justify-center text-sm text-gray-500">
-                  暂无技术数据
+                  {t("stock.noTechData")}
                 </div>
               )}
             </div>
 
             {/* Options + Insider */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <SectionCard title="期权异动">
+              <SectionCard title={t("stock.optionsFlow")}>
                 {options.length === 0 ? (
-                  <EmptyRow text="暂无期权数据" />
+                  <EmptyRow text={t("stock.noOptions")} />
                 ) : (
                   <div className="space-y-2">
                     {options.slice(0, 5).map((o) => (
@@ -450,39 +497,39 @@ function StockWorkbenchInner() {
                   href={`/dashboard/options?symbol=${symbol}`}
                   className="mt-3 flex items-center gap-1 text-xs text-cyan-400 hover:underline"
                 >
-                  查看全部 <ArrowUpRight className="h-3 w-3" />
+                  {t("stock.viewAll")} <ArrowUpRight className="h-3 w-3" />
                 </a>
               </SectionCard>
 
-              <SectionCard title="内部交易">
+              <SectionCard title={t("stock.insiderTrades")}>
                 {insiders.length === 0 ? (
-                  <EmptyRow text="暂无内部交易" />
+                  <EmptyRow text={t("stock.noInsider")} />
                 ) : (
                   <div className="space-y-2">
-                    {insiders.slice(0, 5).map((t) => (
+                    {insiders.slice(0, 5).map((ins) => (
                       <div
-                        key={t.id}
+                        key={ins.id}
                         className="flex items-center justify-between text-sm"
                       >
                         <div className="flex items-center gap-2">
                           <span
                             className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                              t.trade_type === "BUY"
+                              ins.trade_type === "BUY"
                                 ? "bg-emerald-500/15 text-emerald-400"
                                 : "bg-red-500/15 text-red-400"
                             }`}
                           >
-                            {t.trade_type}
+                            {ins.trade_type}
                           </span>
                           <div className="flex items-center gap-1 text-gray-300">
                             <User className="h-3 w-3 text-gray-500" />
                             <span className="max-w-[100px] truncate">
-                              {t.insider_name}
+                              {ins.insider_name}
                             </span>
                           </div>
                         </div>
                         <span className="font-semibold text-white tabular-nums">
-                          {fmt(t.value)}
+                          {fmt(ins.value)}
                         </span>
                       </div>
                     ))}
@@ -492,16 +539,16 @@ function StockWorkbenchInner() {
                   href={`/dashboard/insider?symbol=${symbol}`}
                   className="mt-3 flex items-center gap-1 text-xs text-cyan-400 hover:underline"
                 >
-                  查看全部 <ArrowUpRight className="h-3 w-3" />
+                  {t("stock.viewAll")} <ArrowUpRight className="h-3 w-3" />
                 </a>
               </SectionCard>
             </div>
 
             {/* Dark Pool + Sentiment */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <SectionCard title="暗池大单">
+              <SectionCard title={t("stock.darkPool")}>
                 {darkpool.length === 0 ? (
-                  <EmptyRow text="暂无暗池数据" />
+                  <EmptyRow text={t("stock.noDarkPool")} />
                 ) : (
                   <div className="space-y-2">
                     {darkpool.map((d) => (
@@ -526,13 +573,13 @@ function StockWorkbenchInner() {
                   href={`/dashboard/darkpool?symbol=${symbol}`}
                   className="mt-3 flex items-center gap-1 text-xs text-cyan-400 hover:underline"
                 >
-                  查看全部 <ArrowUpRight className="h-3 w-3" />
+                  {t("stock.viewAll")} <ArrowUpRight className="h-3 w-3" />
                 </a>
               </SectionCard>
 
-              <SectionCard title="市场情绪">
+              <SectionCard title={t("stock.marketSentiment")}>
                 {sentiment.length === 0 ? (
-                  <EmptyRow text="暂无情绪数据" />
+                  <EmptyRow text={t("stock.noSentiment")} />
                 ) : (
                   <div className="space-y-3">
                     {sentiment.map((s) => {
@@ -575,7 +622,7 @@ function StockWorkbenchInner() {
                   href={`/dashboard/sentiment?symbol=${symbol}`}
                   className="mt-3 flex items-center gap-1 text-xs text-cyan-400 hover:underline"
                 >
-                  查看全部 <ArrowUpRight className="h-3 w-3" />
+                  {t("stock.viewAll")} <ArrowUpRight className="h-3 w-3" />
                 </a>
               </SectionCard>
             </div>
@@ -584,13 +631,13 @@ function StockWorkbenchInner() {
           {/* ── Right col: Signals + AI ── */}
           <div className="space-y-4">
             {/* Signals Feed */}
-            <SectionCard title={`信号 · ${symbol}`}>
+            <SectionCard title={`${t("stock.signals")} · ${symbol}`}>
               {dataLoading ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
                 </div>
               ) : signals.length === 0 ? (
-                <EmptyRow text="暂无信号" />
+                <EmptyRow text={t("stock.noSignals")} />
               ) : (
                 <div className="space-y-2">
                   {signals.map((sig) => (
@@ -626,24 +673,24 @@ function StockWorkbenchInner() {
             </SectionCard>
 
             {/* AI Analysis Panel */}
-            <SectionCard title="AI 深度分析">
+            <SectionCard title={t("stock.aiAnalysis")}>
               {!aiLoading && !aiResult && !aiError && (
                 <div className="flex flex-col items-center gap-3 py-6 text-center">
                   <Brain className="h-10 w-10 text-purple-400/40" />
                   <p className="text-sm text-gray-500">
-                    7 个专业 AI Agent 协作分析
+                    {t("stock.aiAgentCount")}
                   </p>
                   <p className="text-xs text-gray-600">
-                    基本面 · 技术面 · 情绪 · 新闻 · 多空 · 风控
+                    {t("stock.aiAgentTypes")}
                   </p>
                   <button
                     onClick={runAiAnalysis}
                     className="w-full rounded-xl bg-purple-500/20 py-2.5 text-sm font-medium text-purple-300 transition-colors hover:bg-purple-500/30"
                   >
-                    启动深度分析
+                    {t("stock.startAnalysis")}
                   </button>
                   <p className="text-[10px] text-gray-600">
-                    约需 30–60 秒 · 消耗 $0.05–0.10 API 费用
+                    {t("stock.aiCostNote")}
                   </p>
                 </div>
               )}
@@ -651,24 +698,29 @@ function StockWorkbenchInner() {
               {aiLoading && (
                 <div className="flex flex-col items-center gap-3 py-8 text-center">
                   <Loader2 className="h-7 w-7 animate-spin text-purple-400" />
-                  <p className="text-sm text-gray-400">多 Agent 协作分析中…</p>
-                  <p className="text-xs text-gray-600">通常需要 30–60 秒</p>
+                  <p className="text-sm text-gray-400">
+                    {t("stock.aiRunning")}
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {t("stock.aiRunningNote")}
+                  </p>
                 </div>
               )}
 
               {aiError && (
                 <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-                  分析失败：{aiError}
+                  {t("stock.aiFailed")}
+                  {aiError}
                 </div>
               )}
 
               {aiResult && (
                 <div className="space-y-2 text-sm">
-                  {/* 交易决策 — always at top */}
+                  {/* Trading decision — always at top */}
                   {(aiResult.decision || aiResult.trader_decision) && (
                     <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3">
                       <p className="mb-1.5 text-[10px] font-semibold tracking-wider text-purple-300 uppercase">
-                        交易决策
+                        {t("stock.traderDecision")}
                       </p>
                       <p className="text-xs leading-relaxed text-gray-200">
                         {String(aiResult.trader_decision ?? aiResult.decision)}
@@ -677,43 +729,7 @@ function StockWorkbenchInner() {
                   )}
 
                   {/* Agent report collapsibles */}
-                  {[
-                    {
-                      key: "fundamentals_report",
-                      label: "基本面",
-                      color: "text-blue-400",
-                    },
-                    {
-                      key: "technical_report",
-                      label: "技术面",
-                      color: "text-cyan-400",
-                    },
-                    {
-                      key: "sentiment_report",
-                      label: "情绪",
-                      color: "text-pink-400",
-                    },
-                    {
-                      key: "news_report",
-                      label: "新闻",
-                      color: "text-amber-400",
-                    },
-                    {
-                      key: "bull_report",
-                      label: "多方论据",
-                      color: "text-emerald-400",
-                    },
-                    {
-                      key: "bear_report",
-                      label: "空方论据",
-                      color: "text-red-400",
-                    },
-                    {
-                      key: "risk_report",
-                      label: "风控评估",
-                      color: "text-orange-400",
-                    },
-                  ]
+                  {agentReports
                     .filter(({ key }) => aiResult[key])
                     .map(({ key, label, color }) => (
                       <details
@@ -736,7 +752,7 @@ function StockWorkbenchInner() {
                     onClick={runAiAnalysis}
                     className="mt-1 w-full rounded-lg border border-white/10 py-1.5 text-xs text-gray-500 hover:text-gray-300"
                   >
-                    重新分析
+                    {t("stock.reanalyze")}
                   </button>
                 </div>
               )}
