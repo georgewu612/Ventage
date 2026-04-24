@@ -20,7 +20,7 @@ import structlog
 import yfinance as yf
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
-from openai import AsyncOpenAI
+from openai import OpenAI
 from pydantic import BaseModel
 from supabase import Client, create_client
 
@@ -390,8 +390,18 @@ def portfolio_metrics(user_id: str = Query(...)) -> dict[str, Any]:
 
 
 @router.get("/portfolio/analyze")
-async def analyze_portfolio(user_id: str = Query(...)) -> dict[str, Any]:
+def analyze_portfolio(user_id: str = Query(...)) -> dict[str, Any]:
     """AI portfolio health analysis: health score, regime alignment, risk flags, recommendations."""
+    try:
+        return _do_analyze(user_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("portfolio_analyze_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
+
+
+def _do_analyze(user_id: str) -> dict[str, Any]:
     db = _db()
     s = get_settings()
 
@@ -471,8 +481,8 @@ Return ONLY valid JSON with exactly this structure (no extra keys):
 
 Constraints: max 3 risk_flags, max 3 recommendations. Be specific and actionable."""
 
-    openai_client = AsyncOpenAI(api_key=s.openai_api_key)
-    response = await openai_client.chat.completions.create(
+    openai_client = OpenAI(api_key=s.openai_api_key)
+    response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
