@@ -317,3 +317,71 @@ def delete_holding(symbol: str, user_id: str = Query(...)) -> dict[str, Any]:
     db = _db()
     db.table("portfolio_holdings").delete().eq("user_id", user_id).eq("symbol", symbol.upper()).execute()
     return {"deleted": symbol.upper()}
+
+
+@router.get("/portfolio/metrics")
+def portfolio_metrics(user_id: str = Query(...)) -> dict[str, Any]:
+    """Return performance metrics: max drawdown, best/worst performer, SPY benchmark."""
+    db = _db()
+
+    # Current holdings → best/worst performer
+    summary = portfolio_summary(user_id=user_id)
+    holdings = summary["holdings"]
+
+    best: dict | None = None
+    worst: dict | None = None
+    if holdings:
+        best = max(holdings, key=lambda h: h["pnl_pct"])
+        worst = min(holdings, key=lambda h: h["pnl_pct"])
+
+    # Max drawdown + 30-day portfolio return from snapshots (last 90 days)
+    since = (datetime.now(UTC) - timedelta(days=90)).date().isoformat()
+    snap_result = (
+        db.table("portfolio_snapshots")
+        .select("snapshot_date, total_value")
+        .eq("user_id", user_id)
+        .gte("snapshot_date", since)
+        .order("snapshot_date")
+        .execute()
+    )
+    snapshots = snap_result.data or []
+
+    max_drawdown_pct = 0.0
+    portfolio_30d_return_pct: float | None = None
+
+    if len(snapshots) >= 2:
+        values = [float(s["total_value"]) for s in snapshots]
+        peak = values[0]
+        for v in values:
+            if v > peak:
+                peak = v
+            dd = (peak - v) / peak * 100 if peak > 0 else 0.0
+            if dd > max_drawdown_pct:
+                max_drawdown_pct = dd
+
+        first_val = values[0]
+        last_val = values[-1]
+        if first_val > 0:
+            portfolio_30d_return_pct = round((last_val - first_val) / first_val * 100, 2)
+
+    # SPY 30-day return as benchmark
+    spy_30d_return_pct: float | None = None
+    try:
+        spy_hist = yf.Ticker("SPY").history(period="35d")
+        if len(spy_hist) >= 2:
+            spy_30d_return_pct = round(
+                (float(spy_hist["Close"].iloc[-1]) - float(spy_hist["Close"].iloc[0]))
+                / float(spy_hist["Close"].iloc[0]) * 100,
+                2,
+            )
+    except Exception:
+        pass
+
+    return {
+        "max_drawdown_pct": round(max_drawdown_pct, 2),
+        "best_performer": {"symbol": best["symbol"], "pnl_pct": best["pnl_pct"]} if best else None,
+        "worst_performer": {"symbol": worst["symbol"], "pnl_pct": worst["pnl_pct"]} if worst else None,
+        "spy_30d_return_pct": spy_30d_return_pct,
+        "portfolio_30d_return_pct": portfolio_30d_return_pct,
+        "snapshot_count": len(snapshots),
+    }

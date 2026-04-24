@@ -17,6 +17,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
+import { useI18n } from "@/lib/i18n/provider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,15 @@ interface Snapshot {
   snapshot_date: string;
   total_value: number;
   total_pnl: number;
+}
+
+interface Metrics {
+  max_drawdown_pct: number;
+  best_performer: { symbol: string; pnl_pct: number } | null;
+  worst_performer: { symbol: string; pnl_pct: number } | null;
+  spy_30d_return_pct: number | null;
+  portfolio_30d_return_pct: number | null;
+  snapshot_count: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -116,13 +126,38 @@ function EquitySparkline({ data }: { data: Snapshot[] }) {
   );
 }
 
+// ── Metrics card ──────────────────────────────────────────────────────────────
+
+function MetricCard({
+  label,
+  value,
+  color = "text-white",
+  subtext,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  subtext?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <p className="mb-1 text-xs text-gray-500">{label}</p>
+      <p className={`text-lg font-bold ${color}`}>{value}</p>
+      {subtext && <p className="mt-0.5 text-xs text-gray-600">{subtext}</p>}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
+  const { t } = useI18n();
+
   const [userId, setUserId] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [exposure, setExposure] = useState<Exposure | null>(null);
   const [history, setHistory] = useState<Snapshot[]>([]);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -151,16 +186,17 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     if (userId) loadAll();
-  }, [userId]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadAll = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const [sumRes, expRes, histRes] = await Promise.allSettled([
+      const [sumRes, expRes, histRes, metRes] = await Promise.allSettled([
         fetch(`${API_BASE_URL}/v1/portfolio/summary?user_id=${userId}`),
         fetch(`${API_BASE_URL}/v1/portfolio/exposure?user_id=${userId}`),
         fetch(`${API_BASE_URL}/v1/portfolio/history?user_id=${userId}&days=90`),
+        fetch(`${API_BASE_URL}/v1/portfolio/metrics?user_id=${userId}`),
       ]);
       if (sumRes.status === "fulfilled" && sumRes.value.ok)
         setSummary(await sumRes.value.json());
@@ -170,6 +206,8 @@ export default function PortfolioPage() {
         const d = await histRes.value.json();
         setHistory(d.snapshots ?? []);
       }
+      if (metRes.status === "fulfilled" && metRes.value.ok)
+        setMetrics(await metRes.value.json());
     } finally {
       setLoading(false);
     }
@@ -212,7 +250,7 @@ export default function PortfolioPage() {
       setAddCost("");
       await loadAll();
     } catch (e: unknown) {
-      setAddError(e instanceof Error ? e.message : "错误");
+      setAddError(e instanceof Error ? e.message : t("common.error"));
     }
     setAddLoading(false);
   };
@@ -241,7 +279,7 @@ export default function PortfolioPage() {
       setCsvText("");
       await loadAll();
     } catch (e: unknown) {
-      setCsvError(e instanceof Error ? e.message : "解析失败");
+      setCsvError(e instanceof Error ? e.message : t("common.error"));
     }
     setCsvLoading(false);
   };
@@ -256,6 +294,13 @@ export default function PortfolioPage() {
 
   const isEmpty = !summary || summary.holdings.length === 0;
 
+  // ── Helpers for metrics display ───────────────────────────────────
+  function pctColor(v: number | null, invert = false) {
+    if (v === null) return "text-white";
+    const positive = invert ? v <= 0 : v >= 0;
+    return positive ? "text-emerald-400" : "text-red-400";
+  }
+
   return (
     <FeatureGate feature="portfolio" overlay>
       <div className="min-h-screen bg-slate-900 p-6">
@@ -266,23 +311,23 @@ export default function PortfolioPage() {
               <Wallet className="h-6 w-6 text-cyan-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">组合监控</h1>
-              <p className="text-sm text-gray-400">
-                持仓管理 · 收益追踪 · 风险敞口
-              </p>
+              <h1 className="text-2xl font-bold text-white">
+                {t("portfolio.title")}
+              </h1>
+              <p className="text-sm text-gray-400">{t("portfolio.subtitle")}</p>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => setShowCsv(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5"
               >
-                <Upload className="h-3.5 w-3.5" /> 导入 CSV
+                <Upload className="h-3.5 w-3.5" /> {t("portfolio.importCsv")}
               </button>
               <button
                 onClick={() => setShowAdd(true)}
                 className="flex items-center gap-1.5 rounded-lg bg-cyan-500 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-400"
               >
-                <Plus className="h-3.5 w-3.5" /> 添加持仓
+                <Plus className="h-3.5 w-3.5" /> {t("portfolio.addHolding")}
               </button>
               <button
                 onClick={refresh}
@@ -305,22 +350,22 @@ export default function PortfolioPage() {
           {!loading && isEmpty && (
             <div className="rounded-2xl border border-white/10 bg-white/5 py-20 text-center">
               <Wallet className="mx-auto mb-4 h-10 w-10 text-gray-700" />
-              <p className="text-gray-400">还没有持仓</p>
+              <p className="text-gray-400">{t("portfolio.empty")}</p>
               <p className="mt-1 text-sm text-gray-600">
-                点击「添加持仓」手动录入，或「导入 CSV」批量导入
+                {t("portfolio.emptyHint")}
               </p>
               <div className="mt-6 flex justify-center gap-3">
                 <button
                   onClick={() => setShowAdd(true)}
                   className="flex items-center gap-2 rounded-xl bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-cyan-400"
                 >
-                  <Plus className="h-4 w-4" /> 添加持仓
+                  <Plus className="h-4 w-4" /> {t("portfolio.addHolding")}
                 </button>
                 <button
                   onClick={() => setShowCsv(true)}
                   className="flex items-center gap-2 rounded-xl border border-white/10 px-5 py-2.5 text-sm text-gray-300 hover:bg-white/5"
                 >
-                  <Upload className="h-4 w-4" /> 导入 CSV
+                  <Upload className="h-4 w-4" /> {t("portfolio.importCsv")}
                 </button>
               </div>
             </div>
@@ -330,55 +375,87 @@ export default function PortfolioPage() {
             <div className="space-y-6">
               {/* Summary Cards */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[
-                  {
-                    label: "总市值",
-                    value: fmt(summary.total_value),
-                    sub: null,
-                  },
-                  {
-                    label: "总成本",
-                    value: fmt(summary.total_cost),
-                    sub: null,
-                  },
-                  {
-                    label: "总盈亏",
-                    value: fmt(summary.total_pnl),
-                    sub: `${summary.total_pnl_pct.toFixed(1)}%`,
-                    positive: summary.total_pnl >= 0,
-                  },
-                  {
-                    label: "持仓数量",
-                    value: String(summary.position_count),
-                    sub: "只股票",
-                  },
-                ].map(({ label, value, sub, positive }) => (
-                  <div
-                    key={label}
-                    className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                  >
-                    <p className="mb-1 text-xs text-gray-500">{label}</p>
-                    <p
-                      className={`text-xl font-bold ${positive === undefined ? "text-white" : positive ? "text-emerald-400" : "text-red-400"}`}
-                    >
-                      {value}
-                    </p>
-                    {sub && (
-                      <p
-                        className={`mt-0.5 text-xs ${positive === undefined ? "text-gray-500" : positive ? "text-emerald-600" : "text-red-600"}`}
-                      >
-                        {sub}
-                      </p>
-                    )}
-                  </div>
-                ))}
+                <MetricCard
+                  label={t("portfolio.totalValue")}
+                  value={fmt(summary.total_value)}
+                />
+                <MetricCard
+                  label={t("portfolio.totalCost")}
+                  value={fmt(summary.total_cost)}
+                />
+                <MetricCard
+                  label={t("portfolio.totalPnl")}
+                  value={fmt(summary.total_pnl)}
+                  color={
+                    summary.total_pnl >= 0 ? "text-emerald-400" : "text-red-400"
+                  }
+                  subtext={`${summary.total_pnl_pct.toFixed(1)}%`}
+                />
+                <MetricCard
+                  label={t("portfolio.positionCount")}
+                  value={String(summary.position_count)}
+                  subtext={t("portfolio.positions")}
+                />
               </div>
+
+              {/* Performance Metrics Row */}
+              {metrics && (
+                <div>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                    <BarChart2 className="h-3.5 w-3.5" />
+                    {t("portfolio.metrics")}
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <MetricCard
+                      label={t("portfolio.maxDrawdown")}
+                      value={
+                        metrics.snapshot_count >= 2
+                          ? `-${metrics.max_drawdown_pct.toFixed(1)}%`
+                          : "--"
+                      }
+                      color={
+                        metrics.snapshot_count >= 2 &&
+                        metrics.max_drawdown_pct > 0
+                          ? "text-red-400"
+                          : "text-gray-400"
+                      }
+                    />
+                    <MetricCard
+                      label={t("portfolio.benchmark30d")}
+                      value={
+                        metrics.spy_30d_return_pct !== null
+                          ? `${metrics.spy_30d_return_pct >= 0 ? "+" : ""}${metrics.spy_30d_return_pct.toFixed(1)}%`
+                          : "--"
+                      }
+                      color={pctColor(metrics.spy_30d_return_pct)}
+                    />
+                    <MetricCard
+                      label={t("portfolio.bestPerformer")}
+                      value={
+                        metrics.best_performer
+                          ? `${metrics.best_performer.symbol} +${metrics.best_performer.pnl_pct.toFixed(1)}%`
+                          : "--"
+                      }
+                      color="text-emerald-400"
+                    />
+                    <MetricCard
+                      label={t("portfolio.worstPerformer")}
+                      value={
+                        metrics.worst_performer
+                          ? `${metrics.worst_performer.symbol} ${metrics.worst_performer.pnl_pct.toFixed(1)}%`
+                          : "--"
+                      }
+                      color="text-red-400"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Equity Curve */}
               {history.length > 1 && (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="mb-3 text-sm font-semibold text-gray-300">
-                    组合净值曲线（近 90 天）
+                    {t("portfolio.equityCurve")}
                   </p>
                   <EquitySparkline data={history} />
                   <div className="mt-2 flex justify-between text-xs text-gray-600">
@@ -396,13 +473,13 @@ export default function PortfolioPage() {
                       <thead>
                         <tr className="border-b border-white/10 bg-white/5">
                           {[
-                            "股票",
-                            "持仓量",
-                            "成本",
-                            "现价",
-                            "市值",
-                            "盈亏",
-                            "权重",
+                            t("portfolio.symbol"),
+                            t("portfolio.qty"),
+                            t("portfolio.cost"),
+                            t("portfolio.price"),
+                            t("portfolio.value"),
+                            t("portfolio.pnl"),
+                            t("portfolio.weight"),
                             "",
                           ].map((h) => (
                             <th
@@ -471,7 +548,7 @@ export default function PortfolioPage() {
                     <>
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="mb-3 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-                          行业分布
+                          {t("portfolio.sectorExposure")}
                         </p>
                         {Object.entries(exposure.sectors)
                           .sort(([, a], [, b]) => b - a)
@@ -497,11 +574,11 @@ export default function PortfolioPage() {
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="mb-3 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-                          集中度风险
+                          {t("portfolio.concentration")}
                         </p>
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-400">
-                            前 5 大持仓
+                            {t("portfolio.top5")}
                           </span>
                           <span
                             className={`text-lg font-bold ${exposure.top5_concentration > 80 ? "text-red-400" : exposure.top5_concentration > 60 ? "text-amber-400" : "text-emerald-400"}`}
@@ -513,7 +590,7 @@ export default function PortfolioPage() {
                           <div className="mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 p-2.5">
                             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
                             <p className="text-xs text-amber-400">
-                              前 5 大持仓集中度较高，注意分散风险
+                              {t("portfolio.concentrationWarning")}
                             </p>
                           </div>
                         )}
@@ -532,7 +609,9 @@ export default function PortfolioPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur">
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 p-5">
-              <h2 className="font-bold text-white">添加持仓</h2>
+              <h2 className="font-bold text-white">
+                {t("portfolio.addModal.title")}
+              </h2>
               <button
                 onClick={() => setShowAdd(false)}
                 className="text-gray-500 hover:text-white"
@@ -543,20 +622,20 @@ export default function PortfolioPage() {
             <div className="space-y-4 p-5">
               {[
                 {
-                  label: "股票代码",
+                  label: t("portfolio.addModal.symbol"),
                   value: addSymbol,
                   set: setAddSymbol,
                   placeholder: "NVDA",
                   upper: true,
                 },
                 {
-                  label: "持仓数量（股）",
+                  label: t("portfolio.addModal.qty"),
                   value: addQty,
                   set: setAddQty,
                   placeholder: "100",
                 },
                 {
-                  label: "平均成本（$/股）",
+                  label: t("portfolio.addModal.cost"),
                   value: addCost,
                   set: setAddCost,
                   placeholder: "450.00",
@@ -589,7 +668,9 @@ export default function PortfolioPage() {
                 ) : (
                   <Plus className="h-4 w-4" />
                 )}
-                {addLoading ? "保存中…" : "确认添加"}
+                {addLoading
+                  ? t("portfolio.addModal.saving")
+                  : t("portfolio.addModal.confirm")}
               </button>
             </div>
           </div>
@@ -602,9 +683,11 @@ export default function PortfolioPage() {
           <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 p-5">
               <div>
-                <h2 className="font-bold text-white">导入 CSV</h2>
+                <h2 className="font-bold text-white">
+                  {t("portfolio.csvModal.title")}
+                </h2>
                 <p className="text-xs text-gray-500">
-                  支持 TD Ameritrade / IBKR 导出格式
+                  {t("portfolio.csvModal.subtitle")}
                 </p>
               </div>
               <button
@@ -617,7 +700,7 @@ export default function PortfolioPage() {
             <div className="space-y-4 p-5">
               <div>
                 <p className="mb-2 text-xs text-gray-500">
-                  CSV 需包含列：
+                  {t("portfolio.csvModal.columns")}{" "}
                   <code className="text-cyan-400">
                     symbol, quantity, avg_cost
                   </code>
@@ -626,7 +709,8 @@ export default function PortfolioPage() {
                   onClick={() => fileRef.current?.click()}
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 py-3 text-sm text-gray-400 hover:border-white/40 hover:text-white"
                 >
-                  <Upload className="h-4 w-4" /> 点击上传文件
+                  <Upload className="h-4 w-4" />{" "}
+                  {t("portfolio.csvModal.upload")}
                 </button>
                 <input
                   ref={fileRef}
@@ -638,7 +722,7 @@ export default function PortfolioPage() {
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-gray-400">
-                  或直接粘贴 CSV 内容
+                  {t("portfolio.csvModal.paste")}
                 </label>
                 <textarea
                   value={csvText}
@@ -663,7 +747,9 @@ export default function PortfolioPage() {
                 ) : (
                   <Upload className="h-4 w-4" />
                 )}
-                {csvLoading ? "导入中…" : "开始导入"}
+                {csvLoading
+                  ? t("portfolio.csvModal.importing")
+                  : t("portfolio.csvModal.import")}
               </button>
             </div>
           </div>

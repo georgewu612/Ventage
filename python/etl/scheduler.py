@@ -201,6 +201,33 @@ async def run_regime_refresh(db):
         raise
 
 
+async def run_portfolio_snapshots(db):
+    """Save daily portfolio snapshots for all users who have holdings."""
+    from api.routes.portfolio import portfolio_summary, save_snapshot  # local import to avoid circular
+
+    t0 = time.monotonic()
+    try:
+        result = db.table("portfolio_holdings").select("user_id").execute()
+        user_ids = list({r["user_id"] for r in (result.data or [])})
+        saved = 0
+        for uid in user_ids:
+            try:
+                save_snapshot(user_id=uid)
+                saved += 1
+            except Exception as exc:
+                logger.warning("portfolio_snapshot_failed", user_id=uid, error=str(exc))
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("portfolio_snapshots_done", users=len(user_ids), saved=saved, duration_ms=duration_ms)
+        _write_job_run(db, job_name="portfolio_snapshots", status="success", loaded=saved, duration_ms=duration_ms)
+        return {"users": len(user_ids), "saved": saved}
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("portfolio_snapshots_error", error=str(exc))
+        _write_job_run(db, job_name="portfolio_snapshots", status="error", error_message=str(exc), duration_ms=duration_ms)
+        raise
+
+
 async def run_data_cleanup(db):
     """Clean up old data to stay within Supabase storage limits."""
     result = await cleanup_old_data(db)
@@ -324,6 +351,19 @@ def start_scheduler():
         args=[db],
         id="regime_refresh",
         name="Market Regime Refresh (Daily)",
+        max_instances=1,
+    )
+
+    # Portfolio snapshots: daily at 21:00 UTC (16:00 ET) — market close + 30 min
+    scheduler.add_job(
+        run_portfolio_snapshots,
+        "cron",
+        hour=21,
+        minute=0,
+        timezone="UTC",
+        args=[db],
+        id="portfolio_snapshots",
+        name="Portfolio Daily Snapshots",
         max_instances=1,
     )
 
