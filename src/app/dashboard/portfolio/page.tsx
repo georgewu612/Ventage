@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
+  Activity,
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   BarChart2,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   Pencil,
   Plus,
@@ -63,6 +68,23 @@ interface Metrics {
   spy_30d_return_pct: number | null;
   portfolio_30d_return_pct: number | null;
   snapshot_count: number;
+}
+
+interface RiskFlag {
+  symbol: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+}
+
+interface AnalysisResult {
+  health_score: number;
+  regime_alignment: "aligned" | "neutral" | "misaligned";
+  regime_alignment_reason: string;
+  risk_flags: RiskFlag[];
+  recommendations: string[];
+  summary: string;
+  summary_en: string;
+  analyzed_at: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -161,6 +183,12 @@ export default function PortfolioPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // AI analysis
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
   // Add position modal
   const [showAdd, setShowAdd] = useState(false);
@@ -346,6 +374,23 @@ export default function PortfolioPage() {
     setCsvLoading(false);
   };
 
+  const runAnalysis = async () => {
+    if (!userId) return;
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+    setShowAnalysis(true);
+    try {
+      const r = await fetch(
+        `${API_BASE_URL}/v1/portfolio/analyze?user_id=${userId}`,
+      );
+      if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+      setAnalysis(await r.json());
+    } catch (e: unknown) {
+      setAnalysisError(e instanceof Error ? e.message : "分析失败");
+    }
+    setAnalysisLoading(false);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -379,6 +424,20 @@ export default function PortfolioPage() {
               <p className="text-sm text-gray-400">{t("portfolio.subtitle")}</p>
             </div>
             <div className="ml-auto flex items-center gap-2">
+              {!isEmpty && (
+                <button
+                  onClick={runAnalysis}
+                  disabled={analysisLoading}
+                  className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-60"
+                >
+                  {analysisLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Activity className="h-3.5 w-3.5" />
+                  )}
+                  AI 诊断
+                </button>
+              )}
               <button
                 onClick={() => setShowCsv(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5"
@@ -513,6 +572,167 @@ export default function PortfolioPage() {
                 </div>
               )}
 
+              {/* AI Diagnosis Panel */}
+              {showAnalysis && (
+                <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <Activity className="h-4 w-4 text-violet-400" />
+                      AI 组合诊断
+                    </h3>
+                    <button
+                      onClick={() => setShowAnalysis(false)}
+                      className="text-gray-500 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {analysisLoading && (
+                    <div className="flex items-center gap-3 py-6 text-sm text-gray-400">
+                      <Loader2 className="h-5 w-5 animate-spin text-violet-400" />
+                      AI 正在分析持仓、市场环境与信号…
+                    </div>
+                  )}
+
+                  {analysisError && (
+                    <p className="text-sm text-red-400">{analysisError}</p>
+                  )}
+
+                  {analysis && !analysisLoading && (
+                    <div className="space-y-4">
+                      {/* Health score + alignment */}
+                      <div className="flex items-center gap-4">
+                        {/* Score ring */}
+                        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
+                          <svg className="absolute inset-0" viewBox="0 0 80 80">
+                            <circle
+                              cx="40"
+                              cy="40"
+                              r="34"
+                              fill="none"
+                              stroke="#ffffff10"
+                              strokeWidth="8"
+                            />
+                            <circle
+                              cx="40"
+                              cy="40"
+                              r="34"
+                              fill="none"
+                              stroke={
+                                analysis.health_score >= 70
+                                  ? "#34d399"
+                                  : analysis.health_score >= 45
+                                    ? "#fbbf24"
+                                    : "#f87171"
+                              }
+                              strokeWidth="8"
+                              strokeDasharray={`${(analysis.health_score / 100) * 213.6} 213.6`}
+                              strokeLinecap="round"
+                              transform="rotate(-90 40 40)"
+                            />
+                          </svg>
+                          <div className="text-center">
+                            <p
+                              className={`text-xl font-bold ${analysis.health_score >= 70 ? "text-emerald-400" : analysis.health_score >= 45 ? "text-amber-400" : "text-red-400"}`}
+                            >
+                              {analysis.health_score}
+                            </p>
+                            <p className="text-[10px] text-gray-500">健康分</p>
+                          </div>
+                        </div>
+
+                        <div className="flex-1">
+                          <p className="mb-1 text-sm leading-relaxed text-gray-300">
+                            {analysis.summary}
+                          </p>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              analysis.regime_alignment === "aligned"
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : analysis.regime_alignment === "misaligned"
+                                  ? "bg-red-500/15 text-red-400"
+                                  : "bg-amber-500/15 text-amber-400"
+                            }`}
+                          >
+                            {analysis.regime_alignment === "aligned"
+                              ? "✓ 与市场环境匹配"
+                              : analysis.regime_alignment === "misaligned"
+                                ? "⚠ 与市场环境不匹配"
+                                : "~ 中性"}
+                          </span>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {analysis.regime_alignment_reason}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Risk flags */}
+                      {analysis.risk_flags.length > 0 && (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                            风险提示
+                          </p>
+                          <div className="space-y-2">
+                            {analysis.risk_flags.map((flag, i) => (
+                              <div
+                                key={i}
+                                className={`flex items-start gap-2 rounded-lg px-3 py-2 ${
+                                  flag.severity === "high"
+                                    ? "bg-red-500/10"
+                                    : flag.severity === "medium"
+                                      ? "bg-amber-500/10"
+                                      : "bg-blue-500/10"
+                                }`}
+                              >
+                                <AlertTriangle
+                                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${flag.severity === "high" ? "text-red-400" : flag.severity === "medium" ? "text-amber-400" : "text-blue-400"}`}
+                                />
+                                <div>
+                                  {flag.symbol !== "PORTFOLIO" && (
+                                    <span className="mr-1 font-mono text-xs font-bold text-cyan-400">
+                                      {flag.symbol}
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-300">
+                                    {flag.message}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recommendations */}
+                      {analysis.recommendations.length > 0 && (
+                        <div>
+                          <p className="mb-2 text-xs font-semibold tracking-wider text-gray-500 uppercase">
+                            操作建议
+                          </p>
+                          <div className="space-y-1.5">
+                            {analysis.recommendations.map((rec, i) => (
+                              <div
+                                key={i}
+                                className="flex items-start gap-2 text-xs text-gray-300"
+                              >
+                                <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                {rec}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="text-right text-[10px] text-gray-600">
+                        分析时间：
+                        {new Date(analysis.analyzed_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Equity Curve */}
               {history.length > 1 && (
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -556,8 +776,13 @@ export default function PortfolioPage() {
                       <tbody className="divide-y divide-white/5">
                         {summary.holdings.map((h) => (
                           <tr key={h.symbol} className="hover:bg-white/[0.03]">
-                            <td className="px-3 py-3 font-mono text-sm font-bold text-cyan-400">
-                              {h.symbol}
+                            <td className="px-3 py-3">
+                              <Link
+                                href={`/dashboard/stocks/${h.symbol}`}
+                                className="font-mono text-sm font-bold text-cyan-400 hover:underline"
+                              >
+                                {h.symbol}
+                              </Link>
                             </td>
                             <td className="px-3 py-3 text-sm text-gray-300">
                               {h.quantity}

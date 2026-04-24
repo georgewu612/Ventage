@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import csv
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,6 +20,7 @@ import structlog
 import yfinance as yf
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 from supabase import Client, create_client
 
@@ -384,4 +386,107 @@ def portfolio_metrics(user_id: str = Query(...)) -> dict[str, Any]:
         "spy_30d_return_pct": spy_30d_return_pct,
         "portfolio_30d_return_pct": portfolio_30d_return_pct,
         "snapshot_count": len(snapshots),
+    }
+
+
+@router.get("/portfolio/analyze")
+async def analyze_portfolio(user_id: str = Query(...)) -> dict[str, Any]:
+    """AI portfolio health analysis: health score, regime alignment, risk flags, recommendations."""
+    db = _db()
+    s = get_settings()
+
+    summary = portfolio_summary(user_id=user_id)
+    holdings = summary["holdings"]
+    if not holdings:
+        raise HTTPException(status_code=400, detail="No holdings to analyze")
+
+    # Latest market regime
+    regime_row = (
+        db.table("market_regime_snapshots")
+        .select("regime,recommendation,vix,volatility,breadth,style,chief_summary_en")
+        .order("generated_at", desc=True)
+        .limit(1)
+        .execute()
+        .data or [{}]
+    )[0]
+
+    # Latest signals for held symbols
+    symbols = [h["symbol"] for h in holdings]
+    signals_rows = (
+        db.table("market_signals")
+        .select("symbol,direction,signal_score,summary")
+        .in_("symbol", symbols)
+        .order("created_at", desc=True)
+        .limit(len(symbols) * 2)
+        .execute()
+        .data or []
+    )
+    # Deduplicate — keep latest per symbol
+    seen: set[str] = set()
+    latest_signals: list[dict] = []
+    for s_row in signals_rows:
+        if s_row["symbol"] not in seen:
+            seen.add(s_row["symbol"])
+            latest_signals.append(s_row)
+
+    holdings_text = "\n".join(
+        f"- {h['symbol']}: weight {h['weight']:.1f}%, cost ${h['avg_cost']:.2f}, "
+        f"current ${h['current_price']:.2f}, P&L {h['pnl_pct']:+.1f}%"
+        for h in holdings
+    )
+    signals_text = "\n".join(
+        f"- {r['symbol']}: {r['direction']} score {r['signal_score']}"
+        for r in latest_signals
+    ) or "No recent signals for these symbols."
+
+    regime_text = (
+        f"Regime={regime_row.get('regime','unknown')}, "
+        f"VIX={regime_row.get('vix','?')}, "
+        f"Volatility={regime_row.get('volatility','?')}, "
+        f"Recommendation={regime_row.get('recommendation','?')}"
+    )
+
+    prompt = f"""You are a portfolio risk analyst. Analyze the following portfolio and return a JSON health report.
+
+Portfolio (total P&L {summary['total_pnl_pct']:+.1f}%):
+{holdings_text}
+
+Market regime today: {regime_text}
+
+Recent signals for held positions:
+{signals_text}
+
+Return ONLY valid JSON with exactly this structure (no extra keys):
+{{
+  "health_score": <integer 0-100, 100=excellent>,
+  "regime_alignment": "aligned" | "neutral" | "misaligned",
+  "regime_alignment_reason": "<one sentence in Chinese explaining how portfolio fits current regime>",
+  "risk_flags": [
+    {{"symbol": "<SYMBOL or 'PORTFOLIO'>", "severity": "high"|"medium"|"low", "message": "<risk description in Chinese>"}}
+  ],
+  "recommendations": ["<concrete actionable advice in Chinese>"],
+  "summary": "<2 sentences in Chinese summarizing portfolio health and key concern>",
+  "summary_en": "<2 sentences in English>"
+}}
+
+Constraints: max 3 risk_flags, max 3 recommendations. Be specific and actionable."""
+
+    openai_client = AsyncOpenAI(api_key=s.openai_api_key)
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        response_format={"type": "json_object"},
+        temperature=0.3,
+        max_tokens=800,
+    )
+
+    result = json.loads(response.choices[0].message.content)
+    result.setdefault("health_score", 50)
+    result.setdefault("risk_flags", [])
+    result.setdefault("recommendations", [])
+
+    return {
+        "analyzed_at": datetime.now(UTC).isoformat(),
+        "holding_count": len(holdings),
+        **result,
     }
