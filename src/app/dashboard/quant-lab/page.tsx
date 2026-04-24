@@ -324,7 +324,7 @@ export default function QuantLabPage() {
           {/* ── Factor Scanner ── */}
           <section className="mb-8">
             <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              Factor Scanner
+              {t("quant.factorScanner")}
             </h2>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
               {/* Input row */}
@@ -348,7 +348,7 @@ export default function QuantLabPage() {
                   ) : (
                     <Search className="h-4 w-4" />
                   )}
-                  Scan Factors
+                  {t("quant.scanFactors")}
                 </button>
                 {factorResult && (
                   <span className="ml-auto self-center text-xs text-gray-500">
@@ -413,7 +413,7 @@ export default function QuantLabPage() {
 
               {!factorResult && !factorLoading && !factorError && (
                 <p className="py-6 text-center text-sm text-gray-600">
-                  Enter a symbol and click Scan to see factor scores
+                  {t("quant.scanHint")}
                 </p>
               )}
             </div>
