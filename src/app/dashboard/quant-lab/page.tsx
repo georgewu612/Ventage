@@ -59,10 +59,18 @@ const CAT_COLORS: Record<string, { color: string; bg: string }> = {
 };
 
 const FACTOR_DEFS = [
-  { key: "rsi_14", label: "RSI (14)", min: 0, max: 100, goodHigh: false },
+  {
+    key: "rsi_14",
+    label: "RSI (14)",
+    label_zh: "RSI (14)",
+    min: 0,
+    max: 100,
+    goodHigh: false,
+  },
   {
     key: "sma_20_50_cross",
     label: "SMA 20/50 Cross %",
+    label_zh: "均线偏离 20/50 %",
     min: -15,
     max: 15,
     goodHigh: true,
@@ -70,6 +78,7 @@ const FACTOR_DEFS = [
   {
     key: "price_momentum_20",
     label: "Momentum 20d %",
+    label_zh: "20日动量 %",
     min: -30,
     max: 30,
     goodHigh: true,
@@ -77,14 +86,23 @@ const FACTOR_DEFS = [
   {
     key: "volatility_20",
     label: "Volatility 20d %",
+    label_zh: "20日波动率 %",
     min: 0,
     max: 100,
     goodHigh: false,
   },
-  { key: "bb_position", label: "BB Position", min: 0, max: 1, goodHigh: true },
+  {
+    key: "bb_position",
+    label: "BB Position",
+    label_zh: "布林带位置",
+    min: 0,
+    max: 1,
+    goodHigh: true,
+  },
   {
     key: "volume_ratio",
     label: "Volume Ratio",
+    label_zh: "成交量比",
     min: 0,
     max: 3,
     goodHigh: true,
@@ -120,7 +138,7 @@ function StatusBadge({ status }: { status: Run["status"] }) {
 
 export default function QuantLabPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -368,46 +386,48 @@ export default function QuantLabPage() {
               {/* Factor bars */}
               {factorResult && (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {FACTOR_DEFS.map(({ key, label, min, max, goodHigh }) => {
-                    const raw = factorResult.factors[key] ?? 0;
-                    // clamp and normalise to 0-100%
-                    const clamped = Math.max(min, Math.min(max, raw));
-                    const pct = ((clamped - min) / (max - min)) * 100;
-                    const isGood = goodHigh
-                      ? raw > (min + max) / 2
-                      : raw < (min + max) / 2;
-                    const barColor = isGood ? "bg-emerald-500" : "bg-red-500";
-                    const textColor = isGood
-                      ? "text-emerald-400"
-                      : "text-red-400";
-                    return (
-                      <div
-                        key={key}
-                        className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
-                      >
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-xs font-medium text-gray-400">
-                            {label}
-                          </span>
-                          <span
-                            className={`text-sm font-bold tabular-nums ${textColor}`}
-                          >
-                            {raw.toFixed(2)}
-                          </span>
+                  {FACTOR_DEFS.map(
+                    ({ key, label, label_zh, min, max, goodHigh }) => {
+                      const raw = factorResult.factors[key] ?? 0;
+                      // clamp and normalise to 0-100%
+                      const clamped = Math.max(min, Math.min(max, raw));
+                      const pct = ((clamped - min) / (max - min)) * 100;
+                      const isGood = goodHigh
+                        ? raw > (min + max) / 2
+                        : raw < (min + max) / 2;
+                      const barColor = isGood ? "bg-emerald-500" : "bg-red-500";
+                      const textColor = isGood
+                        ? "text-emerald-400"
+                        : "text-red-400";
+                      return (
+                        <div
+                          key={key}
+                          className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-400">
+                              {locale === "zh" ? label_zh : label}
+                            </span>
+                            <span
+                              className={`text-sm font-bold tabular-nums ${textColor}`}
+                            >
+                              {raw.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className={`h-full transition-all duration-500 ${barColor}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="mt-1 flex justify-between text-[10px] text-gray-600">
+                            <span>{min}</span>
+                            <span>{max}</span>
+                          </div>
                         </div>
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full transition-all duration-500 ${barColor}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 flex justify-between text-[10px] text-gray-600">
-                          <span>{min}</span>
-                          <span>{max}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    },
+                  )}
                 </div>
               )}
 
