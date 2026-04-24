@@ -180,6 +180,7 @@ export default function PortfolioPage() {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // CSV import modal
   const [showCsv, setShowCsv] = useState(false);
@@ -268,18 +269,24 @@ export default function PortfolioPage() {
   };
 
   const confirmDelete = async () => {
-    if (!userId || !deleteTarget) return;
+    if (!userId || !deleteTarget) {
+      setDeleteError(`userId=${userId} target=${deleteTarget}`);
+      return;
+    }
     setDeleteLoading(true);
+    setDeleteError(null);
     try {
-      const r = await fetch(
-        `${API_BASE_URL}/v1/portfolio/holding/${deleteTarget}?user_id=${userId}`,
-        { method: "DELETE" },
-      );
-      if (!r.ok) throw new Error(`Delete failed: ${r.status}`);
+      const url = `${API_BASE_URL}/v1/portfolio/holding/${deleteTarget}?user_id=${userId}`;
+      const r = await fetch(url, { method: "DELETE" });
+      if (!r.ok) {
+        const body = await r.text();
+        throw new Error(`${r.status}: ${body}`);
+      }
       setDeleteTarget(null);
+      setDeleteError(null);
       await loadAll();
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
     }
     setDeleteLoading(false);
   };
@@ -592,7 +599,10 @@ export default function PortfolioPage() {
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
                                 <button
-                                  onClick={() => setDeleteTarget(h.symbol)}
+                                  onClick={() => {
+                                    setDeleteTarget(h.symbol);
+                                    setDeleteError(null);
+                                  }}
                                   className="text-gray-600 hover:text-red-400"
                                   title="Delete"
                                 >
@@ -823,6 +833,11 @@ export default function PortfolioPage() {
                 </span>{" "}
                 吗？此操作不可撤销。
               </p>
+              {deleteError && (
+                <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                  {deleteError}
+                </p>
+              )}
             </div>
             <div className="flex gap-3 border-t border-white/10 p-4">
               <button
