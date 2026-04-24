@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BarChart2,
   ChevronRight,
@@ -8,12 +8,14 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  Search,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
+import { useI18n } from "@/lib/i18n/provider";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,29 +51,61 @@ interface Run {
 
 // ── Category config ───────────────────────────────────────────────────────────
 
-const CAT: Record<string, { label: string; color: string; bg: string }> = {
-  trend: { label: "趋势", color: "text-cyan-400", bg: "bg-cyan-500/10" },
-  mean_reversion: {
-    label: "均值回归",
-    color: "text-purple-400",
-    bg: "bg-purple-500/10",
+const CAT_COLORS: Record<string, { color: string; bg: string }> = {
+  trend: { color: "text-cyan-400", bg: "bg-cyan-500/10" },
+  mean_reversion: { color: "text-purple-400", bg: "bg-purple-500/10" },
+  momentum: { color: "text-amber-400", bg: "bg-amber-500/10" },
+  volatility: { color: "text-pink-400", bg: "bg-pink-500/10" },
+};
+
+const FACTOR_DEFS = [
+  { key: "rsi_14", label: "RSI (14)", min: 0, max: 100, goodHigh: false },
+  {
+    key: "sma_20_50_cross",
+    label: "SMA 20/50 Cross %",
+    min: -15,
+    max: 15,
+    goodHigh: true,
   },
-  momentum: { label: "动量", color: "text-amber-400", bg: "bg-amber-500/10" },
-  volatility: { label: "波动率", color: "text-pink-400", bg: "bg-pink-500/10" },
+  {
+    key: "price_momentum_20",
+    label: "Momentum 20d %",
+    min: -30,
+    max: 30,
+    goodHigh: true,
+  },
+  {
+    key: "volatility_20",
+    label: "Volatility 20d %",
+    min: 0,
+    max: 100,
+    goodHigh: false,
+  },
+  { key: "bb_position", label: "BB Position", min: 0, max: 1, goodHigh: true },
+  {
+    key: "volume_ratio",
+    label: "Volume Ratio",
+    min: 0,
+    max: 3,
+    goodHigh: true,
+  },
+] as const;
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: "bg-gray-500/20 text-gray-400",
+  running: "bg-blue-500/20 text-blue-400",
+  done: "bg-emerald-500/20 text-emerald-400",
+  failed: "bg-red-500/20 text-red-400",
 };
 
 function StatusBadge({ status }: { status: Run["status"] }) {
-  const cfg = {
-    pending: "bg-gray-500/20 text-gray-400",
-    running: "bg-blue-500/20 text-blue-400",
-    done: "bg-emerald-500/20 text-emerald-400",
-    failed: "bg-red-500/20 text-red-400",
-  }[status];
+  const { t } = useI18n();
+  const cfg = STATUS_COLORS[status] ?? STATUS_COLORS.pending;
   const label = {
-    pending: "等待中",
-    running: "运行中",
-    done: "完成",
-    failed: "失败",
+    pending: t("quant.statusPending"),
+    running: t("quant.statusRunning"),
+    done: t("quant.statusDone"),
+    failed: t("quant.statusFailed"),
   }[status];
   return (
     <span
@@ -86,6 +120,7 @@ function StatusBadge({ status }: { status: Run["status"] }) {
 
 export default function QuantLabPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -156,7 +191,8 @@ export default function QuantLabPage() {
           engine: "vectorbt",
         }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail || "回测启动失败");
+      if (!r.ok)
+        throw new Error((await r.json()).detail || "Backtest failed to start");
       setSelectedTemplate(null);
       setTimeout(fetchRuns, 1500);
       // Poll every 10s for 5 minutes
@@ -166,7 +202,7 @@ export default function QuantLabPage() {
         if (++n > 30) clearInterval(timer);
       }, 10_000);
     } catch (e: unknown) {
-      setRunError(e instanceof Error ? e.message : "未知错误");
+      setRunError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       setRunning(false);
     }
@@ -175,6 +211,41 @@ export default function QuantLabPage() {
   function viewResult(run: Run) {
     router.push(`/dashboard/strategies/${run.id}`);
   }
+
+  // ── Factor Scanner ────────────────────────────────────────────────
+  const [factorSymbol, setFactorSymbol] = useState("NVDA");
+  const [factorLoading, setFactorLoading] = useState(false);
+  const [factorResult, setFactorResult] = useState<{
+    symbol: string;
+    last_price: number;
+    last_date: string;
+    factors: Record<string, number>;
+  } | null>(null);
+  const [factorError, setFactorError] = useState<string | null>(null);
+
+  const runFactorScan = useCallback(async () => {
+    if (!factorSymbol.trim()) return;
+    setFactorLoading(true);
+    setFactorError(null);
+    setFactorResult(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/score`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: factorSymbol.trim().toUpperCase(),
+          period: "1y",
+        }),
+      });
+      if (!r.ok)
+        throw new Error((await r.json()).detail ?? "Factor score failed");
+      setFactorResult(await r.json());
+    } catch (e: unknown) {
+      setFactorError(e instanceof Error ? e.message : t("common.error"));
+    } finally {
+      setFactorLoading(false);
+    }
+  }, [factorSymbol, t]);
 
   return (
     <FeatureGate feature="quant_lab" overlay>
@@ -188,13 +259,13 @@ export default function QuantLabPage() {
             <div>
               <h1 className="text-2xl font-bold text-white">Quant Lab</h1>
               <p className="text-sm text-gray-400">
-                策略回测 · 因子研究 · 参数优化
+                {t("quant.templates")} · Factor Research · {t("quant.run")}
               </p>
             </div>
             <button
               onClick={fetchRuns}
               className="ml-auto rounded-lg border border-white/10 p-2 text-gray-400 hover:bg-white/5"
-              title="刷新"
+              title={t("common.loading")}
             >
               <RefreshCw className="h-4 w-4" />
             </button>
@@ -203,42 +274,147 @@ export default function QuantLabPage() {
           {/* Templates */}
           <section className="mb-8">
             <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              策略模板
+              {t("quant.templates")}
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {templates.map((t) => {
-                const cat = CAT[t.category] ?? CAT.trend;
+              {templates.map((tmpl) => {
+                const catColors = CAT_COLORS[tmpl.category] ?? CAT_COLORS.trend;
+                const catLabel =
+                  {
+                    trend: t("quant.catTrend"),
+                    mean_reversion: t("quant.catMeanReversion"),
+                    momentum: t("quant.catMomentum"),
+                    volatility: t("quant.catVolatility"),
+                  }[tmpl.category] ?? tmpl.category;
                 return (
                   <div
-                    key={t.id}
-                    onClick={() => openTemplate(t)}
+                    key={tmpl.id}
+                    onClick={() => openTemplate(tmpl)}
                     className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]"
                   >
                     <div
-                      className={`mb-3 inline-flex rounded-lg ${cat.bg} px-2 py-1`}
+                      className={`mb-3 inline-flex rounded-lg ${catColors.bg} px-2 py-1`}
                     >
                       <span
-                        className={`text-[10px] font-semibold ${cat.color}`}
+                        className={`text-[10px] font-semibold ${catColors.color}`}
                       >
-                        {cat.label}
+                        {catLabel}
                       </span>
                     </div>
                     <h3 className="mb-1.5 font-semibold text-white">
-                      {t.name_zh}
+                      {tmpl.name_zh}
                     </h3>
                     <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                      {t.description}
+                      {tmpl.description}
                     </p>
                     <button className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-xs font-medium text-gray-300 hover:bg-white/10">
-                      <Play className="h-3 w-3" /> 运行回测
+                      <Play className="h-3 w-3" /> {t("quant.run")}
                     </button>
                   </div>
                 );
               })}
               {templates.length === 0 && (
                 <div className="col-span-4 py-12 text-center text-sm text-gray-600">
-                  正在加载策略模板…
+                  {t("common.loading")}
                 </div>
+              )}
+            </div>
+          </section>
+
+          {/* ── Factor Scanner ── */}
+          <section className="mb-8">
+            <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
+              Factor Scanner
+            </h2>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+              {/* Input row */}
+              <div className="mb-4 flex gap-3">
+                <input
+                  value={factorSymbol}
+                  onChange={(e) =>
+                    setFactorSymbol(e.target.value.toUpperCase())
+                  }
+                  onKeyDown={(e) => e.key === "Enter" && runFactorScan()}
+                  placeholder="NVDA"
+                  className="w-36 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-sm text-white placeholder-gray-600 focus:border-cyan-500/50 focus:outline-none"
+                />
+                <button
+                  onClick={runFactorScan}
+                  disabled={factorLoading}
+                  className="flex items-center gap-2 rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/30 disabled:opacity-50"
+                >
+                  {factorLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                  Scan Factors
+                </button>
+                {factorResult && (
+                  <span className="ml-auto self-center text-xs text-gray-500">
+                    ${factorResult.symbol} · $
+                    {factorResult.last_price.toFixed(2)} ·{" "}
+                    {factorResult.last_date}
+                  </span>
+                )}
+              </div>
+
+              {factorError && (
+                <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                  {factorError}
+                </p>
+              )}
+
+              {/* Factor bars */}
+              {factorResult && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {FACTOR_DEFS.map(({ key, label, min, max, goodHigh }) => {
+                    const raw = factorResult.factors[key] ?? 0;
+                    // clamp and normalise to 0-100%
+                    const clamped = Math.max(min, Math.min(max, raw));
+                    const pct = ((clamped - min) / (max - min)) * 100;
+                    const isGood = goodHigh
+                      ? raw > (min + max) / 2
+                      : raw < (min + max) / 2;
+                    const barColor = isGood ? "bg-emerald-500" : "bg-red-500";
+                    const textColor = isGood
+                      ? "text-emerald-400"
+                      : "text-red-400";
+                    return (
+                      <div
+                        key={key}
+                        className="rounded-xl border border-white/10 bg-black/20 px-4 py-3"
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs font-medium text-gray-400">
+                            {label}
+                          </span>
+                          <span
+                            className={`text-sm font-bold tabular-nums ${textColor}`}
+                          >
+                            {raw.toFixed(2)}
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full transition-all duration-500 ${barColor}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="mt-1 flex justify-between text-[10px] text-gray-600">
+                          <span>{min}</span>
+                          <span>{max}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {!factorResult && !factorLoading && !factorError && (
+                <p className="py-6 text-center text-sm text-gray-600">
+                  Enter a symbol and click Scan to see factor scores
+                </p>
               )}
             </div>
           </section>
@@ -246,14 +422,14 @@ export default function QuantLabPage() {
           {/* History */}
           <section>
             <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              回测历史
+              {t("quant.runHistory")}
             </h2>
             {runs.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center">
                 <BarChart2 className="mx-auto mb-3 h-8 w-8 text-gray-700" />
-                <p className="text-sm text-gray-500">还没有回测记录</p>
+                <p className="text-sm text-gray-500">{t("common.noData")}</p>
                 <p className="mt-1 text-xs text-gray-600">
-                  点击策略模板开始你的第一次回测
+                  {t("quant.newBacktest")}
                 </p>
               </div>
             ) : (
@@ -261,16 +437,21 @@ export default function QuantLabPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-white/10 bg-white/5">
-                      {["策略", "标的", "区间", "状态", "创建时间", ""].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500"
-                          >
-                            {h}
-                          </th>
-                        ),
-                      )}
+                      {[
+                        t("quant.templates"),
+                        t("quant.symbol"),
+                        t("quant.startDate"),
+                        t("common.status"),
+                        t("quant.detail.date"),
+                        "",
+                      ].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left text-xs font-semibold text-gray-500"
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -289,7 +470,7 @@ export default function QuantLabPage() {
                           <StatusBadge status={run.status} />
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-600">
-                          {new Date(run.created_at).toLocaleDateString("zh-CN")}
+                          {new Date(run.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {run.status === "done" && (
@@ -298,7 +479,7 @@ export default function QuantLabPage() {
                               className="flex items-center gap-1 rounded-lg bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400 hover:bg-cyan-500/20"
                             >
                               <ChevronRight className="h-3 w-3" />
-                              查看结果
+                              {t("quant.viewResult")}
                             </button>
                           )}
                           {run.status === "running" && (
@@ -339,7 +520,7 @@ export default function QuantLabPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-gray-400">
-                    标的
+                    {t("quant.symbol")}
                   </label>
                   <input
                     value={symbol}
@@ -350,7 +531,7 @@ export default function QuantLabPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-gray-400">
-                    开始
+                    {t("quant.startDate")}
                   </label>
                   <input
                     type="date"
@@ -361,7 +542,7 @@ export default function QuantLabPage() {
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-gray-400">
-                    结束
+                    {t("quant.endDate")}
                   </label>
                   <input
                     type="date"
@@ -373,7 +554,7 @@ export default function QuantLabPage() {
               </div>
               <div>
                 <label className="mb-2 block text-xs font-semibold tracking-wider text-gray-500 uppercase">
-                  策略参数
+                  {t("quant.detail.params")}
                 </label>
                 <div className="space-y-3">
                   {Object.entries(
@@ -429,16 +610,17 @@ export default function QuantLabPage() {
               >
                 {running ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> 启动中…
+                    <Loader2 className="h-4 w-4 animate-spin" />{" "}
+                    {t("common.loading")}
                   </>
                 ) : (
                   <>
-                    <Play className="h-4 w-4" /> 开始回测
+                    <Play className="h-4 w-4" /> {t("quant.newBacktest")}
                   </>
                 )}
               </button>
               <p className="mt-2 text-center text-[10px] text-gray-600">
-                回测在后台运行，完成后在历史列表查看结果
+                {t("quant.runHistory")}
               </p>
             </div>
           </div>
