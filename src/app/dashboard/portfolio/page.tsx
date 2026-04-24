@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   BarChart2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Trash2,
@@ -169,6 +170,17 @@ export default function PortfolioPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  // Edit position modal
+  const [editHolding, setEditHolding] = useState<Holding | null>(null);
+  const [editQty, setEditQty] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   // CSV import modal
   const [showCsv, setShowCsv] = useState(false);
   const [csvText, setCsvText] = useState("");
@@ -255,13 +267,56 @@ export default function PortfolioPage() {
     setAddLoading(false);
   };
 
-  const deleteHolding = async (symbol: string) => {
-    if (!userId) return;
-    await fetch(
-      `${API_BASE_URL}/v1/portfolio/holding/${symbol}?user_id=${userId}`,
-      { method: "DELETE" },
-    );
-    await loadAll();
+  const confirmDelete = async () => {
+    if (!userId || !deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const r = await fetch(
+        `${API_BASE_URL}/v1/portfolio/holding/${deleteTarget}?user_id=${userId}`,
+        { method: "DELETE" },
+      );
+      if (!r.ok) throw new Error(`Delete failed: ${r.status}`);
+      setDeleteTarget(null);
+      await loadAll();
+    } catch (e) {
+      console.error(e);
+    }
+    setDeleteLoading(false);
+  };
+
+  const openEdit = (h: Holding) => {
+    setEditHolding(h);
+    setEditQty(String(h.quantity));
+    setEditCost(String(h.avg_cost));
+    setEditError(null);
+  };
+
+  const updateHolding = async () => {
+    if (!userId || !editHolding || !editQty || !editCost) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/portfolio/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          holdings: [
+            {
+              symbol: editHolding.symbol,
+              quantity: parseFloat(editQty),
+              avg_cost: parseFloat(editCost),
+            },
+          ],
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail);
+      setEditHolding(null);
+      await loadAll();
+    } catch (e: unknown) {
+      setEditError(e instanceof Error ? e.message : t("common.error"));
+    }
+    setEditLoading(false);
   };
 
   const importCsv = async () => {
@@ -528,12 +583,22 @@ export default function PortfolioPage() {
                               </div>
                             </td>
                             <td className="px-3 py-3">
-                              <button
-                                onClick={() => deleteHolding(h.symbol)}
-                                className="text-gray-600 hover:text-red-400"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openEdit(h)}
+                                  className="text-gray-600 hover:text-cyan-400"
+                                  title="Edit"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(h.symbol)}
+                                  className="text-gray-600 hover:text-red-400"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -671,6 +736,110 @@ export default function PortfolioPage() {
                 {addLoading
                   ? t("portfolio.addModal.saving")
                   : t("portfolio.addModal.confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Position Modal */}
+      {editHolding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 p-5">
+              <div>
+                <h2 className="font-bold text-white">
+                  编辑持仓 · {editHolding.symbol}
+                </h2>
+                <p className="text-xs text-gray-500">修改持仓量或成本</p>
+              </div>
+              <button
+                onClick={() => setEditHolding(null)}
+                className="text-gray-500 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              {[
+                {
+                  label: t("portfolio.addModal.qty"),
+                  value: editQty,
+                  set: setEditQty,
+                  placeholder: "100",
+                },
+                {
+                  label: t("portfolio.addModal.cost"),
+                  value: editCost,
+                  set: setEditCost,
+                  placeholder: "450.00",
+                },
+              ].map(({ label, value, set, placeholder }) => (
+                <div key={label}>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-400">
+                    {label}
+                  </label>
+                  <input
+                    value={value}
+                    onChange={(e) => set(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-gray-600 focus:border-cyan-500/50 focus:outline-none"
+                  />
+                </div>
+              ))}
+              {editError && <p className="text-xs text-red-400">{editError}</p>}
+            </div>
+            <div className="border-t border-white/10 p-5">
+              <button
+                onClick={updateHolding}
+                disabled={editLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 py-3 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-50"
+              >
+                {editLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4" />
+                )}
+                {editLoading ? t("portfolio.addModal.saving") : "保存修改"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur">
+          <div className="w-full max-w-xs rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15">
+                <Trash2 className="h-6 w-6 text-red-400" />
+              </div>
+              <h2 className="mb-1 font-bold text-white">删除持仓</h2>
+              <p className="text-sm text-gray-400">
+                确认删除{" "}
+                <span className="font-semibold text-cyan-400">
+                  {deleteTarget}
+                </span>{" "}
+                吗？此操作不可撤销。
+              </p>
+            </div>
+            <div className="flex gap-3 border-t border-white/10 p-4">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm text-gray-300 hover:bg-white/5"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleteLoading}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-50"
+              >
+                {deleteLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                确认删除
               </button>
             </div>
           </div>
