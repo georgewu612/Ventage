@@ -420,11 +420,11 @@ def _do_analyze(user_id: str) -> dict[str, Any]:
         .data or [{}]
     )[0]
 
-    # Latest signals for held symbols
+    # Latest signals for held symbols (confidence * 100 = signal_score)
     symbols = [h["symbol"] for h in holdings]
     signals_rows = (
         db.table("market_signals")
-        .select("symbol,direction,signal_score,summary")
+        .select("symbol,direction,confidence,analysis")
         .in_("symbol", symbols)
         .order("created_at", desc=True)
         .limit(len(symbols) * 2)
@@ -445,7 +445,7 @@ def _do_analyze(user_id: str) -> dict[str, Any]:
         for h in holdings
     )
     signals_text = "\n".join(
-        f"- {r['symbol']}: {r['direction']} score {r['signal_score']}"
+        f"- {r['symbol']}: {r['direction']} (score {round(float(r['confidence'] or 0) * 100)})"
         for r in latest_signals
     ) or "No recent signals for these symbols."
 
