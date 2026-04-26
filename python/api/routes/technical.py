@@ -241,3 +241,171 @@ def get_technical_analysis(
         "latest": latest,
         "signals": signals,
     }
+
+
+@router.get("/technical/{symbol}/analog")
+def get_historical_analog(symbol: str) -> dict[str, Any]:
+    """Find historical periods with similar market regime/VIX and compute forward returns.
+
+    Uses the latest market_regime_snapshots entry to identify the current VIX range,
+    then scans 5 years of daily history for similar environments and returns forward
+    5/10/20-day return statistics for the requested symbol.
+    """
+    from supabase import create_client
+    from config.settings import get_settings
+
+    settings = get_settings()
+
+    # ── 1. Fetch current regime from DB ───────────────────────────────────────
+    current_vix: float | None = None
+    current_regime: str = "neutral"
+    spy_above_200ma: bool = True
+
+    try:
+        if settings.has_supabase_config:
+            db = create_client(settings.supabase_url, settings.supabase_service_role_key)
+            regime_res = (
+                db.table("market_regime_snapshots")
+                .select("regime, vix, spy_vs_200ma_pct")
+                .order("generated_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if regime_res.data:
+                snap = regime_res.data[0]
+                current_vix = snap.get("vix")
+                current_regime = snap.get("regime", "neutral")
+                spy_vs_200ma = snap.get("spy_vs_200ma_pct", 0) or 0
+                spy_above_200ma = float(spy_vs_200ma) >= 0
+    except Exception:
+        pass  # fall back to default values
+
+    # ── 2. Pull 5-year daily data for symbol + SPY ────────────────────────────
+    sym_upper = symbol.upper()
+    try:
+        sym_df = yf.Ticker(sym_upper).history(period="5y", interval="1d")
+        spy_df = yf.Ticker("SPY").history(period="5y", interval="1d")
+        vix_df = yf.Ticker("^VIX").history(period="5y", interval="1d")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch data: {exc}") from exc
+
+    if sym_df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for {sym_upper}")
+
+    # Align all series by date index
+    sym_close = sym_df["Close"].rename("sym")
+    spy_close = spy_df["Close"].rename("spy") if not spy_df.empty else pd.Series(dtype=float)
+    vix_close = vix_df["Close"].rename("vix") if not vix_df.empty else pd.Series(dtype=float)
+
+    # Normalize index to date (remove tz)
+    for s in [sym_close, spy_close, vix_close]:
+        if hasattr(s.index, "tz_localize"):
+            try:
+                s.index = s.index.tz_localize(None)
+            except TypeError:
+                s.index = s.index.tz_convert(None)
+
+    combined = pd.concat([sym_close, spy_close, vix_close], axis=1).dropna()
+
+    if combined.empty or len(combined) < 30:
+        return {
+            "symbol": sym_upper,
+            "regime": current_regime,
+            "sample_count": 0,
+            "avg_5d": None,
+            "avg_10d": None,
+            "avg_20d": None,
+            "win_rate_5d": None,
+            "win_rate_20d": None,
+            "max_drawdown_pct": None,
+            "windows": [],
+        }
+
+    # ── 3. SPY 200-day MA ─────────────────────────────────────────────────────
+    combined["spy_sma200"] = combined["spy"].rolling(200).mean()
+    combined["spy_above_200ma"] = combined["spy"] > combined["spy_sma200"]
+
+    # ── 4. Identify analog windows ────────────────────────────────────────────
+    # VIX tolerance: ±30% of current_vix (or fallback range 15-25)
+    if current_vix and current_vix > 0:
+        vix_low = current_vix * 0.70
+        vix_high = current_vix * 1.30
+    else:
+        vix_low, vix_high = 12.0, 30.0
+
+    windows = []
+    returns_5d: list[float] = []
+    returns_10d: list[float] = []
+    returns_20d: list[float] = []
+
+    dates = combined.index.tolist()
+    # Leave at least 20 trading days at the end for forward returns
+    for i, date in enumerate(dates[:-25]):
+        row = combined.iloc[i]
+        vix_val = row.get("vix", np.nan)
+        spy_flag = bool(row.get("spy_above_200ma", spy_above_200ma))
+
+        # Filter: VIX in range AND SPY direction matches
+        if np.isnan(vix_val):
+            continue
+        if not (vix_low <= vix_val <= vix_high):
+            continue
+        if spy_flag != spy_above_200ma:
+            continue
+
+        sym_price = row["sym"]
+
+        # Forward returns
+        def _fwd(days: int) -> float | None:
+            j = i + days
+            if j < len(combined):
+                fwd_price = combined.iloc[j]["sym"]
+                return round((fwd_price / sym_price - 1) * 100, 2)
+            return None
+
+        r5 = _fwd(5)
+        r10 = _fwd(10)
+        r20 = _fwd(20)
+
+        if r5 is not None:
+            returns_5d.append(r5)
+        if r10 is not None:
+            returns_10d.append(r10)
+        if r20 is not None:
+            returns_20d.append(r20)
+
+        windows.append({
+            "start": date.strftime("%Y-%m-%d") if hasattr(date, "strftime") else str(date)[:10],
+            "vix": round(float(vix_val), 1),
+            "return_5d": r5,
+            "return_20d": r20,
+        })
+
+    # Limit to most recent 20 analog windows for the chart
+    windows_recent = windows[-20:] if len(windows) > 20 else windows
+
+    # ── 5. Compute statistics ─────────────────────────────────────────────────
+    def _avg(lst: list[float]) -> float | None:
+        return round(sum(lst) / len(lst), 2) if lst else None
+
+    def _win_rate(lst: list[float]) -> float | None:
+        return round(sum(1 for r in lst if r > 0) / len(lst) * 100, 1) if lst else None
+
+    def _max_dd(lst: list[float]) -> float | None:
+        if not lst:
+            return None
+        return round(min(lst), 2)
+
+    return {
+        "symbol": sym_upper,
+        "regime": current_regime,
+        "current_vix": round(current_vix, 1) if current_vix else None,
+        "sample_count": len(windows),
+        "avg_5d": _avg(returns_5d),
+        "avg_10d": _avg(returns_10d),
+        "avg_20d": _avg(returns_20d),
+        "win_rate_5d": _win_rate(returns_5d),
+        "win_rate_20d": _win_rate(returns_20d),
+        "max_drawdown_pct": _max_dd(returns_20d),
+        "windows": windows_recent,
+    }

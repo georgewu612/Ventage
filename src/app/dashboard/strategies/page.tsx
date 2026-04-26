@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   BarChart2,
+  Bot,
   CheckCircle2,
   Clock,
   FlaskConical,
@@ -13,12 +14,14 @@ import {
   TrendingDown,
   TrendingUp,
   XCircle,
+  Zap,
 } from "lucide-react";
 
 import { API_BASE_URL } from "@/lib/config";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
+import { useMarketRegime } from "@/lib/hooks/useMarketRegime";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -28,6 +31,22 @@ interface Template {
   name_zh: string;
   description: string;
   category: string;
+}
+
+interface MatchResult {
+  template_id: string;
+  name: string;
+  score: number;
+  reason: string;
+  reason_en: string;
+}
+
+interface MatchResponse {
+  regime: string;
+  volatility: string;
+  style?: string;
+  top_matches: MatchResult[];
+  excluded: MatchResult[];
 }
 
 interface Run {
@@ -103,12 +122,46 @@ function StatusBadge({ status }: { status: Run["status"] }) {
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
+// ── Regime Fit helper ────────────────────────────────────────────────────────
+
+function getRegimeFit(
+  category: string,
+  regime: string,
+): { label: string; color: string } {
+  const good = [
+    ["trend", "risk_on"],
+    ["momentum", "risk_on"],
+    ["volatility", "risk_off"],
+    ["mean_reversion", "neutral"],
+    ["mean_reversion", "risk_off"],
+  ];
+  const bad = [
+    ["momentum", "risk_off"],
+    ["trend", "risk_off"],
+    ["volatility", "risk_on"],
+  ];
+  const key = `${category},${regime}`;
+  if (good.some(([c, r]) => `${c},${r}` === key))
+    return { label: "高适配", color: "text-emerald-400 bg-emerald-500/10" };
+  if (bad.some(([c, r]) => `${c},${r}` === key))
+    return { label: "低适配", color: "text-red-400 bg-red-500/10" };
+  return { label: "中性", color: "text-gray-400 bg-white/5" };
+}
+
 export default function StrategiesPage() {
   const { t, locale } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingRuns, setLoadingRuns] = useState(true);
+
+  // AI Strategy Match state
+  const [riskPref, setRiskPref] = useState("moderate");
+  const [maxDd, setMaxDd] = useState(12);
+  const [matching, setMatching] = useState(false);
+  const [matchResult, setMatchResult] = useState<MatchResponse | null>(null);
+  const [matchError, setMatchError] = useState<string | null>(null);
+  const { regime } = useMarketRegime();
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/v1/strategies/templates`)
@@ -141,6 +194,29 @@ export default function StrategiesPage() {
     };
     load();
   }, [userId]);
+
+  const runMatch = async () => {
+    setMatching(true);
+    setMatchError(null);
+    setMatchResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/strategies/match`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          risk_preference: riskPref,
+          max_drawdown_pct: maxDd,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMatchResult(data);
+    } catch (e) {
+      setMatchError((e as Error).message);
+    } finally {
+      setMatching(false);
+    }
+  };
 
   const refreshRuns = async () => {
     if (!userId) return;
@@ -255,6 +331,137 @@ export default function StrategiesPage() {
             ))}
           </div>
 
+          {/* ── AI Strategy Match ── */}
+          <section className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+            <div className="mb-4 flex items-center gap-2">
+              <Bot className="h-5 w-5 text-cyan-400" />
+              <h2 className="text-sm font-semibold text-white">
+                {t("quant.aiMatch.title")}
+              </h2>
+              {regime && (
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
+                  {t("quant.aiMatch.currentRegime")}:{" "}
+                  <span className="font-semibold text-cyan-300">
+                    {regime.regime}
+                  </span>
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end gap-4">
+              {/* Risk preference */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">
+                  {t("quant.aiMatch.riskPreference")}
+                </label>
+                <select
+                  value={riskPref}
+                  onChange={(e) => setRiskPref(e.target.value)}
+                  className="rounded-lg border border-white/10 bg-slate-800 px-3 py-1.5 text-sm text-white"
+                >
+                  {[
+                    ["conservative", "保守型"],
+                    ["moderate", "稳健型"],
+                    ["balanced", "平衡型"],
+                    ["aggressive", "进取型"],
+                    ["speculative", "激进型"],
+                  ].map(([v, zh]) => (
+                    <option key={v} value={v}>
+                      {locale === "zh" ? zh : v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Max drawdown */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">
+                  {t("quant.aiMatch.maxDrawdown")}: {maxDd}%
+                </label>
+                <input
+                  type="range"
+                  min={5}
+                  max={25}
+                  step={1}
+                  value={maxDd}
+                  onChange={(e) => setMaxDd(Number(e.target.value))}
+                  className="w-32 accent-cyan-500"
+                />
+              </div>
+              <button
+                onClick={runMatch}
+                disabled={matching}
+                className="flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-60"
+              >
+                {matching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4" />
+                )}
+                {matching
+                  ? t("quant.aiMatch.matching")
+                  : t("quant.aiMatch.match")}
+              </button>
+            </div>
+
+            {matchError && (
+              <p className="mt-3 text-xs text-red-400">{matchError}</p>
+            )}
+
+            {matchResult && (
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-semibold text-cyan-300">
+                  {t("quant.aiMatch.topMatches")} (
+                  {matchResult.top_matches.length})
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {matchResult.top_matches.map((m) => (
+                    <div
+                      key={m.template_id}
+                      className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+                    >
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-white">
+                          {m.name}
+                        </span>
+                        <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                          {m.score}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-gray-400">
+                        {locale === "zh" ? m.reason : m.reason_en}
+                      </p>
+                      <span className="mt-1 inline-block rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
+                        AI推荐
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {matchResult.excluded.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-300">
+                      {t("quant.aiMatch.excluded")} (
+                      {matchResult.excluded.length})
+                    </summary>
+                    <div className="mt-2 space-y-1">
+                      {matchResult.excluded.map((m) => (
+                        <div
+                          key={m.template_id}
+                          className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-1.5"
+                        >
+                          <span className="text-xs text-gray-400">
+                            {m.name}
+                          </span>
+                          <span className="text-[10px] text-gray-600">
+                            {locale === "zh" ? m.reason : m.reason_en}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* ── Strategy Templates ── */}
           <section>
             <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
@@ -263,18 +470,39 @@ export default function StrategiesPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {templates.map((tmpl) => {
                 const cat = CAT_STYLE[tmpl.category] ?? CAT_STYLE.trend;
+                const regimeFit = getRegimeFit(
+                  tmpl.category,
+                  regime?.regime ?? "neutral",
+                );
+                const isAiRecommended = matchResult?.top_matches.some(
+                  (m) => m.template_id === tmpl.id,
+                );
                 return (
                   <div
                     key={tmpl.id}
-                    className={`rounded-2xl border ${cat.border} ${cat.bg} p-5 transition-all hover:opacity-90`}
+                    className={`relative rounded-2xl border ${cat.border} ${cat.bg} p-5 transition-all hover:opacity-90 ${isAiRecommended ? "ring-1 ring-emerald-500/40" : ""}`}
                   >
+                    {isAiRecommended && (
+                      <div className="absolute -top-2 right-3">
+                        <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold text-white">
+                          AI推荐
+                        </span>
+                      </div>
+                    )}
                     <div className="mb-3 flex items-center justify-between">
                       <span
                         className={`text-[10px] font-semibold ${cat.color} tracking-wider uppercase`}
                       >
                         {catLabel(tmpl.category)}
                       </span>
-                      <FlaskConical className={`h-4 w-4 ${cat.color}`} />
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${regimeFit.color}`}
+                        >
+                          {regimeFit.label}
+                        </span>
+                        <FlaskConical className={`h-4 w-4 ${cat.color}`} />
+                      </div>
                     </div>
                     <h3 className="mb-1.5 font-semibold text-white">
                       {locale === "zh" ? tmpl.name_zh : tmpl.name}

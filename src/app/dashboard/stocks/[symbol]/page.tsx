@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 
 import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
+import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
+import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
 import { API_BASE_URL } from "@/lib/config";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/provider";
@@ -776,6 +778,16 @@ function StockWorkbenchInner() {
               error={deskError}
               onRefresh={fetchDesk}
               locale={locale}
+            />
+
+            {/* Historical Analog */}
+            <HistoricalAnalogCard symbol={symbol} />
+
+            {/* Monitoring Triggers */}
+            <MonitoringTriggersCard
+              conditions={deskResult?.invalidation_conditions}
+              conditionsEn={deskResult?.invalidation_conditions}
+              loading={deskLoading}
             />
 
             {/* Options + Insider */}

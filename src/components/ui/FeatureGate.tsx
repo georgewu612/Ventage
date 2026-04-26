@@ -3,6 +3,7 @@
 import { Lock } from "lucide-react";
 
 import { type Plan, PLAN_LABELS } from "@/lib/features/gates";
+import { useI18n } from "@/lib/i18n/provider";
 import { useProfile } from "@/lib/hooks/useProfile";
 
 interface FeatureGateProps {
@@ -27,6 +28,7 @@ export function FeatureGate({
   overlay = false,
 }: FeatureGateProps) {
   const { can, loading } = useProfile();
+  const { t, locale } = useI18n();
 
   // While loading, render children (avoid layout flash)
   if (loading) return <>{children}</>;
@@ -35,6 +37,7 @@ export function FeatureGate({
 
   const planKey = requiredPlan ?? "pro";
   const planLabel = PLAN_LABELS[planKey];
+  const planName = locale === "zh" ? planLabel.zh : planLabel.en;
 
   if (overlay) {
     return (
@@ -45,13 +48,13 @@ export function FeatureGate({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-slate-900/80 backdrop-blur-sm">
           <Lock className="h-6 w-6 text-amber-400" />
           <p className="text-sm font-semibold text-white">
-            需要 {planLabel.zh}
+            {t("gate.requires")} {planName}
           </p>
           <a
             href="/pricing"
             className="rounded-lg bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
           >
-            升级解锁 →
+            {t("gate.unlock")}
           </a>
         </div>
       </div>
@@ -61,12 +64,14 @@ export function FeatureGate({
   return (
     <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-gray-500">
       <Lock className="h-4 w-4 text-amber-400/60" />
-      <span>需要 {planLabel.zh} · </span>
+      <span>
+        {t("gate.requires")} {planName} ·{" "}
+      </span>
       <a
         href="/pricing"
         className="text-amber-400 underline-offset-2 hover:underline"
       >
-        升级
+        {t("gate.upgrade")}
       </a>
     </div>
   );
