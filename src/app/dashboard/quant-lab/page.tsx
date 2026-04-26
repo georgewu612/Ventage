@@ -5,11 +5,14 @@ import {
   BarChart2,
   ChevronRight,
   FlaskConical,
+  Layers,
   Loader2,
   Play,
   RefreshCw,
   Search,
+  Shield,
   X,
+  Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -29,12 +32,7 @@ interface Template {
   params_schema: {
     properties: Record<
       string,
-      {
-        type: string;
-        title: string;
-        minimum: number;
-        maximum: number;
-      }
+      { type: string; title: string; minimum: number; maximum: number }
     >;
   };
 }
@@ -49,7 +47,25 @@ interface Run {
   created_at: string;
 }
 
-// ── Category config ───────────────────────────────────────────────────────────
+interface WalkForwardResult {
+  splits: {
+    train_sharpe: number;
+    test_sharpe: number;
+    train_return: number;
+    test_return: number;
+  }[];
+  consistency_score: number;
+  overfitting_risk_score: number;
+}
+
+interface SensitivityResult {
+  param_key: string;
+  values: number[];
+  sharpes: number[];
+  sharpe_std: number;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const CAT_COLORS: Record<string, { color: string; bg: string }> = {
   trend: { color: "text-cyan-400", bg: "bg-cyan-500/10" },
@@ -116,6 +132,38 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "bg-red-500/20 text-red-400",
 };
 
+type QuantTab =
+  | "templates"
+  | "factors"
+  | "history"
+  | "optimization"
+  | "robustness";
+
+const TABS: {
+  key: QuantTab;
+  zhLabel: string;
+  enLabel: string;
+  icon: React.ElementType;
+}[] = [
+  { key: "templates", zhLabel: "策略模板", enLabel: "Templates", icon: Layers },
+  { key: "factors", zhLabel: "因子工作台", enLabel: "Factors", icon: Search },
+  { key: "history", zhLabel: "回测历史", enLabel: "History", icon: BarChart2 },
+  {
+    key: "optimization",
+    zhLabel: "优化结果",
+    enLabel: "Optimization",
+    icon: Zap,
+  },
+  {
+    key: "robustness",
+    zhLabel: "稳健性评估",
+    enLabel: "Robustness",
+    icon: Shield,
+  },
+];
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function StatusBadge({ status }: { status: Run["status"] }) {
   const { t } = useI18n();
   const cfg = STATUS_COLORS[status] ?? STATUS_COLORS.pending;
@@ -134,12 +182,39 @@ function StatusBadge({ status }: { status: Run["status"] }) {
   );
 }
 
+function ScoreBar({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-xs">
+        <span className="text-gray-400">{label}</span>
+        <span className={`font-semibold ${color}`}>{value.toFixed(1)}</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full ${color.replace("text-", "bg-")}`}
+          style={{ width: `${Math.min(100, value)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function QuantLabPage() {
   const router = useRouter();
   const { t, locale } = useI18n();
+  const zh = locale === "zh";
 
+  const [activeTab, setActiveTab] = useState<QuantTab>("templates");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -153,6 +228,30 @@ export default function QuantLabPage() {
   const [endDate, setEndDate] = useState("2024-12-31");
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+
+  // Factor scanner state
+  const [factorSymbol, setFactorSymbol] = useState("NVDA");
+  const [factorLoading, setFactorLoading] = useState(false);
+  const [factorResult, setFactorResult] = useState<{
+    symbol: string;
+    last_price: number;
+    last_date: string;
+    factors: Record<string, number>;
+  } | null>(null);
+  const [factorError, setFactorError] = useState<string | null>(null);
+
+  // Robustness state
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [nSplits, setNSplits] = useState(3);
+  const [wfLoading, setWfLoading] = useState(false);
+  const [wfResult, setWfResult] = useState<WalkForwardResult | null>(null);
+  const [wfError, setWfError] = useState<string | null>(null);
+
+  // Sensitivity state
+  const [sensParamKey, setSensParamKey] = useState("");
+  const [sensLoading, setSensLoading] = useState(false);
+  const [sensResult, setSensResult] = useState<SensitivityResult | null>(null);
+  const [sensError, setSensError] = useState<string | null>(null);
 
   useEffect(() => {
     createSupabaseBrowserClient()
@@ -184,9 +283,9 @@ export default function QuantLabPage() {
     } catch {}
   }
 
-  function openTemplate(t: Template) {
-    setSelectedTemplate(t);
-    setParams({ ...t.default_params });
+  function openTemplate(tmpl: Template) {
+    setSelectedTemplate(tmpl);
+    setParams({ ...tmpl.default_params });
     setRunError(null);
   }
 
@@ -213,7 +312,6 @@ export default function QuantLabPage() {
         throw new Error((await r.json()).detail || "Backtest failed to start");
       setSelectedTemplate(null);
       setTimeout(fetchRuns, 1500);
-      // Poll every 10s for 5 minutes
       let n = 0;
       const timer = setInterval(() => {
         fetchRuns();
@@ -225,21 +323,6 @@ export default function QuantLabPage() {
       setRunning(false);
     }
   }
-
-  function viewResult(run: Run) {
-    router.push(`/dashboard/strategies/${run.id}`);
-  }
-
-  // ── Factor Scanner ────────────────────────────────────────────────
-  const [factorSymbol, setFactorSymbol] = useState("NVDA");
-  const [factorLoading, setFactorLoading] = useState(false);
-  const [factorResult, setFactorResult] = useState<{
-    symbol: string;
-    last_price: number;
-    last_date: string;
-    factors: Record<string, number>;
-  } | null>(null);
-  const [factorError, setFactorError] = useState<string | null>(null);
 
   const runFactorScan = useCallback(async () => {
     if (!factorSymbol.trim()) return;
@@ -265,87 +348,158 @@ export default function QuantLabPage() {
     }
   }, [factorSymbol, t]);
 
+  async function runWalkForward() {
+    if (!selectedRunId) return;
+    setWfLoading(true);
+    setWfError(null);
+    setWfResult(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/strategies/walkforward`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: selectedRunId,
+          n_splits: nSplits,
+          train_ratio: 0.7,
+        }),
+      });
+      if (!r.ok)
+        throw new Error((await r.json()).detail ?? "Walk-forward failed");
+      setWfResult(await r.json());
+    } catch (e: unknown) {
+      setWfError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWfLoading(false);
+    }
+  }
+
+  async function runSensitivity() {
+    if (!selectedRunId || !sensParamKey) return;
+    setSensLoading(true);
+    setSensError(null);
+    setSensResult(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/strategies/sensitivity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          run_id: selectedRunId,
+          param_key: sensParamKey,
+          range: [5, 50],
+          steps: 6,
+        }),
+      });
+      if (!r.ok)
+        throw new Error((await r.json()).detail ?? "Sensitivity failed");
+      setSensResult(await r.json());
+    } catch (e: unknown) {
+      setSensError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSensLoading(false);
+    }
+  }
+
+  const doneRuns = runs.filter((r) => r.status === "done");
+
   return (
     <FeatureGate feature="quant_lab" overlay>
       <div className="min-h-screen bg-slate-900 p-6">
         <div className="mx-auto max-w-6xl">
           {/* Header */}
-          <div className="mb-8 flex items-center gap-3">
+          <div className="mb-6 flex items-center gap-3">
             <div className="rounded-xl bg-amber-500/15 p-2.5">
               <FlaskConical className="h-6 w-6 text-amber-400" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Quant Lab</h1>
               <p className="text-sm text-gray-400">
-                {t("quant.templates")} · Factor Research · {t("quant.run")}
+                {zh ? "量化研究工作台" : "Quantitative Research Workbench"}
               </p>
             </div>
             <button
               onClick={fetchRuns}
               className="ml-auto rounded-lg border border-white/10 p-2 text-gray-400 hover:bg-white/5"
-              title={t("common.loading")}
             >
               <RefreshCw className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Templates */}
-          <section className="mb-8">
-            <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              {t("quant.templates")}
-            </h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {templates.map((tmpl) => {
-                const catColors = CAT_COLORS[tmpl.category] ?? CAT_COLORS.trend;
-                const catLabel =
-                  {
-                    trend: t("quant.catTrend"),
-                    mean_reversion: t("quant.catMeanReversion"),
-                    momentum: t("quant.catMomentum"),
-                    volatility: t("quant.catVolatility"),
-                  }[tmpl.category] ?? tmpl.category;
-                return (
-                  <div
-                    key={tmpl.id}
-                    onClick={() => openTemplate(tmpl)}
-                    className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]"
-                  >
-                    <div
-                      className={`mb-3 inline-flex rounded-lg ${catColors.bg} px-2 py-1`}
-                    >
-                      <span
-                        className={`text-[10px] font-semibold ${catColors.color}`}
-                      >
-                        {catLabel}
-                      </span>
-                    </div>
-                    <h3 className="mb-1.5 font-semibold text-white">
-                      {tmpl.name_zh}
-                    </h3>
-                    <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                      {tmpl.description}
-                    </p>
-                    <button className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-xs font-medium text-gray-300 hover:bg-white/10">
-                      <Play className="h-3 w-3" /> {t("quant.run")}
-                    </button>
-                  </div>
-                );
-              })}
-              {templates.length === 0 && (
-                <div className="col-span-4 py-12 text-center text-sm text-gray-600">
-                  {t("common.loading")}
-                </div>
-              )}
-            </div>
-          </section>
+          {/* Tab bar */}
+          <div className="mb-6 flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-all ${
+                    activeTab === tab.key
+                      ? "bg-amber-500/20 font-semibold text-amber-200"
+                      : "text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">
+                    {zh ? tab.zhLabel : tab.enLabel}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* ── Factor Scanner ── */}
-          <section className="mb-8">
-            <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              {t("quant.factorScanner")}
-            </h2>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-              {/* Input row */}
+          {/* ── Tab 1: Strategy Templates ── */}
+          {activeTab === "templates" && (
+            <section>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {templates.map((tmpl) => {
+                  const catColors =
+                    CAT_COLORS[tmpl.category] ?? CAT_COLORS.trend;
+                  const catLabel =
+                    {
+                      trend: t("quant.catTrend"),
+                      mean_reversion: t("quant.catMeanReversion"),
+                      momentum: t("quant.catMomentum"),
+                      volatility: t("quant.catVolatility"),
+                    }[tmpl.category] ?? tmpl.category;
+                  return (
+                    <div
+                      key={tmpl.id}
+                      onClick={() => openTemplate(tmpl)}
+                      className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]"
+                    >
+                      <div
+                        className={`mb-3 inline-flex rounded-lg ${catColors.bg} px-2 py-1`}
+                      >
+                        <span
+                          className={`text-[10px] font-semibold ${catColors.color}`}
+                        >
+                          {catLabel}
+                        </span>
+                      </div>
+                      <h3 className="mb-1.5 font-semibold text-white">
+                        {tmpl.name_zh}
+                      </h3>
+                      <p className="mb-4 text-xs leading-relaxed text-gray-500">
+                        {tmpl.description}
+                      </p>
+                      <button className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-xs font-medium text-gray-300 hover:bg-white/10">
+                        <Play className="h-3 w-3" /> {t("quant.run")}
+                      </button>
+                    </div>
+                  );
+                })}
+                {templates.length === 0 && (
+                  <div className="col-span-4 py-12 text-center text-sm text-gray-600">
+                    {t("common.loading")}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ── Tab 2: Factor Workbench ── */}
+          {activeTab === "factors" && (
+            <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
               <div className="mb-4 flex gap-3">
                 <input
                   value={factorSymbol}
@@ -376,20 +530,16 @@ export default function QuantLabPage() {
                   </span>
                 )}
               </div>
-
               {factorError && (
                 <p className="mb-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
                   {factorError}
                 </p>
               )}
-
-              {/* Factor bars */}
               {factorResult && (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {FACTOR_DEFS.map(
                     ({ key, label, label_zh, min, max, goodHigh }) => {
                       const raw = factorResult.factors[key] ?? 0;
-                      // clamp and normalise to 0-100%
                       const clamped = Math.max(min, Math.min(max, raw));
                       const pct = ((clamped - min) / (max - min)) * 100;
                       const isGood = goodHigh
@@ -406,7 +556,7 @@ export default function QuantLabPage() {
                         >
                           <div className="mb-2 flex items-center justify-between">
                             <span className="text-xs font-medium text-gray-400">
-                              {locale === "zh" ? label_zh : label}
+                              {zh ? label_zh : label}
                             </span>
                             <span
                               className={`text-sm font-bold tabular-nums ${textColor}`}
@@ -430,89 +580,354 @@ export default function QuantLabPage() {
                   )}
                 </div>
               )}
-
               {!factorResult && !factorLoading && !factorError && (
                 <p className="py-6 text-center text-sm text-gray-600">
                   {t("quant.scanHint")}
                 </p>
               )}
-            </div>
-          </section>
+            </section>
+          )}
 
-          {/* History */}
-          <section>
-            <h2 className="mb-4 text-xs font-semibold tracking-wider text-gray-500 uppercase">
-              {t("quant.runHistory")}
-            </h2>
-            {runs.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center">
-                <BarChart2 className="mx-auto mb-3 h-8 w-8 text-gray-700" />
-                <p className="text-sm text-gray-500">{t("common.noData")}</p>
-                <p className="mt-1 text-xs text-gray-600">
-                  {t("quant.newBacktest")}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-white/10">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-white/10 bg-white/5">
-                      {[
-                        t("quant.templates"),
-                        t("quant.symbol"),
-                        t("quant.startDate"),
-                        t("common.status"),
-                        t("quant.detail.date"),
-                        "",
-                      ].map((h) => (
-                        <th
-                          key={h}
-                          className="px-4 py-3 text-left text-xs font-semibold text-gray-500"
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {runs.map((run) => (
-                      <tr key={run.id} className="hover:bg-white/[0.03]">
-                        <td className="px-4 py-3 text-sm text-gray-300">
-                          {run.template_name}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm font-semibold text-cyan-400">
-                          {run.symbol}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
-                          {run.start_date} → {run.end_date}
-                        </td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={run.status} />
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-600">
-                          {new Date(run.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {run.status === "done" && (
-                            <button
-                              onClick={() => viewResult(run)}
-                              className="flex items-center gap-1 rounded-lg bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400 hover:bg-cyan-500/20"
-                            >
-                              <ChevronRight className="h-3 w-3" />
-                              {t("quant.viewResult")}
-                            </button>
-                          )}
-                          {run.status === "running" && (
-                            <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-                          )}
-                        </td>
+          {/* ── Tab 3: Run History ── */}
+          {activeTab === "history" && (
+            <section>
+              {runs.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center">
+                  <BarChart2 className="mx-auto mb-3 h-8 w-8 text-gray-700" />
+                  <p className="text-sm text-gray-500">{t("quant.noRuns")}</p>
+                  <p className="mt-1 text-xs text-gray-600">
+                    {t("quant.noRunsHint")}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-white/10">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5">
+                        {[
+                          t("quant.templates"),
+                          t("quant.symbol"),
+                          t("quant.startDate"),
+                          t("common.status"),
+                          t("quant.detail.date"),
+                          "",
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500"
+                          >
+                            {h}
+                          </th>
+                        ))}
                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {runs.map((run) => (
+                        <tr key={run.id} className="hover:bg-white/[0.03]">
+                          <td className="px-4 py-3 text-sm text-gray-300">
+                            {run.template_name}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-sm font-semibold text-cyan-400">
+                            {run.symbol}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {run.start_date} → {run.end_date}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={run.status} />
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {new Date(run.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {run.status === "done" && (
+                              <button
+                                onClick={() =>
+                                  router.push(`/dashboard/strategies/${run.id}`)
+                                }
+                                className="flex items-center gap-1 rounded-lg bg-cyan-500/10 px-3 py-1 text-xs text-cyan-400 hover:bg-cyan-500/20"
+                              >
+                                <ChevronRight className="h-3 w-3" />{" "}
+                                {t("quant.viewResult")}
+                              </button>
+                            )}
+                            {run.status === "running" && (
+                              <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── Tab 4: Optimization Results ── */}
+          {activeTab === "optimization" && (
+            <section className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  {zh ? "参数敏感性分析" : "Parameter Sensitivity"}
+                </p>
+                <div className="mb-4 flex flex-wrap gap-3">
+                  <select
+                    value={selectedRunId}
+                    onChange={(e) => setSelectedRunId(e.target.value)}
+                    className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">{zh ? "选择回测" : "Select run"}</option>
+                    {doneRuns.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.template_name} / {r.symbol} / {r.start_date}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                  </select>
+                  <input
+                    value={sensParamKey}
+                    onChange={(e) => setSensParamKey(e.target.value)}
+                    placeholder={
+                      zh
+                        ? "参数名（如 fast_window）"
+                        : "param_key (e.g. fast_window)"
+                    }
+                    className="w-52 rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder-gray-600"
+                  />
+                  <button
+                    onClick={runSensitivity}
+                    disabled={sensLoading || !selectedRunId || !sensParamKey}
+                    className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-4 py-2 text-sm text-purple-300 hover:bg-purple-500/30 disabled:opacity-40"
+                  >
+                    {sensLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    {zh ? "运行敏感性" : "Run Sensitivity"}
+                  </button>
+                </div>
+                {sensError && (
+                  <p className="text-xs text-red-400">{sensError}</p>
+                )}
+                {sensResult && (
+                  <div>
+                    <p className="mb-2 text-xs text-gray-500">
+                      {zh ? "Sharpe 稳定性" : "Sharpe Stability"}: σ ={" "}
+                      {sensResult.sharpe_std.toFixed(3)}
+                      <span
+                        className={`ml-2 font-semibold ${sensResult.sharpe_std < 0.3 ? "text-emerald-400" : sensResult.sharpe_std < 0.6 ? "text-yellow-400" : "text-red-400"}`}
+                      >
+                        {sensResult.sharpe_std < 0.3
+                          ? zh
+                            ? "稳健"
+                            : "Robust"
+                          : sensResult.sharpe_std < 0.6
+                            ? zh
+                              ? "一般"
+                              : "Moderate"
+                            : zh
+                              ? "脆弱"
+                              : "Fragile"}
+                      </span>
+                    </p>
+                    <div className="flex h-20 items-end gap-1">
+                      {sensResult.sharpes.map((s, i) => {
+                        const h = Math.max(
+                          4,
+                          (Math.abs(s) /
+                            Math.max(...sensResult.sharpes.map(Math.abs))) *
+                            72,
+                        );
+                        return (
+                          <div
+                            key={i}
+                            className="flex flex-1 flex-col items-center gap-0.5"
+                            title={`${sensResult.values[i]}: Sharpe ${s.toFixed(2)}`}
+                          >
+                            <div
+                              className={`w-full rounded-sm ${s >= 0 ? "bg-emerald-500/60" : "bg-red-500/60"}`}
+                              style={{ height: `${h}px` }}
+                            />
+                            <span className="text-[9px] text-gray-600">
+                              {sensResult.values[i]}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {!sensResult && !sensLoading && (
+                  <p className="py-4 text-center text-xs text-gray-600">
+                    {zh
+                      ? "选择一个已完成的回测并输入参数名以运行分析"
+                      : "Select a completed run and enter a param key to analyze"}
+                  </p>
+                )}
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          {/* ── Tab 5: Robustness Assessment ── */}
+          {activeTab === "robustness" && (
+            <section className="space-y-4">
+              {/* Walk-forward trigger */}
+              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                  {zh ? "Walk-forward 稳健性验证" : "Walk-Forward Robustness"}
+                </p>
+                <div className="mb-4 flex flex-wrap gap-3">
+                  <select
+                    value={selectedRunId}
+                    onChange={(e) => setSelectedRunId(e.target.value)}
+                    className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="">
+                      {zh ? "选择已完成回测" : "Select completed run"}
+                    </option>
+                    {doneRuns.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.template_name} / {r.symbol} / {r.start_date}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400">
+                      {zh ? "分段数" : "Splits"}
+                    </label>
+                    <input
+                      type="number"
+                      min={2}
+                      max={6}
+                      value={nSplits}
+                      onChange={(e) => setNSplits(Number(e.target.value))}
+                      className="w-16 rounded-lg border border-white/10 bg-slate-800 px-2 py-2 text-sm text-white"
+                    />
+                  </div>
+                  <button
+                    onClick={runWalkForward}
+                    disabled={wfLoading || !selectedRunId}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-40"
+                  >
+                    {wfLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Shield className="h-4 w-4" />
+                    )}
+                    {zh ? "运行 Walk-forward" : "Run Walk-Forward"}
+                  </button>
+                </div>
+                {wfError && <p className="text-xs text-red-400">{wfError}</p>}
+
+                {wfResult && (
+                  <div className="space-y-4">
+                    {/* Scores */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <ScoreBar
+                          label={
+                            zh
+                              ? "一致性得分（越高越好）"
+                              : "Consistency Score (higher = better)"
+                          }
+                          value={wfResult.consistency_score}
+                          color={
+                            wfResult.consistency_score >= 70
+                              ? "text-emerald-400"
+                              : wfResult.consistency_score >= 40
+                                ? "text-yellow-400"
+                                : "text-red-400"
+                          }
+                        />
+                      </div>
+                      <div>
+                        <ScoreBar
+                          label={
+                            zh
+                              ? "过拟合风险（越低越好）"
+                              : "Overfitting Risk (lower = better)"
+                          }
+                          value={wfResult.overfitting_risk_score}
+                          color={
+                            wfResult.overfitting_risk_score < 30
+                              ? "text-emerald-400"
+                              : wfResult.overfitting_risk_score < 60
+                                ? "text-yellow-400"
+                                : "text-red-400"
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* Splits table */}
+                    <div className="overflow-hidden rounded-lg border border-white/10">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-white/10 bg-white/5 text-xs text-gray-500">
+                            <th className="px-3 py-2 text-left">
+                              {zh ? "窗口" : "Window"}
+                            </th>
+                            <th className="px-3 py-2 text-right">
+                              {zh ? "训练 Sharpe" : "Train Sharpe"}
+                            </th>
+                            <th className="px-3 py-2 text-right">
+                              {zh ? "测试 Sharpe" : "Test Sharpe"}
+                            </th>
+                            <th className="px-3 py-2 text-right">
+                              {zh ? "训练收益" : "Train Return"}
+                            </th>
+                            <th className="px-3 py-2 text-right">
+                              {zh ? "测试收益" : "Test Return"}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {wfResult.splits.map((split, i) => (
+                            <tr key={i} className="hover:bg-white/[0.03]">
+                              <td className="px-3 py-2 text-gray-400">
+                                #{i + 1}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-cyan-400">
+                                {split.train_sharpe.toFixed(2)}
+                              </td>
+                              <td
+                                className={`px-3 py-2 text-right font-mono ${split.test_sharpe >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                              >
+                                {split.test_sharpe.toFixed(2)}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono text-gray-300">
+                                {(split.train_return * 100).toFixed(1)}%
+                              </td>
+                              <td
+                                className={`px-3 py-2 text-right font-mono ${split.test_return >= 0 ? "text-emerald-400" : "text-red-400"}`}
+                              >
+                                {(split.test_return * 100).toFixed(1)}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-[10px] text-gray-600">
+                      ⚠️{" "}
+                      {zh
+                        ? "Walk-forward 测试结果仅供参考，不代表未来实盘表现"
+                        : "Walk-forward results are for reference only and do not guarantee live performance"}
+                    </p>
+                  </div>
+                )}
+
+                {!wfResult && !wfLoading && (
+                  <p className="py-4 text-center text-xs text-gray-600">
+                    {zh
+                      ? "选择一个已完成的回测，然后点击运行以评估策略稳健性"
+                      : "Select a completed run and click Run to evaluate strategy robustness"}
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
         </div>
       </div>
 
@@ -639,9 +1054,6 @@ export default function QuantLabPage() {
                   </>
                 )}
               </button>
-              <p className="mt-2 text-center text-[10px] text-gray-600">
-                {t("quant.runHistory")}
-              </p>
             </div>
           </div>
         </div>

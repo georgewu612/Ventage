@@ -1,13 +1,42 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, Clock, Database } from "lucide-react";
+import { useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Database,
+  Play,
+  RefreshCw,
+} from "lucide-react";
 
 import { useSystemStatus } from "@/lib/hooks/useSystemStatus";
 import { useI18n } from "@/lib/i18n/provider";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://faithful-simplicity-production-3a01.up.railway.app";
+
 export default function AdminPage() {
   const { status, loading } = useSystemStatus();
   const { t, dateLocale } = useI18n();
+  const [triggerStates, setTriggerStates] = useState<
+    Record<string, "idle" | "loading" | "ok" | "error">
+  >({});
+
+  async function triggerAction(label: string, url: string, method = "POST") {
+    setTriggerStates((s) => ({ ...s, [label]: "loading" }));
+    try {
+      const res = await fetch(`${API_BASE}${url}`, { method });
+      setTriggerStates((s) => ({ ...s, [label]: res.ok ? "ok" : "error" }));
+    } catch {
+      setTriggerStates((s) => ({ ...s, [label]: "error" }));
+    }
+    setTimeout(
+      () => setTriggerStates((s) => ({ ...s, [label]: "idle" })),
+      3000,
+    );
+  }
 
   return (
     <div>
@@ -187,6 +216,50 @@ export default function AdminPage() {
                 </div>
               </div>
             )}
+            {/* Manual Triggers */}
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <h2 className="mb-4 flex items-center gap-2 font-semibold text-white">
+                <Play className="h-4 w-4 text-cyan-400" />
+                手动触发
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  { label: "刷新 Regime", url: "/v1/market/regime/refresh" },
+                  { label: "刷新信号", url: "/v1/system/signals/refresh" },
+                  {
+                    label: "生成组合快照",
+                    url: "/v1/portfolio/snapshot?user_id=system",
+                  },
+                ].map(({ label, url }) => {
+                  const state = triggerStates[label] ?? "idle";
+                  return (
+                    <button
+                      key={label}
+                      onClick={() => triggerAction(label, url)}
+                      disabled={state === "loading"}
+                      className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-all disabled:opacity-50 ${
+                        state === "ok"
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : state === "error"
+                            ? "border-red-500/30 bg-red-500/10 text-red-300"
+                            : "border-white/10 bg-white/5 text-gray-300 hover:bg-white/10"
+                      }`}
+                    >
+                      {state === "loading" ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : state === "ok" ? (
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      ) : state === "error" ? (
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                      ) : (
+                        <Play className="h-3.5 w-3.5" />
+                      )}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </>
         )}
       </main>
