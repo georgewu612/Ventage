@@ -100,6 +100,18 @@ class CsvUploadRequest(BaseModel):
     csv_text: str   # raw CSV content as a string
 
 
+class PortfolioPrefsRequest(BaseModel):
+    user_id: str
+    risk_preference: str = "moderate"
+    max_drawdown_pct: float = 12.0
+    return_preference: str = "balanced"
+    holding_period: str = "1-3m"
+    trading_style: str = "trend"
+    universe: str = "us_large"
+    sector_preferences: list[str] = []
+    risk_limits: dict = {}
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/portfolio/upload")
@@ -311,6 +323,63 @@ def portfolio_history(
 
     snapshots = result.data or []
     return {"days": days, "snapshots": snapshots, "count": len(snapshots)}
+
+
+@router.post("/portfolio/build")
+def build_portfolio(prefs: "PortfolioPrefsRequest") -> dict[str, Any]:
+    """AI Portfolio Builder — generate a full portfolio recommendation."""
+    from agents.models import PortfolioPreferences  # noqa: PLC0415
+    from services.portfolio_builder_service import PortfolioBuilderService  # noqa: PLC0415
+
+    pref_model = PortfolioPreferences(**prefs.model_dump())
+    svc = PortfolioBuilderService()
+    try:
+        return svc.build(pref_model)
+    except Exception as exc:
+        logger.error("portfolio_build_error", error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Build failed: {exc}")
+
+
+@router.get("/portfolio/recommendations")
+def list_recommendations(
+    user_id: str = Query(...),
+    limit: int = Query(default=10, le=20),
+) -> dict[str, Any]:
+    """List a user's portfolio recommendation history."""
+    db = _db()
+    rows = (
+        db.table("portfolio_recommendations")
+        .select(
+            "id,risk_preference,portfolio_type,portfolio_type_en,regime_at_creation,"
+            "confidence_score,risk_level,created_at"
+        )
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+        .data
+        or []
+    )
+    return {"count": len(rows), "recommendations": rows}
+
+
+@router.get("/portfolio/recommendations/{rec_id}")
+def get_recommendation(rec_id: str, user_id: str = Query(...)) -> dict[str, Any]:
+    """Fetch a single portfolio recommendation by ID."""
+    db = _db()
+    rows = (
+        db.table("portfolio_recommendations")
+        .select("*")
+        .eq("id", rec_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Recommendation not found")
+    return rows[0]
 
 
 @router.delete("/portfolio/holding/{symbol}")

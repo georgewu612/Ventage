@@ -126,3 +126,42 @@ class DeskConsensus(BaseModel):
         default_factory=lambda: datetime.now(UTC).isoformat(),
         description="生成时间 ISO 8601",
     )
+
+
+# ── Portfolio Builder Models ───────────────────────────────────────────────────
+
+
+class PortfolioPreferences(BaseModel):
+    """User preferences for AI portfolio construction."""
+
+    user_id: str
+    risk_preference: Literal[
+        "conservative", "moderate", "balanced", "aggressive", "speculative"
+    ]
+    max_drawdown_pct: float = Field(ge=5, le=25)
+    return_preference: str  # e.g. "capital_preservation" | "income" | "balanced" | "growth"
+    holding_period: str     # e.g. "intraday" | "1-5d" | "1-4w" | "1-3m" | "6m+"
+    trading_style: str      # e.g. "trend" | "momentum" | "mean_reversion" | "event" | "value" | "quant"
+    universe: str           # e.g. "us_etf" | "us_large" | "us_all" | "global"
+    sector_preferences: list[str] = Field(default_factory=list)
+    risk_limits: dict = Field(default_factory=dict)
+
+
+class PortfolioRecommendation(BaseModel):
+    """Full AI-generated portfolio recommendation."""
+
+    portfolio_type: str
+    portfolio_type_en: str
+    regime_at_creation: str
+    risk_level: str
+    confidence_score: float = Field(ge=0, le=100)
+    recommended_templates: list[str] = Field(default_factory=list)
+    allocation_structure: dict = Field(default_factory=dict)
+    core_candidates: list[dict] = Field(default_factory=list)
+    enhance_candidates: list[dict] = Field(default_factory=list)
+    satellite_candidates: list[dict] = Field(default_factory=list)
+    watchlist_candidates: list[dict] = Field(default_factory=list)
+    avoid_candidates: list[dict] = Field(default_factory=list)
+    backtest_summary: dict = Field(default_factory=dict)
+    ai_explanation: str = ""
+    ai_explanation_en: str = ""

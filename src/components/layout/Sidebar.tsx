@@ -142,6 +142,12 @@ export function Sidebar() {
       feature: "portfolio",
     },
     {
+      name: locale === "zh" ? "AI 组合构建器" : "Portfolio Builder",
+      href: "/dashboard/portfolio-builder",
+      icon: Brain,
+      feature: "portfolio_builder",
+    },
+    {
       name: t("nav.execution"),
       href: "/dashboard/execution",
       icon: Activity,

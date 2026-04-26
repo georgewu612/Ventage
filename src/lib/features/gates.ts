@@ -33,6 +33,7 @@ export const FEATURE_PLAN_MAP: Record<string, Plan> = {
   factor_studio: "premium",
   strategy_copilot: "premium",
   portfolio: "premium",
+  portfolio_builder: "premium",
   execution: "premium",
   multi_agent: "premium",
   admin: "premium",
