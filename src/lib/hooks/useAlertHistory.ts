@@ -12,12 +12,14 @@ export interface AlertHistoryItem {
   direction: string | null;
   sent_at: string;
   channel: string | null;
+  alert_type?: string;
 }
 
 interface UseAlertHistoryOptions {
   symbol?: string;
   module?: string;
   direction?: string;
+  type?: string;
   limit?: number;
 }
 
@@ -32,9 +34,16 @@ export function useAlertHistory(options: UseAlertHistoryOptions = {}) {
     if (options.symbol) params.set("symbol", options.symbol);
     if (options.module) params.set("module", options.module);
     if (options.direction) params.set("direction", options.direction);
+    if (options.type) params.set("type", options.type);
     params.set("limit", String(options.limit ?? 50));
     return params.toString();
-  }, [options.symbol, options.module, options.direction, options.limit]);
+  }, [
+    options.symbol,
+    options.module,
+    options.direction,
+    options.type,
+    options.limit,
+  ]);
 
   const fetchAlerts = useCallback(async () => {
     try {

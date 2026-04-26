@@ -14,6 +14,18 @@ const MODULE_OPTIONS = [
   "market_sentiment",
 ];
 const DIRECTION_OPTIONS = ["", "bullish", "bearish", "neutral"];
+const TYPE_OPTIONS = [
+  { value: "", label: "All Types" },
+  { value: "signal", label: "Signal" },
+  { value: "regime_change", label: "Regime Change" },
+  { value: "portfolio_drawdown", label: "Portfolio Drawdown" },
+];
+
+const TYPE_BADGE: Record<string, string> = {
+  signal: "bg-cyan-500/10 text-cyan-300",
+  regime_change: "bg-purple-500/10 text-purple-300",
+  portfolio_drawdown: "bg-red-500/10 text-red-300",
+};
 
 function formatDate(dateStr: string, locale: string): string {
   try {
@@ -40,6 +52,7 @@ export default function AlertsPage() {
   const [symbolFilter, setSymbolFilter] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [directionFilter, setDirectionFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
   // Control panel state
   const [testLoading, setTestLoading] = useState(false);
@@ -54,6 +67,7 @@ export default function AlertsPage() {
     symbol: symbolFilter || undefined,
     module: moduleFilter || undefined,
     direction: directionFilter || undefined,
+    type: typeFilter || undefined,
     limit: 100,
   });
 
@@ -211,7 +225,7 @@ export default function AlertsPage() {
         </div>
 
         {/* ── Filters ── */}
-        <div className="grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-5">
           <div>
             <label className="mb-1 block text-xs text-gray-400">
               {t("filters.symbol")}
@@ -255,12 +269,27 @@ export default function AlertsPage() {
               ))}
             </select>
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-400">Type</label>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="w-full rounded border border-white/10 bg-slate-900/70 px-3 py-2 text-white"
+            >
+              {TYPE_OPTIONS.map((o) => (
+                <option key={o.value || "all"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-end">
             <button
               onClick={() => {
                 setSymbolFilter("");
                 setModuleFilter("");
                 setDirectionFilter("");
+                setTypeFilter("");
               }}
               className="w-full rounded border border-white/10 bg-white/10 px-3 py-2 text-white hover:bg-white/20"
             >
@@ -329,6 +358,13 @@ export default function AlertsPage() {
                         <DirIcon className="h-3.5 w-3.5" />
                         {dc.label}
                       </div>
+                      {alert.alert_type && alert.alert_type !== "signal" && (
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-xs font-medium ${TYPE_BADGE[alert.alert_type] ?? "bg-white/10 text-gray-400"}`}
+                        >
+                          {alert.alert_type.replace("_", " ")}
+                        </span>
+                      )}
                     </div>
                     <span
                       className={`text-2xl font-bold tabular-nums ${scoreColor}`}

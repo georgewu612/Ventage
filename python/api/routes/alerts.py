@@ -208,6 +208,7 @@ def get_alert_history(
     symbol: str | None = Query(default=None),
     module: str | None = Query(default=None),
     direction: str | None = Query(default=None),
+    type: str | None = Query(default=None, description="Alert type filter: signal | regime_change | portfolio_drawdown"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -221,6 +222,8 @@ def get_alert_history(
             query = query.eq("module", module)
         if direction:
             query = query.eq("direction", direction)
+        if type:
+            query = query.eq("alert_type", type)
 
         rows = query.execute().data or []
         total = len(rows)
@@ -235,6 +238,7 @@ def get_alert_history(
                     "direction": r.get("direction"),
                     "sent_at": str(r.get("sent_at", "")),
                     "channel": r.get("channel"),
+                    "alert_type": r.get("alert_type", "signal"),
                 }
                 for r in sliced
             ],
