@@ -98,13 +98,25 @@ class DeskConsensus(BaseModel):
 
     # ── Evidence chains ────────────────────────────────────────────
     supporting_evidence: Annotated[list[str], Field(max_length=5)] = Field(
-        description="支撑结论的关键证据（最多5条，每条≤80字）"
+        description="支撑结论的关键证据（最多5条，每条≤80字，中文）"
+    )
+    supporting_evidence_en: Annotated[list[str], Field(max_length=5)] = Field(
+        default_factory=list,
+        description="Key supporting evidence (up to 5 items, English)"
     )
     risk_evidence: Annotated[list[str], Field(max_length=3)] = Field(
-        description="主要风险点（最多3条，每条≤80字）"
+        description="主要风险点（最多3条，每条≤80字，中文）"
+    )
+    risk_evidence_en: Annotated[list[str], Field(max_length=3)] = Field(
+        default_factory=list,
+        description="Key risk factors (up to 3 items, English)"
     )
     invalidation_conditions: Annotated[list[str], Field(max_length=3)] = Field(
-        description="信号失效条件（最多3条）"
+        description="信号失效条件（最多3条，中文）"
+    )
+    invalidation_conditions_en: Annotated[list[str], Field(max_length=3)] = Field(
+        default_factory=list,
+        description="Signal invalidation conditions (up to 3 items, English)"
     )
 
     # ── Four desk assessments ──────────────────────────────────────

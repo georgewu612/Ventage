@@ -259,6 +259,7 @@ class AIAnalyst:
                             "4. strategy_fit 最多 4 个，只选择与当前信号最相关的策略\n"
                             "5. conclusion 和 conclusion_en 要保持一致，一句话点出核心判断\n"
                             "6. 中文字段使用中文，英文字段使用英文\n"
+                            "7. supporting_evidence_en / risk_evidence_en / invalidation_conditions_en 必须是对应中文字段的英文翻译，逐条对应\n"
                             "7. 本报告仅供研究参考，不构成投资建议"
                         ),
                     },
