@@ -18,6 +18,7 @@ import {
 import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
+import { VMScoreCard } from "@/components/dashboard/VMScoreCard";
 import { API_BASE_URL } from "@/lib/config";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/provider";
@@ -112,8 +113,11 @@ interface DeskConsensusData {
   risk_level: string;
   confidence_score: number;
   supporting_evidence: string[];
+  supporting_evidence_en: string[];
   risk_evidence: string[];
+  risk_evidence_en: string[];
   invalidation_conditions: string[];
+  invalidation_conditions_en: string[];
   technical_desk: string;
   technical_desk_en: string;
   flow_desk: string;
@@ -136,6 +140,10 @@ function fmt(v: number | null, prefix = "$"): string {
   return `${prefix}${v.toFixed(0)}`;
 }
 
+function hasChinese(s: string): boolean {
+  return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+}
+
 function parseAnalysis(
   raw: string | null | undefined,
   locale?: string,
@@ -154,12 +162,18 @@ function parseAnalysis(
           obj.analysis ??
           obj.reasoning ??
           Object.values(obj).find((v) => typeof v === "string");
-        if (typeof text === "string" && text.length > 0) return text;
+        if (typeof text === "string" && text.length > 0) {
+          if (locale === "en" && hasChinese(text) && !/[a-zA-Z]{3}/.test(text))
+            return "";
+          return text;
+        }
       }
     } catch {
       // fall through
     }
   }
+  if (locale === "en" && hasChinese(trimmed) && !/[a-zA-Z]{3}/.test(trimmed))
+    return "";
   return trimmed;
 }
 
@@ -417,53 +431,82 @@ function DeskConsensusCard({
       )}
 
       {/* Evidence + invalidation */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {desk.supporting_evidence.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-[10px] font-semibold text-emerald-400/80 uppercase">
-              {t("desk.supportingEvidence")}
-            </p>
-            <ul className="space-y-1">
-              {desk.supporting_evidence.map((e, i) => (
-                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
-                  <span className="mt-0.5 text-emerald-500">•</span>
-                  {e}
-                </li>
-              ))}
-            </ul>
+      {(() => {
+        const zh = locale === "zh";
+        const evidence = zh
+          ? desk.supporting_evidence
+          : desk.supporting_evidence_en?.length
+            ? desk.supporting_evidence_en
+            : desk.supporting_evidence;
+        const risks = zh
+          ? desk.risk_evidence
+          : desk.risk_evidence_en?.length
+            ? desk.risk_evidence_en
+            : desk.risk_evidence;
+        const conditions = zh
+          ? desk.invalidation_conditions
+          : desk.invalidation_conditions_en?.length
+            ? desk.invalidation_conditions_en
+            : desk.invalidation_conditions;
+        return (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {evidence.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-semibold text-emerald-400/80 uppercase">
+                  {t("desk.supportingEvidence")}
+                </p>
+                <ul className="space-y-1">
+                  {evidence.map((e, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-1 text-[10px] text-slate-300"
+                    >
+                      <span className="mt-0.5 text-emerald-500">•</span>
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {risks.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-semibold text-red-400/80 uppercase">
+                  {t("desk.riskEvidence")}
+                </p>
+                <ul className="space-y-1">
+                  {risks.map((e, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-1 text-[10px] text-slate-300"
+                    >
+                      <span className="mt-0.5 text-red-500">•</span>
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {conditions.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-[10px] font-semibold text-orange-400/80 uppercase">
+                  {t("desk.invalidation")}
+                </p>
+                <ul className="space-y-1">
+                  {conditions.map((e, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-1 text-[10px] text-slate-300"
+                    >
+                      <span className="mt-0.5 text-orange-500">•</span>
+                      {e}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
-        )}
-        {desk.risk_evidence.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-[10px] font-semibold text-red-400/80 uppercase">
-              {t("desk.riskEvidence")}
-            </p>
-            <ul className="space-y-1">
-              {desk.risk_evidence.map((e, i) => (
-                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
-                  <span className="mt-0.5 text-red-500">•</span>
-                  {e}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {desk.invalidation_conditions.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-[10px] font-semibold text-orange-400/80 uppercase">
-              {t("desk.invalidation")}
-            </p>
-            <ul className="space-y-1">
-              {desk.invalidation_conditions.map((e, i) => (
-                <li key={i} className="flex gap-1 text-[10px] text-slate-300">
-                  <span className="mt-0.5 text-orange-500">•</span>
-                  {e}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+        );
+      })()}
     </div>
   );
 }
@@ -786,9 +829,16 @@ function StockWorkbenchInner() {
             {/* Monitoring Triggers */}
             <MonitoringTriggersCard
               conditions={deskResult?.invalidation_conditions}
-              conditionsEn={deskResult?.invalidation_conditions}
+              conditionsEn={
+                deskResult?.invalidation_conditions_en?.length
+                  ? deskResult.invalidation_conditions_en
+                  : deskResult?.invalidation_conditions
+              }
               loading={deskLoading}
             />
+
+            {/* V&M Score */}
+            <VMScoreCard symbol={symbol} />
 
             {/* Options + Insider */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -31,6 +31,7 @@ from etl.collectors.insider_collector import InsiderTradesCollector
 from etl.collectors.news_collector import NewsCollector
 from etl.collectors.options_collector import OptionsFlowCollector
 from etl.collectors.sentiment_collector import SentimentCollector
+from etl.collectors.value_collector import ValueCollector
 from etl.data_cleaner import cleanup_old_data
 
 logger = structlog.get_logger()
@@ -387,6 +388,23 @@ async def run_all_once():
     return results
 
 
+async def run_value_screener(db) -> dict:
+    """Run value screener for the full universe — updates value_scores table.
+
+    Scheduled daily at 07:00 ET (12:00 UTC) before market open so that
+    Portfolio Builder has fresh fundamental data each trading day.
+    """
+    logger.info("value_screener_start")
+    collector = ValueCollector(supabase_client=db)
+    result = await collector.run()
+    logger.info(
+        "value_screener_done",
+        loaded=result.get("loaded", 0),
+        status=result.get("status"),
+    )
+    return result
+
+
 def start_scheduler():
     """Start the APScheduler with configured intervals."""
     db = _create_supabase_client()
@@ -569,6 +587,20 @@ def start_scheduler():
         args=[db, "weekly"],
         id="report_weekly",
         name="Weekly Review Generation",
+        max_instances=1,
+    )
+
+    # Value screener: daily 07:00 ET = 12:00 UTC — before market open
+    # Populates value_scores table used by V&M composite scoring
+    scheduler.add_job(
+        run_value_screener,
+        "cron",
+        hour=12,
+        minute=0,
+        timezone="UTC",
+        args=[db],
+        id="value_screener",
+        name="Daily Value Screener (V&M)",
         max_instances=1,
     )
 

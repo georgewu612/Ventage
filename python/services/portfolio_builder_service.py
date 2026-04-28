@@ -3,9 +3,12 @@
 Orchestrates AI-powered portfolio construction:
   1. Fetches latest market regime snapshot
   2. Filters strategy templates by risk profile
-  3. Selects candidates: core ETFs, enhanced signals, satellite event-driven
+  3. Selects candidates: core ETFs, enhanced V&M signals, satellite event-driven
   4. Calls GPT-4o-mini for portfolio typing + explanation
   5. Saves result to portfolio_recommendations table
+
+Upgrade (V&M): enhance candidates are now ranked by regime-aware
+Value & Momentum composite score instead of raw signal confidence.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from supabase import Client, create_client
 
 from agents.models import PortfolioPreferences, PortfolioRecommendation
 from config.settings import get_settings
+from services.vm_scorer import VMScorer
 
 logger = structlog.get_logger()
 
@@ -67,6 +71,7 @@ class PortfolioBuilderService:
             self.settings.supabase_url,
             self.settings.supabase_service_role_key,
         )
+        self.vm_scorer = VMScorer(db=self.db)
 
     # ── Public entry point ─────────────────────────────────────────────────────
 
@@ -167,26 +172,71 @@ class PortfolioBuilderService:
         ]
 
     def _build_enhance(self, prefs: PortfolioPreferences, regime: str) -> list[dict]:
-        """Pull top recent signals aligned with regime."""
+        """Pull top V&M candidates: value underpin + momentum confirmation.
+
+        Upgrade: uses VMScorer.get_top_vm_candidates() which ranks by
+        regime-aware composite score (value_weight changes with regime).
+        Falls back to pure momentum signals if value_scores table is empty.
+        """
         try:
-            direction = "bullish" if regime == "risk_on" else "neutral"
+            # Risk preference adjusts minimum value threshold
+            min_value = {
+                "conservative": 60.0,
+                "moderate":     55.0,
+                "balanced":     50.0,
+                "aggressive":   40.0,
+                "speculative":  30.0,
+            }.get(prefs.risk_preference, 50.0)
+
+            candidates = self.vm_scorer.get_top_vm_candidates(
+                regime=regime,
+                min_value_score=min_value,
+                min_momentum_score=50.0,
+                limit=5,
+            )
+
+            if candidates:
+                result = []
+                for c in candidates:
+                    sweet = " 🎯" if c.get("is_sweet_spot") else ""
+                    tier_zh = c.get("value_tier_zh", "合理")
+                    tier_en = c.get("value_tier_en", "Fair Value")
+                    vm = c.get("vm_score", 0)
+                    result.append({
+                        "symbol": c["symbol"],
+                        "rationale": (
+                            f"V&M评分{vm:.0f}分{sweet} | 价值层:{tier_zh}"
+                            f" | 动能层:{c.get('momentum_score', 0):.0f}分"
+                        ),
+                        "rationale_en": (
+                            f"V&M score {vm:.0f}{sweet} | Value: {tier_en}"
+                            f" | Momentum: {c.get('momentum_score', 0):.0f}/100"
+                        ),
+                        "weight_pct": None,
+                    })
+                return result
+
+            # ── Fallback: pure momentum (value_scores table not yet populated) ──
+            logger.info("vm_no_candidates_fallback", regime=regime)
+            direction = "bullish" if regime == "risk_on" else (
+                "bearish" if regime == "risk_off" else "neutral"
+            )
             rows = (
                 self.db.table("market_signals")
                 .select("symbol,direction,confidence")
-                .gte("confidence", 0.7)
-                .eq("direction", direction if regime != "risk_off" else "bearish")
+                .gte("confidence", 0.65)
+                .eq("direction", direction)
                 .order("confidence", desc=True)
                 .limit(5)
                 .execute()
                 .data
                 or []
             )
-            # fallback to any high-confidence signals
             if not rows:
                 rows = (
                     self.db.table("market_signals")
                     .select("symbol,direction,confidence")
-                    .gte("confidence", 0.7)
+                    .gte("confidence", 0.65)
                     .order("confidence", desc=True)
                     .limit(5)
                     .execute()
@@ -199,15 +249,14 @@ class PortfolioBuilderService:
                 sym = r["symbol"]
                 if sym not in seen:
                     seen.add(sym)
-                    result.append(
-                        {
-                            "symbol": sym,
-                            "rationale": f"信号评分{round(float(r['confidence'])*100)}分，方向{r['direction']}",
-                            "rationale_en": f"Signal score {round(float(r['confidence'])*100)}, direction {r['direction']}",
-                            "weight_pct": None,
-                        }
-                    )
+                    result.append({
+                        "symbol": sym,
+                        "rationale": f"动能信号{round(float(r['confidence'])*100)}分，方向{r['direction']}",
+                        "rationale_en": f"Momentum signal {round(float(r['confidence'])*100)}/100, direction {r['direction']}",
+                        "weight_pct": None,
+                    })
             return result[:5]
+
         except Exception as exc:
             logger.warning("enhance_candidates_failed", error=str(exc))
             return []

@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 from fastapi import APIRouter, HTTPException, Query
+from supabase import create_client
+
+from config.settings import get_settings
+from services.vm_scorer import VMScorer
 
 router = APIRouter()
 
@@ -409,3 +413,75 @@ def get_historical_analog(symbol: str) -> dict[str, Any]:
         "max_drawdown_pct": _max_dd(returns_20d),
         "windows": windows_recent,
     }
+
+
+# ── V&M Score endpoint ─────────────────────────────────────────────────────────
+
+@router.get("/technical/{symbol}/value")
+def get_vm_score(symbol: str) -> dict[str, Any]:
+    """Return Value & Momentum composite score for a symbol.
+
+    Combines:
+      - Fundamental value_score from value_scores table (PE/PB/FCF/etc.)
+      - Momentum signal_score from market_signals table
+      - Regime-aware composite weighting from market_regime_snapshots
+
+    If value_scores has no data for this symbol yet, triggers a live
+    yfinance fetch and returns the score without persisting (on-demand mode).
+    """
+    sym_upper = symbol.upper()
+    settings = get_settings()
+    db = create_client(settings.supabase_url, settings.supabase_service_role_key)
+    scorer = VMScorer(db=db)
+
+    # Get current regime
+    try:
+        regime_rows = (
+            db.table("market_regime_snapshots")
+            .select("regime")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        regime = regime_rows[0]["regime"] if regime_rows else "neutral"
+    except Exception:
+        regime = "neutral"
+
+    # Check if we have cached value data
+    value_row = scorer._get_value_score(sym_upper)
+
+    # On-demand fetch if not cached
+    if value_row is None:
+        try:
+            from etl.collectors.value_collector import ValueCollector, compute_value_score, _safe_float
+            ticker = yf.Ticker(sym_upper)
+            info = ticker.info or {}
+            raw = {
+                "pe_ratio":       _safe_float(info.get("trailingPE") or info.get("forwardPE")),
+                "pb_ratio":       _safe_float(info.get("priceToBook")),
+                "ps_ratio":       _safe_float(info.get("priceToSalesTrailing12Months")),
+                "free_cashflow":  _safe_float(info.get("freeCashflow")),
+                "dividend_yield": _safe_float(info.get("dividendYield")),
+                "debt_to_equity": _safe_float(info.get("debtToEquity")),
+                "roe":            _safe_float(info.get("returnOnEquity")),
+                "revenue_growth": _safe_float(info.get("revenueGrowth")),
+                "earnings_growth":_safe_float(info.get("earningsGrowth")),
+            }
+            vs, vt = compute_value_score(raw)
+            # Upsert so next call is instant
+            from datetime import UTC, datetime
+            db.table("value_scores").upsert({
+                "symbol": sym_upper,
+                **{k: (int(v) if k == "free_cashflow" and v is not None else v)
+                   for k, v in raw.items()},
+                "value_score": vs,
+                "value_tier": vt,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }, on_conflict="symbol").execute()
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch value data: {exc}")
+
+    result = scorer.score_symbol(sym_upper, regime)
+    return result
