@@ -30,6 +30,7 @@ interface Template {
   name: string;
   name_zh: string;
   description: string;
+  description_zh?: string;
   category: string;
 }
 
@@ -127,6 +128,7 @@ function StatusBadge({ status }: { status: Run["status"] }) {
 function getRegimeFit(
   category: string,
   regime: string,
+  locale: string,
 ): { label: string; color: string } {
   const good = [
     ["trend", "risk_on"],
@@ -142,10 +144,19 @@ function getRegimeFit(
   ];
   const key = `${category},${regime}`;
   if (good.some(([c, r]) => `${c},${r}` === key))
-    return { label: "高适配", color: "text-emerald-400 bg-emerald-500/10" };
+    return {
+      label: locale === "zh" ? "高适配" : "Good Fit",
+      color: "text-emerald-400 bg-emerald-500/10",
+    };
   if (bad.some(([c, r]) => `${c},${r}` === key))
-    return { label: "低适配", color: "text-red-400 bg-red-500/10" };
-  return { label: "中性", color: "text-gray-400 bg-white/5" };
+    return {
+      label: locale === "zh" ? "低适配" : "Poor Fit",
+      color: "text-red-400 bg-red-500/10",
+    };
+  return {
+    label: locale === "zh" ? "中性" : "Neutral",
+    color: "text-gray-400 bg-white/5",
+  };
 }
 
 export default function StrategiesPage() {
@@ -232,6 +243,15 @@ export default function StrategiesPage() {
     } finally {
       setLoadingRuns(false);
     }
+  };
+
+  // Template name display helper (translate raw key to localized name)
+  const templateNameDisplay = (rawName: string) => {
+    if (locale !== "zh") return rawName;
+    const tmpl = templates.find(
+      (t) => t.name === rawName || t.name_zh === rawName,
+    );
+    return tmpl?.name_zh || rawName;
   };
 
   // Category label helper
@@ -413,27 +433,32 @@ export default function StrategiesPage() {
                   {matchResult.top_matches.length})
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {matchResult.top_matches.map((m) => (
-                    <div
-                      key={m.template_id}
-                      className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3"
-                    >
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-white">
-                          {m.name}
-                        </span>
-                        <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
-                          {m.score}
+                  {matchResult.top_matches.map((m) => {
+                    const tmpl = templates.find((t) => t.id === m.template_id);
+                    const displayName =
+                      locale === "zh" ? tmpl?.name_zh || m.name : m.name;
+                    return (
+                      <div
+                        key={m.template_id}
+                        className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+                      >
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-xs font-semibold text-white">
+                            {displayName}
+                          </span>
+                          <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                            {m.score}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400">
+                          {locale === "zh" ? m.reason : m.reason_en}
+                        </p>
+                        <span className="mt-1 inline-block rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
+                          {locale === "zh" ? "AI推荐" : "AI Pick"}
                         </span>
                       </div>
-                      <p className="text-[10px] text-gray-400">
-                        {locale === "zh" ? m.reason : m.reason_en}
-                      </p>
-                      <span className="mt-1 inline-block rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300">
-                        AI推荐
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {matchResult.excluded.length > 0 && (
                   <details className="mt-2">
@@ -442,19 +467,26 @@ export default function StrategiesPage() {
                       {matchResult.excluded.length})
                     </summary>
                     <div className="mt-2 space-y-1">
-                      {matchResult.excluded.map((m) => (
-                        <div
-                          key={m.template_id}
-                          className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-1.5"
-                        >
-                          <span className="text-xs text-gray-400">
-                            {m.name}
-                          </span>
-                          <span className="text-[10px] text-gray-600">
-                            {locale === "zh" ? m.reason : m.reason_en}
-                          </span>
-                        </div>
-                      ))}
+                      {matchResult.excluded.map((m) => {
+                        const tmpl = templates.find(
+                          (t) => t.id === m.template_id,
+                        );
+                        const displayName =
+                          locale === "zh" ? tmpl?.name_zh || m.name : m.name;
+                        return (
+                          <div
+                            key={m.template_id}
+                            className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-1.5"
+                          >
+                            <span className="text-xs text-gray-400">
+                              {displayName}
+                            </span>
+                            <span className="text-[10px] text-gray-600">
+                              {locale === "zh" ? m.reason : m.reason_en}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </details>
                 )}
@@ -473,6 +505,7 @@ export default function StrategiesPage() {
                 const regimeFit = getRegimeFit(
                   tmpl.category,
                   regime?.regime ?? "neutral",
+                  locale,
                 );
                 const isAiRecommended = matchResult?.top_matches.some(
                   (m) => m.template_id === tmpl.id,
@@ -508,7 +541,9 @@ export default function StrategiesPage() {
                       {locale === "zh" ? tmpl.name_zh : tmpl.name}
                     </h3>
                     <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                      {tmpl.description}
+                      {locale === "zh"
+                        ? tmpl.description_zh || tmpl.description
+                        : tmpl.description}
                     </p>
                     <Link
                       href="/dashboard/quant-lab"
@@ -599,7 +634,7 @@ export default function StrategiesPage() {
                           className="group hover:bg-white/[0.03]"
                         >
                           <td className="px-4 py-3 text-sm font-medium text-gray-200">
-                            {run.template_name}
+                            {templateNameDisplay(run.template_name)}
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-mono text-sm font-semibold text-cyan-400">
