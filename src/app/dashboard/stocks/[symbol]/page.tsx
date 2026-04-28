@@ -837,9 +837,6 @@ function StockWorkbenchInner() {
               loading={deskLoading}
             />
 
-            {/* V&M Score */}
-            <VMScoreCard symbol={symbol} />
-
             {/* Options + Insider */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <SectionCard title={t("stock.optionsFlow")}>
@@ -1008,8 +1005,11 @@ function StockWorkbenchInner() {
             </div>
           </div>
 
-          {/* ── Right col: Signals + AI ── */}
+          {/* ── Right col: V&M Score + Signals + AI ── */}
           <div className="space-y-4">
+            {/* V&M Score — visible without scrolling */}
+            <VMScoreCard symbol={symbol} />
+
             {/* Signals Feed */}
             <SectionCard title={`${t("stock.signals")} · ${symbol}`}>
               {dataLoading ? (
