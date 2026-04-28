@@ -24,6 +24,7 @@ from supabase import create_client
 from agents.signal_engine import SignalEngine
 from services.regime_engine import RegimeEngine
 from alerting.manager import AlertManager
+from alerting.telegram import TelegramNotifier
 from config.settings import get_settings
 from etl.collectors.darkpool_collector import DarkPoolCollector
 from etl.collectors.insider_collector import InsiderTradesCollector
@@ -235,6 +236,133 @@ async def run_data_cleanup(db):
     return result
 
 
+async def run_regime_change_alert(db):
+    """Compare the two most recent regime snapshots; alert via Telegram if regime changed."""
+    t0 = time.monotonic()
+    try:
+        result = (
+            db.table("market_regime_snapshots")
+            .select("regime, generated_at")
+            .order("generated_at", desc=True)
+            .limit(2)
+            .execute()
+        )
+        rows = result.data or []
+        if len(rows) < 2:
+            logger.info("regime_change_alert_skipped", reason="insufficient_snapshots")
+            return {"changed": False}
+
+        current, previous = rows[0]["regime"], rows[1]["regime"]
+        if current == previous:
+            logger.info("regime_change_alert_skipped", reason="no_change", regime=current)
+            _write_job_run(db, "regime_change_alert", "success", duration_ms=int((time.monotonic() - t0) * 1000))
+            return {"changed": False, "regime": current}
+
+        # Regime changed — send Telegram alert
+        settings = get_settings()
+        message = (
+            f"⚠️ 市场环境切换\n\n"
+            f"前次体制：{previous}\n"
+            f"当前体制：{current}\n\n"
+            f"请及时审视仓位与策略适配度。"
+        )
+        if settings.telegram_bot_token and settings.telegram_chat_id:
+            notifier = TelegramNotifier(
+                bot_token=settings.telegram_bot_token,
+                chat_id=settings.telegram_chat_id,
+            )
+            await notifier.send_message(message)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("regime_change_alert_sent", previous=previous, current=current)
+        _write_job_run(db, "regime_change_alert", "success", loaded=1, duration_ms=duration_ms)
+        return {"changed": True, "previous": previous, "current": current}
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("regime_change_alert_error", error=str(exc))
+        _write_job_run(db, "regime_change_alert", "error", error_message=str(exc), duration_ms=duration_ms)
+        raise
+
+
+async def run_portfolio_drawdown_alert(db):
+    """Alert users whose portfolio dropped >3% vs the previous day's snapshot."""
+    t0 = time.monotonic()
+    alerts_sent = 0
+    try:
+        users_result = db.table("portfolio_holdings").select("user_id").execute()
+        user_ids = list({r["user_id"] for r in (users_result.data or [])})
+
+        settings = get_settings()
+        notifier: TelegramNotifier | None = None
+        if settings.telegram_bot_token and settings.telegram_chat_id:
+            notifier = TelegramNotifier(
+                bot_token=settings.telegram_bot_token,
+                chat_id=settings.telegram_chat_id,
+            )
+
+        for uid in user_ids:
+            try:
+                snaps = (
+                    db.table("portfolio_snapshots")
+                    .select("snapshot_date, total_value")
+                    .eq("user_id", uid)
+                    .order("snapshot_date", desc=True)
+                    .limit(2)
+                    .execute()
+                ).data or []
+
+                if len(snaps) < 2:
+                    continue
+
+                today_val = float(snaps[0]["total_value"])
+                prev_val = float(snaps[1]["total_value"])
+                if prev_val <= 0:
+                    continue
+
+                drawdown_pct = (today_val - prev_val) / prev_val * 100
+                if drawdown_pct < -3.0 and notifier:
+                    message = (
+                        f"📉 组合日内回撤预警\n\n"
+                        f"今日组合价值：${today_val:,.0f}\n"
+                        f"昨日组合价值：${prev_val:,.0f}\n"
+                        f"单日跌幅：{drawdown_pct:.1f}%\n\n"
+                        f"请及时检视持仓风险。"
+                    )
+                    await notifier.send_message(message)
+                    alerts_sent += 1
+            except Exception as exc:
+                logger.warning("portfolio_drawdown_user_error", user_id=uid, error=str(exc))
+
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("portfolio_drawdown_alert_done", users=len(user_ids), alerts_sent=alerts_sent)
+        _write_job_run(db, "portfolio_drawdown_alert", "success", loaded=alerts_sent, duration_ms=duration_ms)
+        return {"users_checked": len(user_ids), "alerts_sent": alerts_sent}
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("portfolio_drawdown_alert_error", error=str(exc))
+        _write_job_run(db, "portfolio_drawdown_alert", "error", error_message=str(exc), duration_ms=duration_ms)
+        raise
+
+
+async def run_report_generation(db, report_type: str):
+    """Pre-generate a scheduled report by calling the report route logic directly."""
+    import httpx
+    t0 = time.monotonic()
+    try:
+        api_base = "http://localhost:8000"
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.get(f"{api_base}/v1/reports/{report_type}")
+        status = "success" if resp.status_code == 200 else "error"
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.info("report_generated", report_type=report_type, http_status=resp.status_code)
+        _write_job_run(db, f"report_{report_type}", status, loaded=1, duration_ms=duration_ms)
+        return {"report_type": report_type, "status": status}
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.error("report_generation_error", report_type=report_type, error=str(exc))
+        _write_job_run(db, f"report_{report_type}", "error", error_message=str(exc), duration_ms=duration_ms)
+        raise
+
+
 async def run_all_once():
     """Run all collectors once, then generate signals."""
     db = _create_supabase_client()
@@ -375,6 +503,72 @@ def start_scheduler():
         args=[db],
         id="data_cleanup",
         name="Data Cleanup (Daily)",
+        max_instances=1,
+    )
+
+    # Regime change alert: daily 09:35 ET (14:35 UTC) — after regime refresh
+    scheduler.add_job(
+        run_regime_change_alert,
+        "cron",
+        hour=14,
+        minute=35,
+        timezone="UTC",
+        args=[db],
+        id="regime_change_alert",
+        name="Regime Change Alert",
+        max_instances=1,
+    )
+
+    # Portfolio drawdown alert: daily 21:10 UTC (16:10 ET) — after portfolio snapshots
+    scheduler.add_job(
+        run_portfolio_drawdown_alert,
+        "cron",
+        hour=21,
+        minute=10,
+        timezone="UTC",
+        args=[db],
+        id="portfolio_drawdown_alert",
+        name="Portfolio Drawdown Alert",
+        max_instances=1,
+    )
+
+    # Pre-market brief: daily 08:50 ET = 13:50 UTC
+    scheduler.add_job(
+        run_report_generation,
+        "cron",
+        hour=13,
+        minute=50,
+        timezone="UTC",
+        args=[db, "premarket"],
+        id="report_premarket",
+        name="Pre-Market Brief Generation",
+        max_instances=1,
+    )
+
+    # Closing wrap: daily 16:10 ET = 21:10 UTC
+    scheduler.add_job(
+        run_report_generation,
+        "cron",
+        hour=21,
+        minute=10,
+        timezone="UTC",
+        args=[db, "closing"],
+        id="report_closing",
+        name="Closing Wrap Generation",
+        max_instances=1,
+    )
+
+    # Weekly review: every Friday 17:00 ET = 22:00 UTC
+    scheduler.add_job(
+        run_report_generation,
+        "cron",
+        day_of_week="fri",
+        hour=22,
+        minute=0,
+        timezone="UTC",
+        args=[db, "weekly"],
+        id="report_weekly",
+        name="Weekly Review Generation",
         max_instances=1,
     )
 
