@@ -24,6 +24,11 @@ interface VMData {
   // Momentum layer
   momentum_score: number;
   momentum_direction: string | null;
+  momentum_source: "db_signal" | "live_price";
+  // Live price momentum detail (when source = live_price)
+  rsi: number | null;
+  above_200ma: boolean | null;
+  return_6m_pct: number | null;
   // Composite
   vm_score: number;
   value_weight: number;
@@ -289,11 +294,66 @@ export function VMScoreCard({ symbol }: { symbol: string }) {
 
           {/* Momentum explanation */}
           <div className="mt-3 space-y-2">
-            <p className="text-[10px] leading-relaxed text-gray-500">
-              {isZh
-                ? `动能分基于最新市场信号综合评分。当前体制 "${data.regime}" 下，动能因子权重为 ${mWeight}%。`
-                : `Momentum score is derived from the latest market signal analysis. Under "${data.regime}" regime, momentum weight is ${mWeight}%.`}
-            </p>
+            {/* Live price indicators (when no DB signal) */}
+            {data.momentum_source === "live_price" && (
+              <div className="space-y-1.5 text-[11px]">
+                {[
+                  {
+                    label: "RSI (14)",
+                    value: data.rsi !== null ? `${data.rsi.toFixed(1)}` : "—",
+                    good: data.rsi !== null && data.rsi > 50 && data.rsi < 70,
+                  },
+                  {
+                    label: isZh ? "站上200日均线" : "Above 200-day MA",
+                    value:
+                      data.above_200ma === null
+                        ? "—"
+                        : data.above_200ma
+                          ? isZh
+                            ? "是 ✓"
+                            : "Yes ✓"
+                          : isZh
+                            ? "否 ✗"
+                            : "No ✗",
+                    good: data.above_200ma === true,
+                  },
+                  {
+                    label: isZh ? "6个月收益" : "6M Return",
+                    value:
+                      data.return_6m_pct !== null
+                        ? `${data.return_6m_pct > 0 ? "+" : ""}${data.return_6m_pct.toFixed(1)}%`
+                        : "—",
+                    good: data.return_6m_pct !== null && data.return_6m_pct > 5,
+                  },
+                ].map(({ label, value, good }) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-gray-500">{label}</span>
+                    <span
+                      className={
+                        good ? "font-semibold text-cyan-400" : "text-gray-300"
+                      }
+                    >
+                      {value}
+                    </span>
+                  </div>
+                ))}
+                <p className="text-[9px] text-gray-600">
+                  {isZh
+                    ? "* 实时价格计算（无信号记录）"
+                    : "* Computed from live price (no signal record)"}
+                </p>
+              </div>
+            )}
+            {data.momentum_source === "db_signal" && (
+              <p className="text-[10px] leading-relaxed text-gray-500">
+                {isZh
+                  ? `动能分基于最新市场信号综合评分。当前体制 "${data.regime}" 下，动能因子权重为 ${mWeight}%。`
+                  : `Momentum score from latest signal analysis. Under "${data.regime}" regime, momentum weight is ${mWeight}%.`}
+              </p>
+            )}
 
             {data.is_sweet_spot ? (
               <div className="flex items-start gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2">
