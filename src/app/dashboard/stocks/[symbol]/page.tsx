@@ -19,6 +19,11 @@ import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
 import { VMScoreCard } from "@/components/dashboard/VMScoreCard";
+import {
+  TechnicalLevelsCard,
+  type TechnicalLevelsData,
+} from "@/components/dashboard/TechnicalLevelsCard";
+import type { SRLevel } from "@/components/dashboard/CandlestickChart";
 import { API_BASE_URL } from "@/lib/config";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n/provider";
@@ -667,6 +672,14 @@ function StockWorkbenchInner() {
   const [aiError, setAiError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // S/R levels from TechnicalLevelsCard — fed into CandlestickChart
+  const [srSupport, setSrSupport] = useState<SRLevel[]>([]);
+  const [srResist, setSrResist] = useState<SRLevel[]>([]);
+  const handleLevelsLoaded = useCallback((d: TechnicalLevelsData) => {
+    setSrSupport(d.support_levels);
+    setSrResist(d.resist_levels);
+  }, []);
+
   const runAiAnalysis = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -806,13 +819,23 @@ function StockWorkbenchInner() {
                   <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
                 </div>
               ) : techData ? (
-                <CandlestickChart data={techData} />
+                <CandlestickChart
+                  data={techData}
+                  supportLevels={srSupport}
+                  resistLevels={srResist}
+                />
               ) : (
                 <div className="flex h-52 items-center justify-center text-sm text-gray-500">
                   {t("stock.noTechData")}
                 </div>
               )}
             </div>
+
+            {/* Technical Levels — S/R + Patterns + AI Bias */}
+            <TechnicalLevelsCard
+              symbol={symbol}
+              onDataLoaded={handleLevelsLoaded}
+            />
 
             {/* Desk Consensus */}
             <DeskConsensusCard

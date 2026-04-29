@@ -485,3 +485,423 @@ def get_vm_score(symbol: str) -> dict[str, Any]:
 
     result = scorer.score_symbol(sym_upper, regime)
     return result
+
+
+# ── Support / Resistance + Pattern Recognition endpoint ───────────────────────
+
+def _find_sr_levels(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 10,
+    cluster_pct: float = 0.015,
+    min_touches: int = 2,
+) -> tuple[list[dict], list[dict]]:
+    """Detect support and resistance levels using local extrema + clustering.
+
+    Returns (support_levels, resistance_levels) sorted by strength.
+    Each level: {price, touch_count, strength: 'weak'|'medium'|'strong'|'key'}
+    """
+    prices_all = pd.concat([high, low, close]).dropna().values
+    current = float(close.iloc[-1])
+
+    # ── Find local maxima (resistance candidates) ──
+    resist_candidates: list[float] = []
+    for i in range(window, len(high) - window):
+        if high.iloc[i] == high.iloc[i - window : i + window + 1].max():
+            resist_candidates.append(float(high.iloc[i]))
+
+    # ── Find local minima (support candidates) ──
+    support_candidates: list[float] = []
+    for i in range(window, len(low) - window):
+        if low.iloc[i] == low.iloc[i - window : i + window + 1].min():
+            support_candidates.append(float(low.iloc[i]))
+
+    def cluster(candidates: list[float]) -> list[dict]:
+        if not candidates:
+            return []
+        candidates_sorted = sorted(candidates)
+        clusters: list[list[float]] = []
+        current_cluster = [candidates_sorted[0]]
+        for price in candidates_sorted[1:]:
+            if (price - current_cluster[0]) / current_cluster[0] <= cluster_pct:
+                current_cluster.append(price)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [price]
+        clusters.append(current_cluster)
+
+        result = []
+        for cl in clusters:
+            avg = sum(cl) / len(cl)
+            touches = len(cl)
+            # Count additional touches in full OHLC range
+            touches += sum(
+                1 for p in prices_all
+                if abs(p - avg) / avg <= cluster_pct
+            )
+            touches = min(touches, 20)  # cap
+            strength = (
+                "key"    if touches >= 8
+                else "strong" if touches >= 5
+                else "medium" if touches >= 3
+                else "weak"
+            )
+            result.append({"price": round(avg, 2), "touch_count": touches, "strength": strength})
+        return result
+
+    all_support = [
+        l for l in cluster(support_candidates)
+        if l["price"] < current * 0.998 and l["touch_count"] >= min_touches
+    ]
+    all_resist = [
+        l for l in cluster(resist_candidates)
+        if l["price"] > current * 1.002 and l["touch_count"] >= min_touches
+    ]
+
+    # Sort: support → descending (nearest first), resist → ascending (nearest first)
+    support_levels = sorted(all_support, key=lambda x: x["price"], reverse=True)[:6]
+    resist_levels  = sorted(all_resist,  key=lambda x: x["price"])[:6]
+    return support_levels, resist_levels
+
+
+def _fibonacci_levels(high: float, low: float) -> dict[str, float]:
+    """Compute Fibonacci retracement levels from swing high/low."""
+    diff = high - low
+    return {
+        "0.0":   round(high, 2),
+        "23.6":  round(high - 0.236 * diff, 2),
+        "38.2":  round(high - 0.382 * diff, 2),
+        "50.0":  round(high - 0.500 * diff, 2),
+        "61.8":  round(high - 0.618 * diff, 2),
+        "78.6":  round(high - 0.786 * diff, 2),
+        "100.0": round(low, 2),
+    }
+
+
+def _detect_patterns(
+    close: pd.Series,
+    high:  pd.Series,
+    low:   pd.Series,
+    volume: pd.Series,
+    rsi:   pd.Series,
+    macd:  pd.Series,
+    macd_signal: pd.Series,
+    bb_upper: pd.Series,
+    bb_lower: pd.Series,
+    bb_mid:   pd.Series,
+) -> list[dict]:
+    """Rule-based pattern detector. Returns list of detected patterns."""
+    patterns = []
+    c = close.iloc[-1]
+    prev_c = close.iloc[-2] if len(close) > 1 else c
+
+    def add(name_zh: str, name_en: str, desc_zh: str, desc_en: str, severity: str):
+        patterns.append({
+            "name_zh": name_zh, "name_en": name_en,
+            "desc_zh": desc_zh, "desc_en": desc_en,
+            "severity": severity,  # "bullish"|"bearish"|"neutral"
+        })
+
+    # ── RSI ───────────────────────────────────────────────────────────────────
+    rsi_now = float(rsi.iloc[-1]) if not np.isnan(rsi.iloc[-1]) else 50.0
+    rsi_prev = float(rsi.iloc[-2]) if len(rsi) > 1 else rsi_now
+
+    if rsi_now >= 70:
+        add("RSI超买", "RSI Overbought",
+            f"RSI={rsi_now:.1f}，处于超买区，短线回调风险较高。",
+            f"RSI={rsi_now:.1f} is in overbought territory. Pullback risk elevated.",
+            "bearish")
+    elif rsi_now <= 30:
+        add("RSI超卖", "RSI Oversold",
+            f"RSI={rsi_now:.1f}，处于超卖区，短线反弹概率较高。",
+            f"RSI={rsi_now:.1f} is oversold. Short-term bounce likely.",
+            "bullish")
+    elif rsi_now > 50 and rsi_prev <= 50:
+        add("RSI突破50", "RSI Cross 50",
+            f"RSI由下方突破50中轴，动能由弱转强。",
+            f"RSI crossed above 50 — momentum turning positive.",
+            "bullish")
+    elif rsi_now < 50 and rsi_prev >= 50:
+        add("RSI跌破50", "RSI Break 50",
+            f"RSI由上方跌破50中轴，动能由强转弱。",
+            f"RSI crossed below 50 — momentum turning negative.",
+            "bearish")
+
+    # ── MACD ─────────────────────────────────────────────────────────────────
+    macd_now  = float(macd.iloc[-1])
+    macd_prev = float(macd.iloc[-2]) if len(macd) > 1 else macd_now
+    sig_now   = float(macd_signal.iloc[-1])
+    sig_prev  = float(macd_signal.iloc[-2]) if len(macd_signal) > 1 else sig_now
+    hist_now  = macd_now - sig_now
+    hist_prev = macd_prev - sig_prev
+
+    if macd_now > sig_now and macd_prev <= sig_prev:
+        add("MACD金叉", "MACD Golden Cross",
+            "MACD线上穿信号线，中期趋势转多。",
+            "MACD crossed above signal line — medium-term trend turning bullish.",
+            "bullish")
+    elif macd_now < sig_now and macd_prev >= sig_prev:
+        add("MACD死叉", "MACD Death Cross",
+            "MACD线下穿信号线，中期趋势转空。",
+            "MACD crossed below signal line — medium-term trend turning bearish.",
+            "bearish")
+    elif hist_now > 0 and hist_prev < 0:
+        add("MACD柱翻正", "MACD Histogram Positive",
+            "MACD柱由负转正，多头动能增强。",
+            "MACD histogram turned positive — bullish momentum building.",
+            "bullish")
+    elif hist_now < 0 and hist_prev > 0:
+        add("MACD柱翻负", "MACD Histogram Negative",
+            "MACD柱由正转负，空头动能增强。",
+            "MACD histogram turned negative — bearish momentum building.",
+            "bearish")
+
+    # ── Bollinger Bands ───────────────────────────────────────────────────────
+    bb_up  = float(bb_upper.iloc[-1])
+    bb_lo  = float(bb_lower.iloc[-1])
+    bb_mid_val = float(bb_mid.iloc[-1])
+    bb_width = (bb_up - bb_lo) / bb_mid_val if bb_mid_val > 0 else 0
+
+    if c > bb_up:
+        add("突破布林上轨", "BB Upper Breakout",
+            "价格突破布林带上轨，强势但注意回调风险。",
+            "Price broke above Bollinger upper band — strong but overbought risk.",
+            "bearish")
+    elif c < bb_lo:
+        add("跌破布林下轨", "BB Lower Breakdown",
+            "价格跌破布林带下轨，弱势但注意超卖反弹。",
+            "Price broke below Bollinger lower band — weak but oversold bounce risk.",
+            "bullish")
+    elif bb_width < 0.05:
+        add("布林带收窄", "BB Squeeze",
+            "布林带极度收窄，预示大幅波动即将来临。",
+            "Bollinger Bands squeezing — high volatility breakout imminent.",
+            "neutral")
+    elif c > bb_mid_val and close.iloc[-5] < bb_mid_val:
+        add("回踩中轨后反弹", "BB Mid Bounce",
+            "价格回踩布林中轨后反弹，上升趋势延续。",
+            "Price bounced off BB mid-band — uptrend continuation.",
+            "bullish")
+
+    # ── Moving Averages ───────────────────────────────────────────────────────
+    if len(close) >= 200:
+        ma50  = float(close.rolling(50).mean().iloc[-1])
+        ma200 = float(close.rolling(200).mean().iloc[-1])
+        ma50_prev  = float(close.rolling(50).mean().iloc[-2])
+        ma200_prev = float(close.rolling(200).mean().iloc[-2])
+
+        if ma50 > ma200 and ma50_prev <= ma200_prev:
+            add("黄金交叉", "Golden Cross",
+                "50日均线上穿200日均线，长期牛市信号。",
+                "50MA crossed above 200MA — long-term bullish signal.",
+                "bullish")
+        elif ma50 < ma200 and ma50_prev >= ma200_prev:
+            add("死亡交叉", "Death Cross",
+                "50日均线下穿200日均线，长期熊市信号。",
+                "50MA crossed below 200MA — long-term bearish signal.",
+                "bearish")
+        elif c > ma200 and prev_c <= ma200:
+            add("突破200日均线", "Break Above 200MA",
+                "价格突破200日均线，中长期趋势转多。",
+                "Price broke above 200MA — medium-long term trend turning bullish.",
+                "bullish")
+        elif c < ma200 and prev_c >= ma200:
+            add("跌破200日均线", "Break Below 200MA",
+                "价格跌破200日均线，中长期趋势转空。",
+                "Price fell below 200MA — medium-long term trend turning bearish.",
+                "bearish")
+
+    # ── Volume ────────────────────────────────────────────────────────────────
+    if len(volume) >= 20:
+        avg_vol = float(volume.iloc[-20:].mean())
+        cur_vol = float(volume.iloc[-1])
+        if cur_vol > avg_vol * 2 and c > prev_c:
+            add("放量上涨", "High Volume Rally",
+                f"成交量是20日均量的{cur_vol/avg_vol:.1f}倍，放量上涨，买盘积极。",
+                f"Volume {cur_vol/avg_vol:.1f}x 20-day average with price rising — strong buying pressure.",
+                "bullish")
+        elif cur_vol > avg_vol * 2 and c < prev_c:
+            add("放量下跌", "High Volume Selloff",
+                f"成交量是20日均量的{cur_vol/avg_vol:.1f}倍，放量下跌，卖盘积极。",
+                f"Volume {cur_vol/avg_vol:.1f}x 20-day average with price falling — strong selling pressure.",
+                "bearish")
+
+    # ── Double Top / Double Bottom (simplified) ───────────────────────────────
+    if len(high) >= 60:
+        recent_highs = high.iloc[-60:]
+        top1_idx = recent_highs.iloc[:30].idxmax()
+        top2_idx = recent_highs.iloc[30:].idxmax()
+        top1 = float(recent_highs[top1_idx])
+        top2 = float(recent_highs[top2_idx])
+        if abs(top1 - top2) / top1 < 0.02 and c < min(top1, top2) * 0.97:
+            add("双顶形态", "Double Top",
+                f"在{top1:.2f}附近出现双顶，颈线已破，目标下行。",
+                f"Double top pattern near {top1:.2f}. Neckline broken — bearish target.",
+                "bearish")
+
+    if len(low) >= 60:
+        recent_lows = low.iloc[-60:]
+        bot1_idx = recent_lows.iloc[:30].idxmin()
+        bot2_idx = recent_lows.iloc[30:].idxmin()
+        bot1 = float(recent_lows[bot1_idx])
+        bot2 = float(recent_lows[bot2_idx])
+        if abs(bot1 - bot2) / bot1 < 0.02 and c > max(bot1, bot2) * 1.03:
+            add("双底形态", "Double Bottom",
+                f"在{bot1:.2f}附近出现双底，颈线已破，目标上行。",
+                f"Double bottom pattern near {bot1:.2f}. Neckline broken — bullish target.",
+                "bullish")
+
+    return patterns
+
+
+def _ai_bias_summary(
+    symbol: str,
+    current_price: float,
+    support_levels: list[dict],
+    resist_levels: list[dict],
+    patterns: list[dict],
+    rsi: float,
+    fib: dict,
+) -> tuple[str, str, str]:
+    """Generate short AI technical bias summary (zh + en).
+
+    Returns (bias, summary_zh, summary_en).
+    bias: 'bullish'|'bearish'|'neutral'
+    """
+    try:
+        import openai
+        from config.settings import get_settings
+        settings = get_settings()
+        client = openai.OpenAI(api_key=settings.openai_api_key)
+
+        bullish_count = sum(1 for p in patterns if p["severity"] == "bullish")
+        bearish_count = sum(1 for p in patterns if p["severity"] == "bearish")
+
+        nearest_support = support_levels[0]["price"] if support_levels else "N/A"
+        nearest_resist  = resist_levels[0]["price"]  if resist_levels  else "N/A"
+        pattern_list = "; ".join(p["name_zh"] for p in patterns) or "无明显形态"
+        pattern_list_en = "; ".join(p["name_en"] for p in patterns) or "No significant pattern"
+
+        prompt = f"""你是一位专业技术分析师，用简洁、专业的语言生成技术判断摘要。
+
+股票：{symbol} | 当前价：${current_price:.2f}
+RSI(14)：{rsi:.1f}
+最近支撑：${nearest_support} | 最近压力：${nearest_resist}
+检测形态：{pattern_list}
+多头信号数：{bullish_count} | 空头信号数：{bearish_count}
+
+请生成：
+1. bias字段：只能是 bullish/bearish/neutral 三选一
+2. summary_zh：1-2句中文技术判断，20-40字，提到关键价位和形态
+3. summary_en：对应英文版，15-30词
+
+严格返回JSON格式：{{"bias":"...","summary_zh":"...","summary_en":"..."}}"""
+
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=200,
+        )
+        import json
+        data = json.loads(resp.choices[0].message.content)
+        bias = data.get("bias", "neutral")
+        if bias not in ("bullish", "bearish", "neutral"):
+            bias = "neutral"
+        return bias, data.get("summary_zh", ""), data.get("summary_en", "")
+
+    except Exception:
+        # Fallback: rule-based
+        bullish_count = sum(1 for p in patterns if p["severity"] == "bullish")
+        bearish_count = sum(1 for p in patterns if p["severity"] == "bearish")
+        if bullish_count > bearish_count:
+            bias = "bullish"
+            zh = f"技术面偏多，{patterns[0]['name_zh'] if patterns else 'RSI正常'}，近期支撑{support_levels[0]['price'] if support_levels else 'N/A'}。"
+            en = f"Technically bullish. Key support at {support_levels[0]['price'] if support_levels else 'N/A'}."
+        elif bearish_count > bullish_count:
+            bias = "bearish"
+            zh = f"技术面偏空，{patterns[0]['name_zh'] if patterns else 'RSI偏高'}，近期压力{resist_levels[0]['price'] if resist_levels else 'N/A'}。"
+            en = f"Technically bearish. Key resistance at {resist_levels[0]['price'] if resist_levels else 'N/A'}."
+        else:
+            bias = "neutral"
+            zh = f"技术面中性，价格在支撑{support_levels[0]['price'] if support_levels else 'N/A'}与压力{resist_levels[0]['price'] if resist_levels else 'N/A'}间震荡。"
+            en = f"Neutral. Price ranging between support {support_levels[0]['price'] if support_levels else 'N/A'} and resistance {resist_levels[0]['price'] if resist_levels else 'N/A'}."
+        return bias, zh, en
+
+
+@router.get("/technical/{symbol}/levels")
+def get_technical_levels(symbol: str) -> dict[str, Any]:
+    """Return support/resistance levels, detected patterns, Fibonacci levels, and AI bias summary.
+
+    Used by TechnicalLevelsCard + CandlestickChart line overlay in Stock Workbench.
+    """
+    sym = symbol.upper()
+
+    # Fetch 1 year of daily OHLCV
+    df = yf.download(sym, period="1y", interval="1d", progress=False, auto_adjust=True)
+    if df is None or len(df) < 60:
+        raise HTTPException(status_code=404, detail=f"Insufficient data for {sym}")
+
+    # Flatten MultiIndex columns if present
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    close  = df["Close"].squeeze().dropna()
+    high   = df["High"].squeeze().dropna()
+    low    = df["Low"].squeeze().dropna()
+    volume = df["Volume"].squeeze().dropna()
+
+    # Indicators
+    rsi_series   = _compute_rsi(close)
+    macd_line, macd_sig, _ = _compute_macd(close)
+    bb_upper, bb_mid, bb_lower = _compute_bollinger(close)
+
+    rsi_now = _safe_float(rsi_series.iloc[-1]) or 50.0
+    current_price = float(close.iloc[-1])
+
+    # S/R levels
+    support_levels, resist_levels = _find_sr_levels(high, low, close)
+
+    # Fibonacci (52-week high/low)
+    week52_high = float(high.max())
+    week52_low  = float(low.min())
+    fib = _fibonacci_levels(week52_high, week52_low)
+
+    # Pattern detection
+    patterns = _detect_patterns(
+        close, high, low, volume,
+        rsi_series, macd_line, macd_sig,
+        bb_upper, bb_lower, bb_mid,
+    )
+
+    # Price targets from S/R
+    bull_target = resist_levels[0]["price"] if resist_levels else round(current_price * 1.05, 2)
+    bear_target = support_levels[0]["price"] if support_levels else round(current_price * 0.95, 2)
+    base_target = round(current_price, 2)
+
+    # AI bias summary
+    bias, summary_zh, summary_en = _ai_bias_summary(
+        sym, current_price, support_levels, resist_levels, patterns, rsi_now, fib
+    )
+
+    return {
+        "symbol":          sym,
+        "current_price":   round(current_price, 2),
+        "rsi":             round(rsi_now, 1),
+        "bias":            bias,
+        "summary_zh":      summary_zh,
+        "summary_en":      summary_en,
+        "support_levels":  support_levels,
+        "resist_levels":   resist_levels,
+        "fibonacci":       fib,
+        "price_targets": {
+            "bull":  bull_target,
+            "base":  base_target,
+            "bear":  bear_target,
+        },
+        "patterns":        patterns,
+        "week52_high":     round(week52_high, 2),
+        "week52_low":      round(week52_low, 2),
+    }

@@ -11,12 +11,20 @@ import {
 
 import type { TechnicalData } from "@/lib/hooks/useTechnicalAnalysis";
 
+export interface SRLevel {
+  price: number;
+  touch_count: number;
+  strength: "weak" | "medium" | "strong" | "key";
+}
+
 interface Props {
   data: TechnicalData;
   height?: number;
   showVolume?: boolean;
   showBollinger?: boolean;
   showSMA?: boolean;
+  supportLevels?: SRLevel[];
+  resistLevels?: SRLevel[];
 }
 
 export function CandlestickChart({
@@ -25,6 +33,8 @@ export function CandlestickChart({
   showVolume = true,
   showBollinger = true,
   showSMA = true,
+  supportLevels = [],
+  resistLevels = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -138,6 +148,52 @@ export function CandlestickChart({
       }
     }
 
+    // ── Support / Resistance price lines ──────────────────────────────────────
+    const strengthOpacity: Record<string, number> = {
+      key: 0.95,
+      strong: 0.75,
+      medium: 0.55,
+      weak: 0.35,
+    };
+    const strengthWidth: Record<string, 1 | 2> = {
+      key: 2,
+      strong: 2,
+      medium: 1,
+      weak: 1,
+    };
+    const strengthStyle: Record<string, 0 | 1 | 2 | 3 | 4> = {
+      key: 0,
+      strong: 0,
+      medium: 2,
+      weak: 2,
+    };
+
+    // Support lines — green
+    supportLevels.forEach((level) => {
+      const op = strengthOpacity[level.strength] ?? 0.5;
+      candleSeries.createPriceLine({
+        price: level.price,
+        color: `rgba(16,185,129,${op})`,
+        lineWidth: strengthWidth[level.strength] ?? 1,
+        lineStyle: strengthStyle[level.strength] ?? 2,
+        axisLabelVisible: true,
+        title: `S ${level.price}`,
+      });
+    });
+
+    // Resistance lines — red
+    resistLevels.forEach((level) => {
+      const op = strengthOpacity[level.strength] ?? 0.5;
+      candleSeries.createPriceLine({
+        price: level.price,
+        color: `rgba(239,68,68,${op})`,
+        lineWidth: strengthWidth[level.strength] ?? 1,
+        lineStyle: strengthStyle[level.strength] ?? 2,
+        axisLabelVisible: true,
+        title: `R ${level.price}`,
+      });
+    });
+
     // Volume histogram
     if (showVolume) {
       const volumeSeries = chart.addSeries(HistogramSeries, {
@@ -183,7 +239,15 @@ export function CandlestickChart({
         chartRef.current = null;
       }
     };
-  }, [data, height, showVolume, showBollinger, showSMA]);
+  }, [
+    data,
+    height,
+    showVolume,
+    showBollinger,
+    showSMA,
+    supportLevels,
+    resistLevels,
+  ]);
 
   return <div ref={containerRef} className="w-full" />;
 }
