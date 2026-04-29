@@ -16,9 +16,15 @@ interface Signal {
   created_at: string;
 }
 
+/** Returns true if the string contains CJK characters */
+function hasChinese(s: string): boolean {
+  return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(s);
+}
+
 /**
  * Parse analysis text — may be a raw string or a JSON object.
  * Extracts `conclusion` / `summary` / first string value found.
+ * In English mode, returns "" for plain Chinese-only strings.
  */
 function parseAnalysis(
   raw: string | null | undefined,
@@ -40,31 +46,88 @@ function parseAnalysis(
           obj.analysis ??
           obj.reasoning ??
           Object.values(obj).find((v) => typeof v === "string");
-        if (typeof text === "string" && text.length > 0) return text;
+        if (typeof text === "string" && text.length > 0) {
+          // In English mode, skip Chinese-only results
+          if (locale === "en" && hasChinese(text) && !/[a-zA-Z]{3}/.test(text))
+            return "";
+          return text;
+        }
       }
     } catch {
       // not valid JSON, fall through
     }
   }
+  // Plain string: in English mode suppress Chinese-only text
+  if (locale === "en" && hasChinese(trimmed) && !/[a-zA-Z]{3}/.test(trimmed))
+    return "";
   return trimmed;
+}
+
+// ── Localization maps for raw backend strings ─────────────────────────────────
+const MODULE_LABEL: Record<string, { zh: string; en: string }> = {
+  options_flow: { zh: "期权异动", en: "Options Flow" },
+  insider_trade: { zh: "内部交易", en: "Insider" },
+  insider: { zh: "内部交易", en: "Insider" },
+  dark_pool: { zh: "暗池", en: "Dark Pool" },
+  darkpool: { zh: "暗池", en: "Dark Pool" },
+  sentiment: { zh: "情绪", en: "Sentiment" },
+  technical: { zh: "技术面", en: "Technical" },
+  news: { zh: "新闻", en: "News" },
+  earnings: { zh: "财报", en: "Earnings" },
+  fundamental: { zh: "基本面", en: "Fundamental" },
+};
+
+const SIGNAL_TYPE_LABEL: Record<string, { zh: string; en: string }> = {
+  bullish: { zh: "看涨", en: "Bullish" },
+  bearish: { zh: "看跌", en: "Bearish" },
+  neutral: { zh: "中性", en: "Neutral" },
+  unusual_options: { zh: "异动期权", en: "Unusual Options" },
+  unusual: { zh: "异动", en: "Unusual" },
+  large_buy: { zh: "大额买入", en: "Large Buy" },
+  large_sell: { zh: "大额卖出", en: "Large Sell" },
+  cluster_buy: { zh: "集中买入", en: "Cluster Buy" },
+  breakout: { zh: "突破", en: "Breakout" },
+  reversal: { zh: "反转", en: "Reversal" },
+};
+
+function localizeModule(raw: string, isZh: boolean): string {
+  const key = raw.toLowerCase().trim();
+  const entry = MODULE_LABEL[key];
+  if (entry) return isZh ? entry.zh : entry.en;
+  // fallback: replace underscores with spaces, title-case
+  return raw
+    .split(/[_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function localizeSignalType(raw: string, isZh: boolean): string {
+  const key = raw.toLowerCase().trim();
+  const entry = SIGNAL_TYPE_LABEL[key];
+  if (entry) return isZh ? entry.zh : entry.en;
+  return raw
+    .split(/[_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function timeAgo(dateStr: string, locale: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
   const diff = Math.floor((now - then) / 1000);
+  const isZh = locale === "zh" || locale === "zh-CN";
 
-  if (diff < 60) return locale === "zh-CN" ? "刚刚" : "just now";
+  if (diff < 60) return isZh ? "刚刚" : "just now";
   if (diff < 3600) {
     const m = Math.floor(diff / 60);
-    return locale === "zh-CN" ? `${m}分钟前` : `${m}m ago`;
+    return isZh ? `${m}分钟前` : `${m}m ago`;
   }
   if (diff < 86400) {
     const h = Math.floor(diff / 3600);
-    return locale === "zh-CN" ? `${h}小时前` : `${h}h ago`;
+    return isZh ? `${h}小时前` : `${h}h ago`;
   }
   const d = Math.floor(diff / 86400);
-  return locale === "zh-CN" ? `${d}天前` : `${d}d ago`;
+  return isZh ? `${d}天前` : `${d}d ago`;
 }
 
 export function SignalCard({
@@ -150,10 +213,10 @@ export function SignalCard({
         <div className="flex items-center gap-3">
           {signal.module && (
             <span className="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">
-              {signal.module}
+              {localizeModule(signal.module, locale === "zh")}
             </span>
           )}
-          <span className="capitalize">{signal.signal_type}</span>
+          <span>{localizeSignalType(signal.signal_type, locale === "zh")}</span>
         </div>
         <span title={new Date(signal.created_at).toLocaleString(dateLocale)}>
           {timeAgo(signal.created_at, dateLocale)}

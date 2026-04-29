@@ -13,6 +13,46 @@ import {
 
 import { useI18n } from "@/lib/i18n/provider";
 
+// Shared module/signal-type localization (kept in sync with SignalCard)
+const _MODULE: Record<string, [string, string]> = {
+  options_flow: ["期权异动", "Options Flow"],
+  insider_trade: ["内部交易", "Insider"],
+  insider: ["内部交易", "Insider"],
+  dark_pool: ["暗池", "Dark Pool"],
+  darkpool: ["暗池", "Dark Pool"],
+  sentiment: ["情绪", "Sentiment"],
+  technical: ["技术面", "Technical"],
+  news: ["新闻", "News"],
+  earnings: ["财报", "Earnings"],
+  fundamental: ["基本面", "Fundamental"],
+};
+const _SIGTYPE: Record<string, [string, string]> = {
+  bullish: ["看涨", "Bullish"],
+  bearish: ["看跌", "Bearish"],
+  neutral: ["中性", "Neutral"],
+  unusual_options: ["异动期权", "Unusual Options"],
+  unusual: ["异动", "Unusual"],
+  large_buy: ["大额买入", "Large Buy"],
+  large_sell: ["大额卖出", "Large Sell"],
+  cluster_buy: ["集中买入", "Cluster Buy"],
+  breakout: ["突破", "Breakout"],
+  reversal: ["反转", "Reversal"],
+};
+function loc(
+  raw: string | null | undefined,
+  table: Record<string, [string, string]>,
+  isZh: boolean,
+): string {
+  if (!raw) return "-";
+  const key = raw.toLowerCase().trim();
+  const e = table[key];
+  if (e) return isZh ? e[0] : e[1];
+  return raw
+    .split(/[_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function parseAnalysis(
   raw: string | null | undefined,
   locale?: string,
@@ -234,11 +274,15 @@ export function SignalDetail({ signal }: { signal: Signal }) {
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
         <div>
           <p className="text-xs text-gray-500">{t("filters.module")}</p>
-          <p className="text-white">{signal.module || "-"}</p>
+          <p className="text-white">
+            {loc(signal.module, _MODULE, locale === "zh")}
+          </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">{t("signal.type")}</p>
-          <p className="text-white capitalize">{signal.signal_type}</p>
+          <p className="text-white">
+            {loc(signal.signal_type, _SIGTYPE, locale === "zh")}
+          </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">{t("signal.confidence")}</p>
