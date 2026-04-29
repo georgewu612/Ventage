@@ -334,7 +334,7 @@ export default function QuantLabPage() {
           user_id: userId,
           template_name: selectedTemplate.name,
           template_id: selectedTemplate.id,
-          symbol: symbol.toUpperCase(),
+          symbol: symbol.toUpperCase().replace(/[$\s]/g, ""),
           start_date: startDate,
           end_date: endDate,
           params,
@@ -661,7 +661,7 @@ export default function QuantLabPage() {
                             {run.template_name}
                           </td>
                           <td className="px-4 py-3 font-mono text-sm font-semibold text-cyan-400">
-                            {run.symbol}
+                            {run.symbol.replace(/^\$+/, "")}
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-500">
                             {run.start_date} → {run.end_date}
@@ -992,7 +992,11 @@ export default function QuantLabPage() {
                   </label>
                   <input
                     value={symbol}
-                    onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setSymbol(
+                        e.target.value.toUpperCase().replace(/[$\s]/g, ""),
+                      )
+                    }
                     className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-cyan-500/50 focus:outline-none"
                     placeholder="NVDA"
                   />
