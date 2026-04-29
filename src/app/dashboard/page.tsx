@@ -188,15 +188,28 @@ export default function DashboardPage() {
   }, []);
 
   // ── Derived signal buckets ──────────────────────────────────────────
-  const bullishSignals = signals
+  // Keep only the highest-scoring signal per symbol to avoid contradictions
+  const bestBySymbol = new Map<string, (typeof signals)[number]>();
+  for (const s of signals) {
+    const existing = bestBySymbol.get(s.symbol);
+    if (!existing || (s.signal_score ?? 0) > (existing.signal_score ?? 0)) {
+      bestBySymbol.set(s.symbol, s);
+    }
+  }
+  const deduped = Array.from(bestBySymbol.values());
+
+  const bullishSignals = deduped
     .filter((s) => s.direction === "bullish" && (s.signal_score ?? 0) >= 65)
     .slice(0, 5);
 
-  const bearishSignals = signals
+  const bullishSymbols = new Set(bullishSignals.map((s) => s.symbol));
+
+  const bearishSignals = deduped
     .filter(
       (s) =>
-        s.direction === "bearish" ||
-        (s.direction === "neutral" && (s.signal_score ?? 0) >= 75),
+        !bullishSymbols.has(s.symbol) &&
+        (s.direction === "bearish" ||
+          (s.direction === "neutral" && (s.signal_score ?? 0) >= 75)),
     )
     .slice(0, 4);
 
@@ -209,7 +222,7 @@ export default function DashboardPage() {
     : plan;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-transparent text-white">
       <div className="mx-auto max-w-7xl space-y-8 px-4 py-8">
         {/* ── Top: welcome + plan badge ── */}
         <div className="flex items-center justify-between">
@@ -433,42 +446,42 @@ export default function DashboardPage() {
               {/* Data source shortcuts */}
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <h3 className="mb-3 text-xs font-semibold text-slate-400">
-                  Data Sources
+                  {t("home.dataSources")}
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
                   <DataSourceShortcut
                     icon={DollarSign}
-                    label="Options"
+                    label={t("ds.options")}
                     href="/dashboard/options"
                     color="text-cyan-400"
                   />
                   <DataSourceShortcut
                     icon={Users}
-                    label="Insider"
+                    label={t("ds.insider")}
                     href="/dashboard/insider"
                     color="text-violet-400"
                   />
                   <DataSourceShortcut
                     icon={Layers}
-                    label="Dark Pool"
+                    label={t("ds.darkpool")}
                     href="/dashboard/darkpool"
                     color="text-amber-400"
                   />
                   <DataSourceShortcut
                     icon={MessageSquare}
-                    label="Sentiment"
+                    label={t("ds.sentiment")}
                     href="/dashboard/sentiment"
                     color="text-pink-400"
                   />
                   <DataSourceShortcut
                     icon={Brain}
-                    label="Reports"
+                    label={t("nav.reports")}
                     href="/dashboard/reports"
                     color="text-emerald-400"
                   />
                   <DataSourceShortcut
                     icon={Bell}
-                    label="Alerts"
+                    label={t("nav.alerts")}
                     href="/dashboard/alerts"
                     color="text-orange-400"
                   />
