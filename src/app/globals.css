@@ -93,9 +93,28 @@ html.light .bg-slate-700 {
   background: #cbd5e1 !important;
 }
 
-/* Gradient app shell */
-html.light .bg-gradient-to-br.from-slate-900 {
-  background: linear-gradient(135deg, #f1f5f9, #e2e8f0, #f1f5f9) !important;
+/* Gradient app shell — override Tailwind gradient CSS variables */
+html.light .from-slate-900 {
+  --tw-gradient-from: #f1f5f9 !important;
+  --tw-gradient-from-position: ;
+}
+html.light .via-slate-800 {
+  --tw-gradient-via: #e8edf5 !important;
+  --tw-gradient-via-position: ;
+}
+html.light .to-slate-900 {
+  --tw-gradient-to: #f1f5f9 !important;
+  --tw-gradient-to-position: ;
+}
+
+/* Fallback: force background-image for the dashboard shell */
+html.light .min-h-screen.bg-gradient-to-br {
+  background-image: linear-gradient(
+    to bottom right,
+    #f1f5f9,
+    #e8edf5,
+    #f1f5f9
+  ) !important;
 }
 
 /* Glass / translucent surfaces */
@@ -233,6 +252,20 @@ html.light aside {
 html.light .bg-cyan-500\/10 {
   background: rgba(6, 182, 212, 0.12) !important;
 }
+html.light .bg-cyan-500\/20 {
+  background: rgba(6, 182, 212, 0.15) !important;
+}
+html.light .bg-cyan-500\/30 {
+  background: rgba(6, 182, 212, 0.2) !important;
+}
+
+/* Sidebar misc */
+html.light .bg-slate-900\/95 {
+  background: rgba(248, 250, 252, 0.97) !important;
+}
+html.light .bg-white\/10.p-2 {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
 
 /* ── Card inner surfaces (S/R rows, pattern rows, metric rows) ────────────── */
 /* Support level rows */
@@ -264,6 +297,13 @@ html.light .text-cyan-400 {
 }
 html.light .text-cyan-300 {
   color: #0e7490 !important;
+}
+/* Sidebar active item: text-cyan-200 is almost white → make it dark cyan */
+html.light .text-cyan-200 {
+  color: #155e75 !important;
+}
+html.light .text-cyan-100 {
+  color: #164e63 !important;
 }
 html.light .text-amber-400 {
   color: #d97706 !important;
