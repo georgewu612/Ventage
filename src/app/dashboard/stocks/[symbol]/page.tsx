@@ -676,8 +676,12 @@ function StockWorkbenchInner() {
   const [srSupport, setSrSupport] = useState<SRLevel[]>([]);
   const [srResist, setSrResist] = useState<SRLevel[]>([]);
   const handleLevelsLoaded = useCallback((d: TechnicalLevelsData) => {
-    setSrSupport(d.support_levels);
-    setSrResist(d.resist_levels);
+    // Only draw S/R lines that are within ±15% of current price
+    // so the chart price axis doesn't stretch to include distant levels
+    const cur = d.current_price;
+    const rangeFilter = (lv: SRLevel) => Math.abs(lv.price - cur) / cur <= 0.15;
+    setSrSupport(d.support_levels.filter(rangeFilter));
+    setSrResist(d.resist_levels.filter(rangeFilter));
   }, []);
 
   const runAiAnalysis = useCallback(async () => {
