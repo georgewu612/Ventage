@@ -266,7 +266,7 @@ export default function DashboardPage() {
             <SectionHeader
               icon={TrendingUp}
               title={t("home.highConviction")}
-              href="/dashboard/signals"
+              href="/dashboard/alerts"
               linkLabel={t("home.viewAll")}
               iconColor="text-emerald-400"
             />
@@ -304,7 +304,7 @@ export default function DashboardPage() {
             <SectionHeader
               icon={AlertTriangle}
               title={t("home.riskDesk")}
-              href="/dashboard/signals"
+              href="/dashboard/alerts"
               linkLabel={t("home.viewAll")}
               iconColor="text-red-400"
             />
@@ -370,7 +370,7 @@ export default function DashboardPage() {
                 <h3 className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-400">
                   {t("home.watchlist")}
                   <Link
-                    href="/dashboard/signals"
+                    href="/dashboard/alerts"
                     className="flex items-center gap-0.5 text-cyan-500 hover:text-cyan-400"
                   >
                     <ArrowRight className="h-3 w-3" />
