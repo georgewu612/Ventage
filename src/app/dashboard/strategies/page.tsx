@@ -638,7 +638,7 @@ export default function StrategiesPage() {
                           </td>
                           <td className="px-4 py-3">
                             <span className="font-mono text-sm font-semibold text-cyan-400">
-                              ${run.symbol}
+                              {run.symbol}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-xs text-gray-500">
