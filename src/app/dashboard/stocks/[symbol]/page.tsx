@@ -706,11 +706,13 @@ function StockWorkbenchInner() {
     }
   }, [symbol, locale]);
 
-  // Technical chart
+  // Technical chart — period/interval controlled by user selection
+  const [chartPeriod, setChartPeriod] = useState("6m");
+  const [chartInterval, setChartInterval] = useState("1d");
   const { data: techData, loading: techLoading } = useTechnicalAnalysis(
     symbol,
-    "3m",
-    "1d",
+    chartPeriod,
+    chartInterval,
   );
 
   // Agent report config
@@ -815,9 +817,45 @@ function StockWorkbenchInner() {
           <div className="space-y-4 xl:col-span-2">
             {/* K-line chart */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                {t("stock.chartTitle")} &mdash; {symbol} · 3m
-              </p>
+              {/* Chart header: title + period/interval selectors */}
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold tracking-wider text-gray-400 uppercase">
+                  {t("stock.chartTitle")} &mdash; {symbol}
+                </p>
+                <div className="flex items-center gap-1">
+                  {/* Period selector */}
+                  {(
+                    [
+                      { p: "1m", i: "1d", label: "1M" },
+                      { p: "3m", i: "1d", label: "3M" },
+                      { p: "6m", i: "1d", label: "6M" },
+                      { p: "1y", i: "1d", label: "1Y" },
+                      { p: "2y", i: "1d", label: "2Y" },
+                      { p: "5d", i: "1h", label: "5D" },
+                      { p: "1d", i: "5min", label: "1D" },
+                    ] as { p: string; i: string; label: string }[]
+                  ).map(({ p, i, label }) => {
+                    const active = chartPeriod === p && chartInterval === i;
+                    return (
+                      <button
+                        key={label}
+                        onClick={() => {
+                          setChartPeriod(p);
+                          setChartInterval(i);
+                        }}
+                        className={`rounded px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                          active
+                            ? "bg-cyan-500 text-white"
+                            : "text-gray-500 hover:bg-white/10 hover:text-gray-300"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {techLoading ? (
                 <div className="flex h-52 items-center justify-center">
                   <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
