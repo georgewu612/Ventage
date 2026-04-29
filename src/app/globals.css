@@ -449,6 +449,14 @@ html.light select option {
   color: #0f172a;
 }
 
+/* Disabled buttons — opacity-40 too faint on light bg */
+html.light button:disabled,
+html.light input:disabled,
+html.light select:disabled,
+html.light textarea:disabled {
+  opacity: 0.7 !important;
+}
+
 /* Recharts / chart tooltips */
 html.light .recharts-tooltip-wrapper {
   background: #ffffff !important;
