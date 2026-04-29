@@ -252,6 +252,21 @@ export default function QuantLabPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Translate raw template_name (English DB key) to Chinese display label.
+  // Looks up by name first, then by name_zh (in case DB stored name_zh).
+  const localizeTemplateName = (rawName: string, isZh: boolean): string => {
+    if (!isZh) return rawName;
+    const tmpl = templates.find(
+      (t) => t.name === rawName || t.name_zh === rawName,
+    );
+    if (tmpl) return tmpl.name_zh;
+    // Fallback: convert snake_case to Title Case
+    return rawName
+      .split(/[_\s]+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  };
+
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
     null,
   );
@@ -658,7 +673,7 @@ export default function QuantLabPage() {
                       {runs.map((run) => (
                         <tr key={run.id} className="hover:bg-white/[0.03]">
                           <td className="px-4 py-3 text-sm text-gray-300">
-                            {run.template_name}
+                            {localizeTemplateName(run.template_name, zh)}
                           </td>
                           <td className="px-4 py-3 font-mono text-sm font-semibold text-cyan-400">
                             {run.symbol.replace(/^\$+/, "")}
@@ -713,7 +728,8 @@ export default function QuantLabPage() {
                     <option value="">{zh ? "选择回测" : "Select run"}</option>
                     {doneRuns.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.template_name} / {r.symbol} / {r.start_date}
+                        {localizeTemplateName(r.template_name, zh)} / {r.symbol}{" "}
+                        / {r.start_date}
                       </option>
                     ))}
                   </select>
@@ -821,7 +837,8 @@ export default function QuantLabPage() {
                     </option>
                     {doneRuns.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.template_name} / {r.symbol} / {r.start_date}
+                        {localizeTemplateName(r.template_name, zh)} / {r.symbol}{" "}
+                        / {r.start_date}
                       </option>
                     ))}
                   </select>
