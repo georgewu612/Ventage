@@ -93,29 +93,7 @@ html.light .bg-slate-700 {
   background: #cbd5e1 !important;
 }
 
-/* Gradient app shell — override Tailwind gradient CSS variables */
-html.light .from-slate-900 {
-  --tw-gradient-from: #f1f5f9 !important;
-  --tw-gradient-from-position: ;
-}
-html.light .via-slate-800 {
-  --tw-gradient-via: #e8edf5 !important;
-  --tw-gradient-via-position: ;
-}
-html.light .to-slate-900 {
-  --tw-gradient-to: #f1f5f9 !important;
-  --tw-gradient-to-position: ;
-}
-
-/* Fallback: force background-image for the dashboard shell */
-html.light .min-h-screen.bg-gradient-to-br {
-  background-image: linear-gradient(
-    to bottom right,
-    #f1f5f9,
-    #e8edf5,
-    #f1f5f9
-  ) !important;
-}
+/* Dashboard gradient shell is handled directly in layout.tsx via useTheme() */
 
 /* Glass / translucent surfaces */
 html.light .bg-white\/5 {
