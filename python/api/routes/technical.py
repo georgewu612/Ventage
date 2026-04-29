@@ -962,6 +962,67 @@ def get_technical_levels(symbol: str) -> dict[str, Any]:
     week52_low  = float(low.min())
     fib = _fibonacci_levels(week52_high, week52_low)
 
+    # ── Fallback resistance for ATH stocks ────────────────────────────────────
+    # When the stock is near/at all-time highs, there are no historical resistance
+    # pivots above the current price. Fill in with:
+    #   1. 52-week high (if above current price)
+    #   2. Fibonacci *extensions* (127.2%, 161.8%, 200% of the recent swing)
+    #   3. Nearest round-number levels above current price
+    if not resist_levels:
+        fallback_resist: list[dict] = []
+
+        # 1. 52-week high as key resistance if above current price
+        if week52_high > current_price * 1.002:
+            fallback_resist.append({
+                "price": round(week52_high, 2),
+                "touch_count": 3,
+                "strength": "key",
+                "weekly_confluent": False,
+            })
+
+        # 2. Fibonacci extensions above current price
+        swing_low = week52_low
+        swing_high = week52_high
+        swing = swing_high - swing_low
+        fib_extensions = {
+            "127.2%": swing_low + swing * 1.272,
+            "161.8%": swing_low + swing * 1.618,
+            "200.0%": swing_low + swing * 2.000,
+        }
+        for _label, ext_price in fib_extensions.items():
+            if current_price * 1.002 < ext_price < current_price * 1.30:
+                fallback_resist.append({
+                    "price": round(ext_price, 2),
+                    "touch_count": 2,
+                    "strength": "medium",
+                    "weekly_confluent": False,
+                })
+
+        # 3. Round-number psychological levels above current price
+        step = 5 if current_price > 100 else (2 if current_price > 20 else 1)
+        base = int(current_price / step + 1) * step
+        added = 0
+        for lvl in [base + step * k for k in range(10)]:
+            if lvl > current_price * 1.002:
+                fallback_resist.append({
+                    "price": float(lvl),
+                    "touch_count": 1,
+                    "strength": "weak",
+                    "weekly_confluent": False,
+                })
+                added += 1
+                if added >= 3:
+                    break
+
+        # Deduplicate and sort ascending (nearest first), cap at 6
+        seen: set[float] = set()
+        deduped: list[dict] = []
+        for lv in sorted(fallback_resist, key=lambda x: x["price"]):
+            if not any(abs(lv["price"] - s) / max(s, 1) < 0.01 for s in seen):
+                seen.add(lv["price"])
+                deduped.append(lv)
+        resist_levels = deduped[:6]
+
     # Pattern detection
     patterns = _detect_patterns(
         close, high, low, volume,
