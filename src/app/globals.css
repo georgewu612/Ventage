@@ -310,6 +310,57 @@ html.light .text-amber-300 {
 html.light .text-purple-400 {
   color: #7c3aed !important;
 }
+html.light .text-purple-300 {
+  color: #6d28d9 !important;
+}
+html.light .text-purple-200 {
+  color: #5b21b6 !important;
+}
+html.light .text-violet-400 {
+  color: #7c3aed !important;
+}
+html.light .text-violet-300 {
+  color: #6d28d9 !important;
+}
+html.light .text-violet-200 {
+  color: #5b21b6 !important;
+}
+html.light .text-indigo-400 {
+  color: #4f46e5 !important;
+}
+html.light .text-indigo-300 {
+  color: #4338ca !important;
+}
+html.light .text-fuchsia-400 {
+  color: #c026d3 !important;
+}
+html.light .text-fuchsia-300 {
+  color: #a21caf !important;
+}
+html.light .text-pink-400 {
+  color: #db2777 !important;
+}
+html.light .text-pink-300 {
+  color: #be185d !important;
+}
+html.light .text-blue-400 {
+  color: #2563eb !important;
+}
+html.light .text-blue-300 {
+  color: #1d4ed8 !important;
+}
+html.light .text-yellow-400 {
+  color: #ca8a04 !important;
+}
+html.light .text-yellow-300 {
+  color: #a16207 !important;
+}
+html.light .text-orange-400 {
+  color: #ea580c !important;
+}
+html.light .text-orange-300 {
+  color: #c2410c !important;
+}
 
 /* Plan badge in sidebar stays readable */
 html.light .bg-amber-500\/20 {
