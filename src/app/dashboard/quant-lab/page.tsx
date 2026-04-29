@@ -716,8 +716,8 @@ export default function QuantLabPage() {
           {activeTab === "optimization" && (
             <section className="space-y-4">
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                  {zh ? "参数敏感性分析" : "Parameter Sensitivity"}
+                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500">
+                  {zh ? "参数敏感性分析" : "PARAMETER SENSITIVITY"}
                 </p>
                 <div className="mb-4 flex flex-wrap gap-3">
                   <select
@@ -746,14 +746,14 @@ export default function QuantLabPage() {
                   <button
                     onClick={runSensitivity}
                     disabled={sensLoading || !selectedRunId || !sensParamKey}
-                    className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-4 py-2 text-sm text-purple-300 hover:bg-purple-500/30 disabled:opacity-40"
+                    className="flex items-center gap-2 rounded-lg bg-purple-500/20 px-4 py-2 text-sm font-semibold text-purple-300 hover:bg-purple-500/30 disabled:opacity-40"
                   >
                     {sensLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Zap className="h-4 w-4" />
                     )}
-                    {zh ? "运行敏感性" : "Run Sensitivity"}
+                    {zh ? "运行敏感性分析" : "Run Sensitivity"}
                   </button>
                 </div>
                 {sensError && (
@@ -823,8 +823,8 @@ export default function QuantLabPage() {
             <section className="space-y-4">
               {/* Walk-forward trigger */}
               <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                  {zh ? "Walk-forward 稳健性验证" : "Walk-Forward Robustness"}
+                <p className="mb-3 text-xs font-semibold tracking-wide text-gray-500">
+                  {zh ? "滚动前向稳健性验证" : "WALK-FORWARD ROBUSTNESS"}
                 </p>
                 <div className="mb-4 flex flex-wrap gap-3">
                   <select
@@ -858,14 +858,14 @@ export default function QuantLabPage() {
                   <button
                     onClick={runWalkForward}
                     disabled={wfLoading || !selectedRunId}
-                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-40"
+                    className="flex items-center gap-2 rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-40"
                   >
                     {wfLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Shield className="h-4 w-4" />
                     )}
-                    {zh ? "运行 Walk-forward" : "Run Walk-Forward"}
+                    {zh ? "运行稳健性回测" : "Run Walk-Forward"}
                   </button>
                 </div>
                 {wfError && <p className="text-xs text-red-400">{wfError}</p>}
