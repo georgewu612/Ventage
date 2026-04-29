@@ -20,6 +20,39 @@ import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
 
+// ── Strategy template description i18n (frontend-side, since DB has only EN) ──
+const TEMPLATE_DESC_ZH: Record<string, string> = {
+  // keyed by name_zh (preferred) and name (fallback)
+  "SMA 金叉死叉": "双均线交叉策略：快线上穿慢线做多，下穿做空。经典趋势跟踪。",
+  "RSI 均值回归": "RSI 超卖买入（RSI<30），超买卖出（RSI>70）。适合震荡行情。",
+  布林带突破: "价格突破布林带上轨做多，跌破下轨做空。捕捉突破行情。",
+  "MACD 信号线交叉": "MACD 线上穿信号线做多，下穿做空。趋势确认 + 动量结合。",
+  动量突破: "买入突破52周高位且成交量高于均值的股票，持续持有至趋势减弱。",
+  低波防守: "在 VIX 高位时轮换至低贝塔、低波动率股票，保护资本，降低回撤。",
+  // Fallback by English name as well
+  sma_crossover: "双均线交叉策略：快线上穿慢线做多，下穿做空。经典趋势跟踪。",
+  rsi_mean_reversion:
+    "RSI 超卖买入（RSI<30），超买卖出（RSI>70）。适合震荡行情。",
+  bollinger_band: "价格突破布林带上轨做多，跌破下轨做空。捕捉突破行情。",
+  macd_signal: "MACD 线上穿信号线做多，下穿做空。趋势确认 + 动量结合。",
+  "Momentum Breakout":
+    "买入突破52周高位且成交量高于均值的股票，持续持有至趋势减弱。",
+  "Low Volatility Defense":
+    "在 VIX 高位时轮换至低贝塔、低波动率股票，保护资本，降低回撤。",
+};
+
+function getTemplateDescription(
+  tmpl: { name: string; name_zh: string; description: string },
+  isZh: boolean,
+): string {
+  if (!isZh) return tmpl.description;
+  return (
+    TEMPLATE_DESC_ZH[tmpl.name_zh] ||
+    TEMPLATE_DESC_ZH[tmpl.name] ||
+    tmpl.description
+  );
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Template {
@@ -480,7 +513,7 @@ export default function QuantLabPage() {
                         {tmpl.name_zh}
                       </h3>
                       <p className="mb-4 text-xs leading-relaxed text-gray-500">
-                        {tmpl.description}
+                        {getTemplateDescription(tmpl, zh)}
                       </p>
                       <button className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-xs font-medium text-gray-300 hover:bg-white/10">
                         <Play className="h-3 w-3" /> {t("quant.run")}
@@ -941,7 +974,7 @@ export default function QuantLabPage() {
                   {selectedTemplate.name_zh}
                 </h2>
                 <p className="text-xs text-gray-500">
-                  {selectedTemplate.description}
+                  {getTemplateDescription(selectedTemplate, zh)}
                 </p>
               </div>
               <button
