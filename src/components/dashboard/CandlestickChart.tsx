@@ -81,7 +81,8 @@ export function CandlestickChart({
 
     chartRef.current = chart;
 
-    // Candlestick series
+    // Candlestick series — autoscaleInfoProvider ignores price lines
+    // so S/R lines outside the candle range don't stretch the Y-axis
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#10b981",
       downColor: "#ef4444",
@@ -89,6 +90,20 @@ export function CandlestickChart({
       borderDownColor: "#ef4444",
       wickUpColor: "#10b981",
       wickDownColor: "#ef4444",
+      autoscaleInfoProvider: (
+        original: () => {
+          priceRange: { minValue: number; maxValue: number } | null;
+          margins?: { above: number; below: number };
+        } | null,
+      ) => {
+        const res = original();
+        if (!res) return res;
+        // Add a small margin above/below the candle range without stretching to price lines
+        return {
+          priceRange: res.priceRange,
+          margins: { above: 0.1, below: 0.1 },
+        };
+      },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     candleSeries.setData(data.candles as any);
@@ -169,6 +184,8 @@ export function CandlestickChart({
     };
 
     // Support lines — green
+    // axisLabelVisible:false prevents the right-axis label from pulling the
+    // price scale to include distant levels outside the candle range.
     supportLevels.forEach((level) => {
       const op = strengthOpacity[level.strength] ?? 0.5;
       candleSeries.createPriceLine({
@@ -176,7 +193,7 @@ export function CandlestickChart({
         color: `rgba(16,185,129,${op})`,
         lineWidth: strengthWidth[level.strength] ?? 1,
         lineStyle: strengthStyle[level.strength] ?? 2,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         title: `S ${level.price}`,
       });
     });
@@ -189,7 +206,7 @@ export function CandlestickChart({
         color: `rgba(239,68,68,${op})`,
         lineWidth: strengthWidth[level.strength] ?? 1,
         lineStyle: strengthStyle[level.strength] ?? 2,
-        axisLabelVisible: true,
+        axisLabelVisible: false,
         title: `R ${level.price}`,
       });
     });

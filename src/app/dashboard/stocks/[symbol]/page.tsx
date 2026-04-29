@@ -676,12 +676,10 @@ function StockWorkbenchInner() {
   const [srSupport, setSrSupport] = useState<SRLevel[]>([]);
   const [srResist, setSrResist] = useState<SRLevel[]>([]);
   const handleLevelsLoaded = useCallback((d: TechnicalLevelsData) => {
-    // Only draw S/R lines that are within ±15% of current price
-    // so the chart price axis doesn't stretch to include distant levels
-    const cur = d.current_price;
-    const rangeFilter = (lv: SRLevel) => Math.abs(lv.price - cur) / cur <= 0.15;
-    setSrSupport(d.support_levels.filter(rangeFilter));
-    setSrResist(d.resist_levels.filter(rangeFilter));
+    // Show nearest 3 support + 3 resistance levels regardless of distance.
+    // The chart draws them with axisLabelVisible=false to avoid Y-axis stretching.
+    setSrSupport(d.support_levels.slice(0, 3));
+    setSrResist(d.resist_levels.slice(0, 3));
   }, []);
 
   const runAiAnalysis = useCallback(async () => {
