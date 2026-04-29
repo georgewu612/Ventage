@@ -493,75 +493,152 @@ def _find_sr_levels(
     high: pd.Series,
     low: pd.Series,
     close: pd.Series,
-    window: int = 10,
+    volume: pd.Series | None = None,
+    window: int = 8,
     cluster_pct: float = 0.015,
     min_touches: int = 2,
+    weekly_high: pd.Series | None = None,
+    weekly_low: pd.Series | None = None,
 ) -> tuple[list[dict], list[dict]]:
-    """Detect support and resistance levels using local extrema + clustering.
+    """Detect support and resistance levels using enhanced multi-factor algorithm.
 
-    Returns (support_levels, resistance_levels) sorted by strength.
+    Improvements over v1:
+    1. Volume-weighted extrema — high-volume swing points count double
+    2. Multi-timeframe confluence — levels confirmed on weekly chart promoted to 'key'
+    3. Wick-aware touch counting — counts price approaches within cluster_pct on OHLC
+    4. Round-number magnetism — levels within 0.5% of a round number get +1 touch bonus
+
+    Returns (support_levels, resistance_levels) sorted nearest-first.
     Each level: {price, touch_count, strength: 'weak'|'medium'|'strong'|'key'}
     """
-    prices_all = pd.concat([high, low, close]).dropna().values
     current = float(close.iloc[-1])
+    avg_vol = float(volume.mean()) if volume is not None and len(volume) > 0 else 1.0
 
-    # ── Find local maxima (resistance candidates) ──
+    # ── 1. Find local extrema with volume weighting ────────────────────────────
+    # A pivot with volume ≥ 1.5× avg is treated as 2 votes
     resist_candidates: list[float] = []
     for i in range(window, len(high) - window):
-        if high.iloc[i] == high.iloc[i - window : i + window + 1].max():
-            resist_candidates.append(float(high.iloc[i]))
+        slice_h = high.iloc[i - window: i + window + 1]
+        if float(high.iloc[i]) == float(slice_h.max()):
+            votes = 2 if (volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5) else 1
+            resist_candidates.extend([float(high.iloc[i])] * votes)
 
-    # ── Find local minima (support candidates) ──
     support_candidates: list[float] = []
     for i in range(window, len(low) - window):
-        if low.iloc[i] == low.iloc[i - window : i + window + 1].min():
-            support_candidates.append(float(low.iloc[i]))
+        slice_l = low.iloc[i - window: i + window + 1]
+        if float(low.iloc[i]) == float(slice_l.min()):
+            votes = 2 if (volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5) else 1
+            support_candidates.extend([float(low.iloc[i])] * votes)
 
-    def cluster(candidates: list[float]) -> list[dict]:
+    # ── 2. Weekly-level pivot prices (for confluence boost) ───────────────────
+    weekly_resist_prices: set[float] = set()
+    weekly_support_prices: set[float] = set()
+    if weekly_high is not None and weekly_low is not None:
+        w_win = 3  # smaller window for weekly
+        for i in range(w_win, len(weekly_high) - w_win):
+            slice_h = weekly_high.iloc[i - w_win: i + w_win + 1]
+            if float(weekly_high.iloc[i]) == float(slice_h.max()):
+                weekly_resist_prices.add(float(weekly_high.iloc[i]))
+        for i in range(w_win, len(weekly_low) - w_win):
+            slice_l = weekly_low.iloc[i - w_win: i + w_win + 1]
+            if float(weekly_low.iloc[i]) == float(slice_l.min()):
+                weekly_support_prices.add(float(weekly_low.iloc[i]))
+
+    def _is_round_number(price: float) -> bool:
+        """True if price is within 0.5% of a round number (integer or .5 for >$50)."""
+        rounded = round(price)
+        if abs(price - rounded) / price < 0.005:
+            return True
+        if price > 50:
+            half = round(price * 2) / 2
+            if abs(price - half) / price < 0.005:
+                return True
+        return False
+
+    def _weekly_confluent(price: float, weekly_set: set[float]) -> bool:
+        return any(abs(price - wp) / price <= cluster_pct * 1.5 for wp in weekly_set)
+
+    def cluster(candidates: list[float], is_resist: bool) -> list[dict]:
         if not candidates:
             return []
         candidates_sorted = sorted(candidates)
         clusters: list[list[float]] = []
         current_cluster = [candidates_sorted[0]]
         for price in candidates_sorted[1:]:
-            if (price - current_cluster[0]) / current_cluster[0] <= cluster_pct:
+            if (price - current_cluster[0]) / max(current_cluster[0], 0.01) <= cluster_pct:
                 current_cluster.append(price)
             else:
                 clusters.append(current_cluster)
                 current_cluster = [price]
         clusters.append(current_cluster)
 
+        weekly_set = weekly_resist_prices if is_resist else weekly_support_prices
+
         result = []
         for cl in clusters:
             avg = sum(cl) / len(cl)
+            # Base touch count = number of pivot votes in this cluster
             touches = len(cl)
-            # Count additional touches in full OHLC range
-            touches += sum(
-                1 for p in prices_all
-                if abs(p - avg) / avg <= cluster_pct
-            )
-            touches = min(touches, 20)  # cap
-            strength = (
-                "key"    if touches >= 8
-                else "strong" if touches >= 5
-                else "medium" if touches >= 3
-                else "weak"
-            )
-            result.append({"price": round(avg, 2), "touch_count": touches, "strength": strength})
+
+            # Wick-aware: count candles where H touched resistance zone or L touched support zone
+            zone_lo = avg * (1 - cluster_pct)
+            zone_hi = avg * (1 + cluster_pct)
+            if is_resist:
+                wick_touches = int(((high >= zone_lo) & (high <= zone_hi)).sum())
+            else:
+                wick_touches = int(((low >= zone_lo) & (low <= zone_hi)).sum())
+            touches += wick_touches
+
+            # Round-number bonus
+            if _is_round_number(avg):
+                touches += 1
+
+            # Weekly confluence → promoted directly to 'key' regardless of touch count
+            is_key_by_weekly = _weekly_confluent(avg, weekly_set)
+
+            touches = min(touches, 30)
+            if is_key_by_weekly:
+                strength = "key"
+            elif touches >= 12:
+                strength = "key"
+            elif touches >= 7:
+                strength = "strong"
+            elif touches >= 4:
+                strength = "medium"
+            else:
+                strength = "weak"
+
+            result.append({
+                "price": round(avg, 2),
+                "touch_count": touches,
+                "strength": strength,
+                "weekly_confluent": is_key_by_weekly,
+            })
         return result
 
     all_support = [
-        l for l in cluster(support_candidates)
-        if l["price"] < current * 0.998 and l["touch_count"] >= min_touches
+        lv for lv in cluster(support_candidates, is_resist=False)
+        if lv["price"] < current * 0.998 and lv["touch_count"] >= min_touches
     ]
     all_resist = [
-        l for l in cluster(resist_candidates)
-        if l["price"] > current * 1.002 and l["touch_count"] >= min_touches
+        lv for lv in cluster(resist_candidates, is_resist=True)
+        if lv["price"] > current * 1.002 and lv["touch_count"] >= min_touches
     ]
 
     # Sort: support → descending (nearest first), resist → ascending (nearest first)
-    support_levels = sorted(all_support, key=lambda x: x["price"], reverse=True)[:6]
-    resist_levels  = sorted(all_resist,  key=lambda x: x["price"])[:6]
+    # Promote 'key' levels to front within same side
+    def sort_key_support(lv: dict) -> tuple:
+        order = {"key": 0, "strong": 1, "medium": 2, "weak": 3}
+        dist = current - lv["price"]  # smaller = nearer
+        return (order[lv["strength"]], dist)
+
+    def sort_key_resist(lv: dict) -> tuple:
+        order = {"key": 0, "strong": 1, "medium": 2, "weak": 3}
+        dist = lv["price"] - current
+        return (order[lv["strength"]], dist)
+
+    support_levels = sorted(all_support, key=sort_key_support)[:6]
+    resist_levels  = sorted(all_resist,  key=sort_key_resist)[:6]
     return support_levels, resist_levels
 
 
@@ -839,8 +916,8 @@ def get_technical_levels(symbol: str) -> dict[str, Any]:
     """
     sym = symbol.upper()
 
-    # Fetch 1 year of daily OHLCV
-    df = yf.download(sym, period="1y", interval="1d", progress=False, auto_adjust=True)
+    # Fetch 2 years of daily OHLCV (more history → better S/R detection)
+    df = yf.download(sym, period="2y", interval="1d", progress=False, auto_adjust=True)
     if df is None or len(df) < 60:
         raise HTTPException(status_code=404, detail=f"Insufficient data for {sym}")
 
@@ -853,6 +930,19 @@ def get_technical_levels(symbol: str) -> dict[str, Any]:
     low    = df["Low"].squeeze().dropna()
     volume = df["Volume"].squeeze().dropna()
 
+    # Fetch weekly data for multi-timeframe confluence
+    weekly_high: pd.Series | None = None
+    weekly_low: pd.Series | None = None
+    try:
+        df_w = yf.download(sym, period="5y", interval="1wk", progress=False, auto_adjust=True)
+        if df_w is not None and len(df_w) >= 20:
+            if isinstance(df_w.columns, pd.MultiIndex):
+                df_w.columns = df_w.columns.get_level_values(0)
+            weekly_high = df_w["High"].squeeze().dropna()
+            weekly_low  = df_w["Low"].squeeze().dropna()
+    except Exception:
+        pass  # weekly data optional
+
     # Indicators
     rsi_series   = _compute_rsi(close)
     macd_line, macd_sig, _ = _compute_macd(close)
@@ -861,8 +951,11 @@ def get_technical_levels(symbol: str) -> dict[str, Any]:
     rsi_now = _safe_float(rsi_series.iloc[-1]) or 50.0
     current_price = float(close.iloc[-1])
 
-    # S/R levels
-    support_levels, resist_levels = _find_sr_levels(high, low, close)
+    # S/R levels — enhanced with volume weighting + weekly confluence
+    support_levels, resist_levels = _find_sr_levels(
+        high, low, close, volume,
+        weekly_high=weekly_high, weekly_low=weekly_low,
+    )
 
     # Fibonacci (52-week high/low)
     week52_high = float(high.max())

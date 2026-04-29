@@ -17,6 +17,7 @@ export interface SRLevel {
   price: number;
   touch_count: number;
   strength: "weak" | "medium" | "strong" | "key";
+  weekly_confluent?: boolean;
 }
 
 interface Pattern {
@@ -260,6 +261,11 @@ export function TechnicalLevelsCard({ symbol, onDataLoaded }: Props) {
                     <span className="text-xs font-semibold text-red-300 tabular-nums">
                       ${lv.price}
                     </span>
+                    {lv.weekly_confluent && (
+                      <span className="rounded bg-red-500/20 px-1 py-0.5 text-[8px] font-bold text-red-300">
+                        {isZh ? "W" : "W"}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[9px] text-gray-600">
                     {isZh ? sl.zh : sl.en} · {lv.touch_count}
@@ -297,6 +303,11 @@ export function TechnicalLevelsCard({ symbol, onDataLoaded }: Props) {
                     <span className="text-xs font-semibold text-emerald-300 tabular-nums">
                       ${lv.price}
                     </span>
+                    {lv.weekly_confluent && (
+                      <span className="rounded bg-emerald-500/20 px-1 py-0.5 text-[8px] font-bold text-emerald-300">
+                        {isZh ? "W" : "W"}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[9px] text-gray-600">
                     {isZh ? sl.zh : sl.en} · {lv.touch_count}

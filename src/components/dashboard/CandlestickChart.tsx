@@ -15,6 +15,7 @@ export interface SRLevel {
   price: number;
   touch_count: number;
   strength: "weak" | "medium" | "strong" | "key";
+  weekly_confluent?: boolean;
 }
 
 interface Props {
@@ -186,28 +187,49 @@ export function CandlestickChart({
     // Support lines — green
     // axisLabelVisible:false prevents the right-axis label from pulling the
     // price scale to include distant levels outside the candle range.
+    // weekly_confluent levels get a brighter color and solid line regardless of strength.
     supportLevels.forEach((level) => {
-      const op = strengthOpacity[level.strength] ?? 0.5;
+      const op = level.weekly_confluent
+        ? 1.0
+        : (strengthOpacity[level.strength] ?? 0.5);
+      const lw = level.weekly_confluent
+        ? 2
+        : (strengthWidth[level.strength] ?? 1);
+      const ls = level.weekly_confluent
+        ? 0
+        : (strengthStyle[level.strength] ?? 2);
       candleSeries.createPriceLine({
         price: level.price,
         color: `rgba(16,185,129,${op})`,
-        lineWidth: strengthWidth[level.strength] ?? 1,
-        lineStyle: strengthStyle[level.strength] ?? 2,
+        lineWidth: lw,
+        lineStyle: ls,
         axisLabelVisible: false,
-        title: `S ${level.price}`,
+        title: level.weekly_confluent
+          ? `S★ ${level.price}`
+          : `S ${level.price}`,
       });
     });
 
     // Resistance lines — red
     resistLevels.forEach((level) => {
-      const op = strengthOpacity[level.strength] ?? 0.5;
+      const op = level.weekly_confluent
+        ? 1.0
+        : (strengthOpacity[level.strength] ?? 0.5);
+      const lw = level.weekly_confluent
+        ? 2
+        : (strengthWidth[level.strength] ?? 1);
+      const ls = level.weekly_confluent
+        ? 0
+        : (strengthStyle[level.strength] ?? 2);
       candleSeries.createPriceLine({
         price: level.price,
         color: `rgba(239,68,68,${op})`,
-        lineWidth: strengthWidth[level.strength] ?? 1,
-        lineStyle: strengthStyle[level.strength] ?? 2,
+        lineWidth: lw,
+        lineStyle: ls,
         axisLabelVisible: false,
-        title: `R ${level.price}`,
+        title: level.weekly_confluent
+          ? `R★ ${level.price}`
+          : `R ${level.price}`,
       });
     });
 
