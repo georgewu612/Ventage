@@ -738,7 +738,7 @@ export default function QuantLabPage() {
                     onChange={(e) => setSensParamKey(e.target.value)}
                     placeholder={
                       zh
-                        ? "参数名（如 fast_window）"
+                        ? "参数名（如 快线周期）"
                         : "param_key (e.g. fast_window)"
                     }
                     className="w-52 rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white placeholder-gray-600"
