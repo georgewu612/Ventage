@@ -1,8 +1,43 @@
 @import "tailwindcss";
 
+/* ── Dark theme (default) ─────────────────────────────────────────────────── */
 :root {
   --background: #0f172a;
   --foreground: #e2e8f0;
+
+  --v-bg-app: #0f172a;
+  --v-bg-surface: rgba(255, 255, 255, 0.05);
+  --v-bg-surface2: rgba(255, 255, 255, 0.08);
+  --v-bg-topbar: rgba(15, 23, 42, 0.95);
+  --v-bg-sidebar: #0f172a;
+  --v-border: rgba(255, 255, 255, 0.1);
+  --v-border-md: rgba(255, 255, 255, 0.15);
+  --v-text-primary: #ffffff;
+  --v-text-secondary: #94a3b8;
+  --v-text-muted: #64748b;
+  --v-text-faint: #475569;
+  --v-scrollbar: rgba(255, 255, 255, 0.1);
+  --v-scrollbar-h: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Light theme ──────────────────────────────────────────────────────────── */
+html.light {
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+
+  --v-bg-app: #f1f5f9;
+  --v-bg-surface: rgba(0, 0, 0, 0.04);
+  --v-bg-surface2: rgba(0, 0, 0, 0.07);
+  --v-bg-topbar: rgba(248, 250, 252, 0.97);
+  --v-bg-sidebar: #ffffff;
+  --v-border: rgba(0, 0, 0, 0.09);
+  --v-border-md: rgba(0, 0, 0, 0.14);
+  --v-text-primary: #0f172a;
+  --v-text-secondary: #475569;
+  --v-text-muted: #64748b;
+  --v-text-faint: #94a3b8;
+  --v-scrollbar: rgba(0, 0, 0, 0.12);
+  --v-scrollbar-h: rgba(0, 0, 0, 0.22);
 }
 
 @theme inline {
@@ -16,6 +51,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition:
+    background 0.25s ease,
+    color 0.25s ease;
 }
 
 /* Smooth scrolling */
@@ -31,11 +69,153 @@ html {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--v-scrollbar);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--v-scrollbar-h);
+}
+
+/* ── Light theme: global Tailwind class overrides ─────────────────────────── *
+ * Instead of touching every component, we flip the most-used dark utilities   *
+ * when html.light is active. !important beats Tailwind's specificity.         */
+
+/* Slate backgrounds */
+html.light .bg-slate-900,
+html.light .bg-slate-900\/95 {
+  background: var(--v-bg-app) !important;
+}
+html.light .bg-slate-800,
+html.light .bg-slate-800\/50 {
+  background: #e2e8f0 !important;
+}
+html.light .bg-slate-700 {
+  background: #cbd5e1 !important;
+}
+
+/* Gradient app shell */
+html.light .bg-gradient-to-br.from-slate-900 {
+  background: linear-gradient(135deg, #f1f5f9, #e2e8f0, #f1f5f9) !important;
+}
+
+/* Glass / translucent surfaces */
+html.light .bg-white\/5 {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+html.light .bg-white\/8 {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+html.light .bg-white\/10 {
+  background: rgba(0, 0, 0, 0.07) !important;
+}
+html.light .bg-white\/15 {
+  background: rgba(0, 0, 0, 0.09) !important;
+}
+html.light .bg-white\/20 {
+  background: rgba(0, 0, 0, 0.11) !important;
+}
+
+/* Borders */
+html.light .border-white\/5 {
+  border-color: rgba(0, 0, 0, 0.05) !important;
+}
+html.light .border-white\/10 {
+  border-color: rgba(0, 0, 0, 0.09) !important;
+}
+html.light .border-white\/15 {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+html.light .border-white\/20 {
+  border-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+/* Text */
+html.light .text-white {
+  color: #0f172a !important;
+}
+html.light .text-gray-100 {
+  color: #1e293b !important;
+}
+html.light .text-gray-200 {
+  color: #334155 !important;
+}
+html.light .text-gray-300 {
+  color: #475569 !important;
+}
+html.light .text-gray-400 {
+  color: #64748b !important;
+}
+html.light .text-gray-500 {
+  color: #94a3b8 !important;
+}
+html.light .text-gray-600 {
+  color: #a0aec0 !important;
+}
+html.light .text-gray-700 {
+  color: #b0bec5 !important;
+}
+html.light .text-slate-100 {
+  color: #1e293b !important;
+}
+html.light .text-slate-200 {
+  color: #334155 !important;
+}
+html.light .text-slate-300 {
+  color: #475569 !important;
+}
+html.light .text-slate-400 {
+  color: #64748b !important;
+}
+
+/* Hover overlays */
+html.light .hover\:bg-white\/5:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+html.light .hover\:bg-white\/8:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+html.light .hover\:bg-white\/10:hover {
+  background: rgba(0, 0, 0, 0.07) !important;
+}
+
+/* Inputs & search bars */
+html.light input,
+html.light textarea,
+html.light select {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #0f172a !important;
+}
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Topbar sticky header */
+html.light header.sticky {
+  background: var(--v-bg-topbar) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
+}
+
+/* Sidebar */
+html.light nav,
+html.light aside {
+  background: var(--v-bg-sidebar) !important;
+  border-color: rgba(0, 0, 0, 0.09) !important;
+}
+
+/* Sidebar active link */
+html.light .bg-cyan-500\/10 {
+  background: rgba(6, 182, 212, 0.12) !important;
+}
+
+/* Transition for all theme-sensitive surfaces */
+html.light *,
+html.dark * {
+  transition:
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease;
 }
 
 /* Fade-in animation for page content */

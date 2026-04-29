@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, Search } from "lucide-react";
+import { Bell, Search, Sun, Moon } from "lucide-react";
 
 import { PLAN_LABELS } from "@/lib/features/gates";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { useI18n } from "@/lib/i18n/provider";
+import { useTheme } from "@/lib/theme/provider";
 
 // ── Page title resolver ────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export function Topbar() {
   const { t, locale } = useI18n();
   const [search, setSearch] = useState("");
 
+  const { theme, toggleTheme } = useTheme();
   const planInfo =
     PLAN_LABELS[plan as keyof typeof PLAN_LABELS] ?? PLAN_LABELS.free;
 
@@ -111,6 +113,19 @@ export function Topbar() {
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-2">
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className="rounded-lg border border-white/10 p-1.5 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
+          title={theme === "dark" ? "切换浅色模式" : "切换深色模式"}
+        >
+          {theme === "dark" ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )}
+        </button>
+
         <button
           className="rounded-lg border border-white/10 p-1.5 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
           title={t("topbar.notifications")}
