@@ -93,9 +93,9 @@ interface WalkForwardResult {
 
 interface SensitivityResult {
   param_key: string;
-  values: number[];
-  sharpes: number[];
+  results: { param_value: number; sharpe: number; total_return_pct: number }[];
   sharpe_std: number;
+  stability?: "robust" | "moderate" | "fragile" | string;
 }
 
 // ── API error helper ──────────────────────────────────────────────────────────
@@ -803,29 +803,34 @@ export default function QuantLabPage() {
                       </span>
                     </p>
                     <div className="flex h-20 items-end gap-1">
-                      {sensResult.sharpes.map((s, i) => {
-                        const h = Math.max(
-                          4,
-                          (Math.abs(s) /
-                            Math.max(...sensResult.sharpes.map(Math.abs))) *
-                            72,
+                      {(() => {
+                        const items = sensResult.results ?? [];
+                        const maxAbs = Math.max(
+                          1e-9,
+                          ...items.map((it) => Math.abs(it.sharpe)),
                         );
-                        return (
-                          <div
-                            key={i}
-                            className="flex flex-1 flex-col items-center gap-0.5"
-                            title={`${sensResult.values[i]}: Sharpe ${s.toFixed(2)}`}
-                          >
+                        return items.map((it, i) => {
+                          const h = Math.max(
+                            4,
+                            (Math.abs(it.sharpe) / maxAbs) * 72,
+                          );
+                          return (
                             <div
-                              className={`w-full rounded-sm ${s >= 0 ? "bg-emerald-500/60" : "bg-red-500/60"}`}
-                              style={{ height: `${h}px` }}
-                            />
-                            <span className="text-[9px] text-gray-600">
-                              {sensResult.values[i]}
-                            </span>
-                          </div>
-                        );
-                      })}
+                              key={i}
+                              className="flex flex-1 flex-col items-center gap-0.5"
+                              title={`${it.param_value}: Sharpe ${it.sharpe.toFixed(2)} · 收益 ${it.total_return_pct.toFixed(1)}%`}
+                            >
+                              <div
+                                className={`w-full rounded-sm ${it.sharpe >= 0 ? "bg-emerald-500/60" : "bg-red-500/60"}`}
+                                style={{ height: `${h}px` }}
+                              />
+                              <span className="text-[9px] text-gray-600">
+                                {it.param_value}
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
