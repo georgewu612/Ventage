@@ -130,6 +130,95 @@ const CAT_COLORS: Record<string, { color: string; bg: string }> = {
   volatility: { color: "text-pink-400", bg: "bg-pink-500/10" },
 };
 
+// Per-template visual theme — each strategy gets a unique color personality.
+// Keyed by template `name` (DB primary key). Falls back to category color.
+interface TemplateTheme {
+  card: string; // gradient + border for the whole card
+  hover: string; // hover state classes
+  accentBar: string; // top accent bar gradient
+  iconColor: string; // header icon tint
+  buttonClass: string; // "运行" button bg + text
+  ringColor: string; // subtle inner glow
+}
+
+const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
+  // 1. SMA 金叉死叉 — classic trend, sky cyan
+  sma_crossover: {
+    card: "border-cyan-400/25 bg-gradient-to-br from-cyan-950/40 via-slate-900/30 to-cyan-950/20",
+    hover: "hover:border-cyan-400/50 hover:from-cyan-900/50",
+    accentBar: "bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500",
+    iconColor: "text-cyan-400",
+    buttonClass:
+      "bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30",
+    ringColor: "shadow-cyan-500/10",
+  },
+  // 2. RSI 均值回归 — counter-trend, deep purple
+  rsi_mean_reversion: {
+    card: "border-purple-400/25 bg-gradient-to-br from-purple-950/40 via-slate-900/30 to-purple-950/20",
+    hover: "hover:border-purple-400/50 hover:from-purple-900/50",
+    accentBar: "bg-gradient-to-r from-purple-500 via-fuchsia-400 to-pink-500",
+    iconColor: "text-purple-400",
+    buttonClass:
+      "bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/30",
+    ringColor: "shadow-purple-500/10",
+  },
+  // 3. 布林带突破 — volatility breakout, indigo
+  bollinger_band: {
+    card: "border-indigo-400/25 bg-gradient-to-br from-indigo-950/40 via-slate-900/30 to-indigo-950/20",
+    hover: "hover:border-indigo-400/50 hover:from-indigo-900/50",
+    accentBar: "bg-gradient-to-r from-indigo-500 via-blue-400 to-violet-500",
+    iconColor: "text-indigo-400",
+    buttonClass:
+      "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-400/30",
+    ringColor: "shadow-indigo-500/10",
+  },
+  // 4. MACD 信号线交叉 — momentum confirmation, amber
+  macd_signal: {
+    card: "border-amber-400/25 bg-gradient-to-br from-amber-950/40 via-slate-900/30 to-amber-950/20",
+    hover: "hover:border-amber-400/50 hover:from-amber-900/50",
+    accentBar: "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-500",
+    iconColor: "text-amber-400",
+    buttonClass:
+      "bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30",
+    ringColor: "shadow-amber-500/10",
+  },
+  // 5. 动量突破 — aggressive growth, red-orange "fire"
+  "Momentum Breakout": {
+    card: "border-orange-400/25 bg-gradient-to-br from-orange-950/40 via-slate-900/30 to-red-950/20",
+    hover: "hover:border-orange-400/50 hover:from-orange-900/50",
+    accentBar: "bg-gradient-to-r from-orange-500 via-red-500 to-pink-500",
+    iconColor: "text-orange-400",
+    buttonClass:
+      "bg-orange-500/20 hover:bg-orange-500/30 text-orange-200 border border-orange-400/30",
+    ringColor: "shadow-orange-500/10",
+  },
+  // 6. 低波防守 — defensive / capital preservation, emerald
+  "Low Volatility Defense": {
+    card: "border-emerald-400/25 bg-gradient-to-br from-emerald-950/40 via-slate-900/30 to-teal-950/20",
+    hover: "hover:border-emerald-400/50 hover:from-emerald-900/50",
+    accentBar: "bg-gradient-to-r from-emerald-500 via-teal-400 to-green-500",
+    iconColor: "text-emerald-400",
+    buttonClass:
+      "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30",
+    ringColor: "shadow-emerald-500/10",
+  },
+};
+
+// Snake-case fallbacks for the new strategies
+TEMPLATE_THEMES.momentum_breakout = TEMPLATE_THEMES["Momentum Breakout"];
+TEMPLATE_THEMES.low_volatility_defense =
+  TEMPLATE_THEMES["Low Volatility Defense"];
+
+const DEFAULT_THEME: TemplateTheme = {
+  card: "border-white/10 bg-white/5",
+  hover: "hover:border-white/20 hover:bg-white/[0.08]",
+  accentBar: "bg-gradient-to-r from-slate-500 to-slate-400",
+  iconColor: "text-gray-400",
+  buttonClass:
+    "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10",
+  ringColor: "shadow-white/5",
+};
+
 const FACTOR_DEFS = [
   {
     key: "rsi_14",
@@ -574,28 +663,48 @@ export default function QuantLabPage() {
                       momentum: t("quant.catMomentum"),
                       volatility: t("quant.catVolatility"),
                     }[tmpl.category] ?? tmpl.category;
+                  const theme =
+                    TEMPLATE_THEMES[tmpl.name] ??
+                    TEMPLATE_THEMES[tmpl.name_zh] ??
+                    DEFAULT_THEME;
                   return (
                     <div
                       key={tmpl.id}
                       onClick={() => openTemplate(tmpl)}
-                      className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]"
+                      className={`group relative cursor-pointer overflow-hidden rounded-2xl border p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${theme.card} ${theme.hover} ${theme.ringColor}`}
                     >
+                      {/* Top accent bar — visible on hover via opacity */}
                       <div
-                        className={`mb-3 inline-flex rounded-lg ${catColors.bg} px-2 py-1`}
-                      >
-                        <span
-                          className={`text-[10px] font-semibold ${catColors.color}`}
+                        className={`absolute inset-x-0 top-0 h-0.5 opacity-50 transition-opacity group-hover:opacity-100 ${theme.accentBar}`}
+                      />
+
+                      {/* Strategy icon + category badge row */}
+                      <div className="mb-3 flex items-start justify-between">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/20 backdrop-blur">
+                          <FlaskConical
+                            className={`h-5 w-5 ${theme.iconColor}`}
+                          />
+                        </div>
+                        <div
+                          className={`inline-flex rounded-md ${catColors.bg} px-2 py-0.5`}
                         >
-                          {catLabel}
-                        </span>
+                          <span
+                            className={`text-[10px] font-semibold ${catColors.color}`}
+                          >
+                            {catLabel}
+                          </span>
+                        </div>
                       </div>
-                      <h3 className="mb-1.5 font-semibold text-white">
+
+                      <h3 className="mb-1.5 text-base font-semibold text-white">
                         {tmpl.name_zh}
                       </h3>
-                      <p className="mb-4 text-xs leading-relaxed text-gray-500">
+                      <p className="mb-4 line-clamp-3 text-xs leading-relaxed text-gray-400">
                         {getTemplateDescription(tmpl, zh)}
                       </p>
-                      <button className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white/5 py-2 text-xs font-medium text-gray-300 hover:bg-white/10">
+                      <button
+                        className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${theme.buttonClass}`}
+                      >
                         <Play className="h-3 w-3" /> {t("quant.run")}
                       </button>
                     </div>
