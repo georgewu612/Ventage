@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -99,6 +99,9 @@ function MetricCard({
 
 function EquityChart({ data }: { data: { date: string; value: number }[] }) {
   const { t } = useI18n();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
   if (!data || data.length < 2)
     return (
       <div className="flex h-48 items-center justify-center text-sm text-gray-600">
@@ -121,7 +124,6 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
   };
 
   const points = data.map((d, i) => xy(i, d.value));
-  const pts = points.map((p) => p.join(",")).join(" ");
 
   // Smooth curve via Catmull-Rom → bezier
   const smoothPath = (() => {
@@ -146,31 +148,83 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
   const lastX = points[points.length - 1][0];
   const lastY = points[points.length - 1][1];
   const firstX = points[0][0];
-  const areaPath = `${smoothPath} L${lastX},${baselineY} L${firstX},${baselineY} Z`;
 
   const isUp = values[values.length - 1] >= values[0];
-  const startCol = isUp ? "#10b981" : "#ef4444";
-  const midCol = isUp ? "#34d399" : "#f87171";
-  const endCol = isUp ? "#6ee7b7" : "#fca5a5";
-  const glowCol = isUp ? "rgba(16,185,129,0.55)" : "rgba(239,68,68,0.55)";
 
-  // 4 horizontal grid lines (25%/50%/75%)
-  const grid = [0.25, 0.5, 0.75].map((frac) => pad.y + frac * (H - 2 * pad.y));
-
-  // Baseline at value=1 if visible
+  // Baseline at value=1 (used to split colors)
   const baselineAtOne =
     1 >= minV && 1 <= maxV
       ? pad.y + ((maxV - 1) / range) * (H - 2 * pad.y)
       : null;
 
+  // Area path: split into "above 1.0" (green) and "below 1.0" (red)
+  // We render the same line/area twice with clipPath rectangles
+  const areaPathToBaseline = `${smoothPath} L${lastX},${baselineAtOne ?? baselineY} L${firstX},${baselineAtOne ?? baselineY} Z`;
+  const areaPathBelowFromBaseline = `M${firstX},${baselineAtOne ?? baselineY} ${smoothPath.replace(/^M/, "L")} L${lastX},${baselineAtOne ?? baselineY} Z`;
+
+  // 4 horizontal grid lines (25%/50%/75%)
+  const grid = [0.25, 0.5, 0.75].map((frac) => pad.y + frac * (H - 2 * pad.y));
+
   const uid = useId().replace(/[:]/g, "");
-  const lineGradId = `eq-line-${uid}`;
-  const fillGradId = `eq-fill-${uid}`;
+  const fillUpId = `eq-fillUp-${uid}`;
+  const fillDownId = `eq-fillDown-${uid}`;
   const glowFilterId = `eq-glow-${uid}`;
   const bgGradId = `eq-bg-${uid}`;
+  const clipUpId = `eq-clipUp-${uid}`;
+  const clipDownId = `eq-clipDown-${uid}`;
+
+  // Hover handler — find nearest data index by mouse X
+  const handleMouseMove = (e: React.MouseEvent<SVGElement>) => {
+    const svg = e.currentTarget as SVGSVGElement;
+    const rect = svg.getBoundingClientRect();
+    // Convert client X → SVG-coordinate X
+    const xClient = e.clientX - rect.left;
+    const xSvg = (xClient / rect.width) * W;
+    // Find closest point
+    let bestI = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(points[i][0] - xSvg);
+      if (d < bestDist) {
+        bestDist = d;
+        bestI = i;
+      }
+    }
+    setHoverIdx(bestI);
+  };
+
+  // Compute tooltip position (clamped to chart bounds)
+  let tooltipStyle: React.CSSProperties = { display: "none" };
+  let hoverX = 0;
+  let hoverY = 0;
+  let hoverV = 0;
+  let hoverDate = "";
+  let hoverPct = 0;
+  if (hoverIdx !== null && containerRef.current) {
+    const cw = containerRef.current.clientWidth;
+    hoverX = points[hoverIdx][0];
+    hoverY = points[hoverIdx][1];
+    hoverV = data[hoverIdx].value;
+    hoverDate = data[hoverIdx].date;
+    hoverPct = (hoverV - 1) * 100;
+    const xPct = (hoverX / W) * 100;
+    const tooltipWidth = 140;
+    const leftPx = (xPct / 100) * cw;
+    const clampedLeft = Math.min(
+      Math.max(leftPx, tooltipWidth / 2 + 8),
+      cw - tooltipWidth / 2 - 8,
+    );
+    tooltipStyle = {
+      left: `${clampedLeft}px`,
+      transform: "translateX(-50%)",
+    };
+  }
+
+  const hoverIsLoss = hoverIdx !== null && hoverV < 1;
 
   return (
     <div
+      ref={containerRef}
       className={`relative w-full overflow-hidden rounded-2xl border ${
         isUp
           ? "border-emerald-500/15 bg-gradient-to-br from-emerald-950/30 via-slate-900/40 to-slate-900/60"
@@ -179,28 +233,34 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
     >
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
+        className="w-full cursor-crosshair"
         preserveAspectRatio="none"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
       >
         <defs>
-          {/* Background subtle radial pulse */}
+          {/* Backdrop wash */}
           <radialGradient id={bgGradId} cx="50%" cy="0%" r="80%">
-            <stop offset="0%" stopColor={glowCol} stopOpacity="0.08" />
-            <stop offset="100%" stopColor={glowCol} stopOpacity="0" />
+            <stop
+              offset="0%"
+              stopColor={
+                isUp ? "rgba(16,185,129,0.55)" : "rgba(239,68,68,0.55)"
+              }
+              stopOpacity="0.08"
+            />
+            <stop offset="100%" stopColor="transparent" stopOpacity="0" />
           </radialGradient>
-          {/* Multi-stop area fill */}
-          <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={midCol} stopOpacity="0.42" />
-            <stop offset="50%" stopColor={midCol} stopOpacity="0.18" />
-            <stop offset="100%" stopColor={midCol} stopOpacity="0.01" />
+          {/* Above-baseline fill (green) */}
+          <linearGradient id={fillUpId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#34d399" stopOpacity="0.45" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.04" />
           </linearGradient>
-          {/* Line gradient (left→right brightness) */}
-          <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={startCol} />
-            <stop offset="55%" stopColor={midCol} />
-            <stop offset="100%" stopColor={endCol} />
+          {/* Below-baseline fill (red) */}
+          <linearGradient id={fillDownId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.04" />
+            <stop offset="100%" stopColor="#f87171" stopOpacity="0.45" />
           </linearGradient>
-          {/* Soft glow filter under the line */}
+          {/* Glow */}
           <filter
             id={glowFilterId}
             x="-20%"
@@ -214,9 +274,20 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          {/* Clip rectangles to split line into above/below baseline halves */}
+          <clipPath id={clipUpId}>
+            <rect x="0" y="0" width={W} height={baselineAtOne ?? H} />
+          </clipPath>
+          <clipPath id={clipDownId}>
+            <rect
+              x="0"
+              y={baselineAtOne ?? H}
+              width={W}
+              height={H - (baselineAtOne ?? H)}
+            />
+          </clipPath>
         </defs>
 
-        {/* Backdrop wash */}
         <rect x="0" y="0" width={W} height={H} fill={`url(#${bgGradId})`} />
 
         {/* Grid */}
@@ -242,7 +313,7 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
               x2={W - pad.x}
               y2={baselineAtOne}
               stroke="currentColor"
-              strokeOpacity="0.18"
+              strokeOpacity="0.25"
               strokeWidth="1"
               strokeDasharray="5 4"
             />
@@ -250,7 +321,7 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
               x={W - pad.x - 4}
               y={baselineAtOne - 4}
               fill="currentColor"
-              fillOpacity="0.4"
+              fillOpacity="0.45"
               fontSize="10"
               textAnchor="end"
             >
@@ -259,56 +330,123 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
           </>
         )}
 
-        {/* Filled area */}
-        <path d={areaPath} fill={`url(#${fillGradId})`} />
+        {/* Filled areas — split at baseline */}
+        <g clipPath={`url(#${clipUpId})`}>
+          <path d={areaPathToBaseline} fill={`url(#${fillUpId})`} />
+        </g>
+        <g clipPath={`url(#${clipDownId})`}>
+          <path d={areaPathBelowFromBaseline} fill={`url(#${fillDownId})`} />
+        </g>
 
-        {/* Soft glow shadow under line */}
-        <path
-          d={smoothPath}
-          fill="none"
-          stroke={glowCol}
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          filter={`url(#${glowFilterId})`}
-          opacity="0.55"
-        />
-
-        {/* Main line */}
-        <path
-          d={smoothPath}
-          fill="none"
-          stroke={`url(#${lineGradId})`}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* End point: outer pulse */}
-        <circle cx={lastX} cy={lastY} r="8" fill={endCol} opacity="0.18">
-          <animate
-            attributeName="r"
-            values="6;12;6"
-            dur="2.4s"
-            repeatCount="indefinite"
+        {/* Glow shadow under line — green above, red below baseline */}
+        <g clipPath={`url(#${clipUpId})`}>
+          <path
+            d={smoothPath}
+            fill="none"
+            stroke="rgba(16,185,129,0.55)"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter={`url(#${glowFilterId})`}
+            opacity="0.55"
           />
-          <animate
-            attributeName="opacity"
-            values="0.32;0;0.32"
-            dur="2.4s"
-            repeatCount="indefinite"
+        </g>
+        <g clipPath={`url(#${clipDownId})`}>
+          <path
+            d={smoothPath}
+            fill="none"
+            stroke="rgba(239,68,68,0.55)"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter={`url(#${glowFilterId})`}
+            opacity="0.55"
           />
-        </circle>
-        {/* End point: inner dot */}
-        <circle
-          cx={lastX}
-          cy={lastY}
-          r="3.5"
-          fill={endCol}
-          stroke="white"
-          strokeOpacity="0.85"
-          strokeWidth="1.2"
-        />
+        </g>
+
+        {/* Main line — green above baseline */}
+        <g clipPath={`url(#${clipUpId})`}>
+          <path
+            d={smoothPath}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+        {/* Main line — red below baseline */}
+        <g clipPath={`url(#${clipDownId})`}>
+          <path
+            d={smoothPath}
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+
+        {/* Hover crosshair */}
+        {hoverIdx !== null && (
+          <>
+            <line
+              x1={hoverX}
+              y1={pad.y}
+              x2={hoverX}
+              y2={H - pad.y}
+              stroke="currentColor"
+              strokeOpacity="0.35"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            <circle
+              cx={hoverX}
+              cy={hoverY}
+              r="6"
+              fill={hoverIsLoss ? "#fca5a5" : "#6ee7b7"}
+              fillOpacity="0.25"
+            />
+            <circle
+              cx={hoverX}
+              cy={hoverY}
+              r="3.5"
+              fill={hoverIsLoss ? "#ef4444" : "#10b981"}
+              stroke="white"
+              strokeOpacity="0.9"
+              strokeWidth="1.2"
+            />
+          </>
+        )}
+
+        {/* End point pulse (only when not hovering) */}
+        {hoverIdx === null && (
+          <>
+            <circle cx={lastX} cy={lastY} r="8" fill="#6ee7b7" opacity="0.18">
+              <animate
+                attributeName="r"
+                values="6;12;6"
+                dur="2.4s"
+                repeatCount="indefinite"
+              />
+              <animate
+                attributeName="opacity"
+                values="0.32;0;0.32"
+                dur="2.4s"
+                repeatCount="indefinite"
+              />
+            </circle>
+            <circle
+              cx={lastX}
+              cy={lastY}
+              r="3.5"
+              fill={values[values.length - 1] >= 1 ? "#10b981" : "#ef4444"}
+              stroke="white"
+              strokeOpacity="0.85"
+              strokeWidth="1.2"
+            />
+          </>
+        )}
 
         {/* Y-axis min/max labels */}
         <text
@@ -330,6 +468,35 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
           {minV.toFixed(2)}
         </text>
       </svg>
+
+      {/* Hover tooltip */}
+      {hoverIdx !== null && (
+        <div
+          className={`pointer-events-none absolute top-2 z-10 min-w-[130px] rounded-lg border px-3 py-2 text-xs shadow-lg backdrop-blur ${
+            hoverIsLoss
+              ? "border-red-500/30 bg-red-950/70 text-red-100"
+              : "border-emerald-500/30 bg-emerald-950/70 text-emerald-100"
+          }`}
+          style={tooltipStyle}
+        >
+          <div className="font-mono text-[10px] opacity-70">{hoverDate}</div>
+          <div className="mt-0.5 flex items-baseline justify-between gap-3">
+            <span className="text-[10px] opacity-70">净值</span>
+            <span className="font-bold tabular-nums">{hoverV.toFixed(4)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[10px] opacity-70">收益</span>
+            <span
+              className={`font-semibold tabular-nums ${
+                hoverPct >= 0 ? "text-emerald-300" : "text-red-300"
+              }`}
+            >
+              {hoverPct >= 0 ? "+" : ""}
+              {hoverPct.toFixed(2)}%
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
