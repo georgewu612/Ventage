@@ -472,23 +472,27 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
       {/* Hover tooltip */}
       {hoverIdx !== null && (
         <div
-          className={`pointer-events-none absolute top-2 z-10 min-w-[130px] rounded-lg border px-3 py-2 text-xs shadow-lg backdrop-blur ${
+          className={`pointer-events-none absolute top-2 z-10 min-w-[150px] rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-md ${
             hoverIsLoss
-              ? "border-red-500/30 bg-red-950/70 text-red-100"
-              : "border-emerald-500/30 bg-emerald-950/70 text-emerald-100"
+              ? "border-red-400/50 bg-slate-900/95 text-white"
+              : "border-emerald-400/50 bg-slate-900/95 text-white"
           }`}
           style={tooltipStyle}
         >
-          <div className="font-mono text-[10px] opacity-70">{hoverDate}</div>
-          <div className="mt-0.5 flex items-baseline justify-between gap-3">
-            <span className="text-[10px] opacity-70">净值</span>
-            <span className="font-bold tabular-nums">{hoverV.toFixed(4)}</span>
+          <div className="mb-1 border-b border-white/10 pb-1 font-mono text-[11px] font-medium text-gray-300">
+            {hoverDate}
           </div>
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-[10px] opacity-70">收益</span>
+            <span className="text-[11px] text-gray-400">净值</span>
+            <span className="text-sm font-bold text-white tabular-nums">
+              {hoverV.toFixed(4)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[11px] text-gray-400">收益</span>
             <span
-              className={`font-semibold tabular-nums ${
-                hoverPct >= 0 ? "text-emerald-300" : "text-red-300"
+              className={`text-sm font-bold tabular-nums ${
+                hoverPct >= 0 ? "text-emerald-400" : "text-red-400"
               }`}
             >
               {hoverPct >= 0 ? "+" : ""}
