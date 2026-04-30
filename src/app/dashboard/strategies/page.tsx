@@ -21,6 +21,7 @@ import { API_BASE_URL } from "@/lib/config";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
+import { useTheme } from "@/lib/theme/provider";
 import { useMarketRegime } from "@/lib/hooks/useMarketRegime";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -86,6 +87,145 @@ const CAT_STYLE: Record<string, { color: string; bg: string; border: string }> =
       border: "border-pink-500/20",
     },
   };
+
+// Per-template visual theme keyed by template `name` (English).
+interface TplTheme {
+  card: string;
+  hover: string;
+  accentBar: string;
+  iconColor: string;
+  buttonClass: string;
+  ringColor: string;
+}
+const TPL_THEMES_DARK: Record<string, TplTheme> = {
+  sma_crossover: {
+    card: "border-cyan-400/25 bg-gradient-to-br from-cyan-950/40 via-slate-900/30 to-cyan-950/20",
+    hover: "hover:border-cyan-400/50",
+    accentBar: "bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500",
+    iconColor: "text-cyan-400",
+    buttonClass:
+      "bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30",
+    ringColor: "shadow-cyan-500/10",
+  },
+  rsi_mean_reversion: {
+    card: "border-purple-400/25 bg-gradient-to-br from-purple-950/40 via-slate-900/30 to-purple-950/20",
+    hover: "hover:border-purple-400/50",
+    accentBar: "bg-gradient-to-r from-purple-500 via-fuchsia-400 to-pink-500",
+    iconColor: "text-purple-400",
+    buttonClass:
+      "bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/30",
+    ringColor: "shadow-purple-500/10",
+  },
+  bollinger_band: {
+    card: "border-indigo-400/25 bg-gradient-to-br from-indigo-950/40 via-slate-900/30 to-indigo-950/20",
+    hover: "hover:border-indigo-400/50",
+    accentBar: "bg-gradient-to-r from-indigo-500 via-blue-400 to-violet-500",
+    iconColor: "text-indigo-400",
+    buttonClass:
+      "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-400/30",
+    ringColor: "shadow-indigo-500/10",
+  },
+  macd_signal: {
+    card: "border-amber-400/25 bg-gradient-to-br from-amber-950/40 via-slate-900/30 to-amber-950/20",
+    hover: "hover:border-amber-400/50",
+    accentBar: "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-500",
+    iconColor: "text-amber-400",
+    buttonClass:
+      "bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30",
+    ringColor: "shadow-amber-500/10",
+  },
+  "Momentum Breakout": {
+    card: "border-orange-400/25 bg-gradient-to-br from-orange-950/40 via-slate-900/30 to-red-950/20",
+    hover: "hover:border-orange-400/50",
+    accentBar: "bg-gradient-to-r from-orange-500 via-red-500 to-pink-500",
+    iconColor: "text-orange-400",
+    buttonClass:
+      "bg-orange-500/20 hover:bg-orange-500/30 text-orange-200 border border-orange-400/30",
+    ringColor: "shadow-orange-500/10",
+  },
+  "Low Volatility Defense": {
+    card: "border-emerald-400/25 bg-gradient-to-br from-emerald-950/40 via-slate-900/30 to-teal-950/20",
+    hover: "hover:border-emerald-400/50",
+    accentBar: "bg-gradient-to-r from-emerald-500 via-teal-400 to-green-500",
+    iconColor: "text-emerald-400",
+    buttonClass:
+      "bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 border border-emerald-400/30",
+    ringColor: "shadow-emerald-500/10",
+  },
+};
+TPL_THEMES_DARK.momentum_breakout = TPL_THEMES_DARK["Momentum Breakout"];
+TPL_THEMES_DARK.low_volatility_defense =
+  TPL_THEMES_DARK["Low Volatility Defense"];
+
+const TPL_THEMES_LIGHT: Record<string, TplTheme> = {
+  sma_crossover: {
+    card: "border-cyan-300 bg-gradient-to-br from-cyan-50 via-white to-sky-50",
+    hover: "hover:border-cyan-400 hover:shadow-cyan-200/40",
+    accentBar: "bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500",
+    iconColor: "text-cyan-600",
+    buttonClass:
+      "bg-cyan-500 hover:bg-cyan-600 text-white border border-cyan-600/20",
+    ringColor: "shadow-cyan-200/30",
+  },
+  rsi_mean_reversion: {
+    card: "border-purple-300 bg-gradient-to-br from-purple-50 via-white to-fuchsia-50",
+    hover: "hover:border-purple-400 hover:shadow-purple-200/40",
+    accentBar: "bg-gradient-to-r from-purple-500 via-fuchsia-400 to-pink-500",
+    iconColor: "text-purple-600",
+    buttonClass:
+      "bg-purple-500 hover:bg-purple-600 text-white border border-purple-600/20",
+    ringColor: "shadow-purple-200/30",
+  },
+  bollinger_band: {
+    card: "border-indigo-300 bg-gradient-to-br from-indigo-50 via-white to-violet-50",
+    hover: "hover:border-indigo-400 hover:shadow-indigo-200/40",
+    accentBar: "bg-gradient-to-r from-indigo-500 via-blue-400 to-violet-500",
+    iconColor: "text-indigo-600",
+    buttonClass:
+      "bg-indigo-500 hover:bg-indigo-600 text-white border border-indigo-600/20",
+    ringColor: "shadow-indigo-200/30",
+  },
+  macd_signal: {
+    card: "border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50",
+    hover: "hover:border-amber-400 hover:shadow-amber-200/40",
+    accentBar: "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-500",
+    iconColor: "text-amber-600",
+    buttonClass:
+      "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600/20",
+    ringColor: "shadow-amber-200/30",
+  },
+  "Momentum Breakout": {
+    card: "border-orange-300 bg-gradient-to-br from-orange-50 via-white to-red-50",
+    hover: "hover:border-orange-400 hover:shadow-orange-200/40",
+    accentBar: "bg-gradient-to-r from-orange-500 via-red-500 to-pink-500",
+    iconColor: "text-orange-600",
+    buttonClass:
+      "bg-orange-500 hover:bg-orange-600 text-white border border-orange-600/20",
+    ringColor: "shadow-orange-200/30",
+  },
+  "Low Volatility Defense": {
+    card: "border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-teal-50",
+    hover: "hover:border-emerald-400 hover:shadow-emerald-200/40",
+    accentBar: "bg-gradient-to-r from-emerald-500 via-teal-400 to-green-500",
+    iconColor: "text-emerald-600",
+    buttonClass:
+      "bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600/20",
+    ringColor: "shadow-emerald-200/30",
+  },
+};
+TPL_THEMES_LIGHT.momentum_breakout = TPL_THEMES_LIGHT["Momentum Breakout"];
+TPL_THEMES_LIGHT.low_volatility_defense =
+  TPL_THEMES_LIGHT["Low Volatility Defense"];
+
+const TPL_DEFAULT: TplTheme = {
+  card: "border-white/10 bg-white/5",
+  hover: "hover:border-white/20",
+  accentBar: "bg-gradient-to-r from-slate-500 to-slate-400",
+  iconColor: "text-gray-400",
+  buttonClass:
+    "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10",
+  ringColor: "shadow-white/5",
+};
 
 const STATUS_ICON_CLS: Record<string, string> = {
   pending: "bg-gray-500/20 text-gray-400",
@@ -161,6 +301,9 @@ function getRegimeFit(
 
 export default function StrategiesPage() {
   const { t, locale } = useI18n();
+  const { theme } = useTheme();
+  const isLight = theme === "light";
+  const TPL_THEMES = isLight ? TPL_THEMES_LIGHT : TPL_THEMES_DARK;
   const [templates, setTemplates] = useState<Template[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
@@ -510,14 +653,25 @@ export default function StrategiesPage() {
                 const isAiRecommended = matchResult?.top_matches.some(
                   (m) => m.template_id === tmpl.id,
                 );
+                const tplTheme =
+                  TPL_THEMES[tmpl.name] ??
+                  TPL_THEMES[tmpl.name_zh] ??
+                  TPL_DEFAULT;
                 return (
                   <div
                     key={tmpl.id}
-                    className={`relative rounded-2xl border ${cat.border} ${cat.bg} p-5 transition-all hover:opacity-90 ${isAiRecommended ? "ring-1 ring-emerald-500/40" : ""}`}
+                    className={`group relative overflow-hidden rounded-2xl border p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${tplTheme.card} ${tplTheme.hover} ${tplTheme.ringColor} ${
+                      isAiRecommended ? "ring-2 ring-emerald-500/50" : ""
+                    }`}
                   >
+                    {/* Top accent bar */}
+                    <div
+                      className={`absolute inset-x-0 top-0 h-0.5 opacity-50 transition-opacity group-hover:opacity-100 ${tplTheme.accentBar}`}
+                    />
+
                     {isAiRecommended && (
-                      <div className="absolute -top-2 right-3">
-                        <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold text-white">
+                      <div className="absolute -top-2 right-3 z-10">
+                        <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold text-white shadow-md">
                           AI推荐
                         </span>
                       </div>
@@ -534,20 +688,30 @@ export default function StrategiesPage() {
                         >
                           {regimeFit.label}
                         </span>
-                        <FlaskConical className={`h-4 w-4 ${cat.color}`} />
+                        <FlaskConical
+                          className={`h-4 w-4 ${tplTheme.iconColor}`}
+                        />
                       </div>
                     </div>
-                    <h3 className="mb-1.5 font-semibold text-white">
+                    <h3
+                      className={`mb-1.5 font-semibold ${
+                        isLight ? "text-slate-900" : "text-white"
+                      }`}
+                    >
                       {locale === "zh" ? tmpl.name_zh : tmpl.name}
                     </h3>
-                    <p className="mb-4 text-xs leading-relaxed text-gray-500">
+                    <p
+                      className={`mb-4 text-xs leading-relaxed ${
+                        isLight ? "text-slate-600" : "text-gray-500"
+                      }`}
+                    >
                       {locale === "zh"
                         ? tmpl.description_zh || tmpl.description
                         : tmpl.description}
                     </p>
                     <Link
                       href="/dashboard/quant-lab"
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-black/20 py-2 text-xs font-medium text-gray-300 transition-colors hover:bg-black/40"
+                      className={`flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-colors ${tplTheme.buttonClass}`}
                     >
                       <Play className="h-3 w-3" />
                       {t("quant.run")}
