@@ -299,6 +299,7 @@ export default function QuantLabPage() {
   const [endDate, setEndDate] = useState("2024-12-31");
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [runStage, setRunStage] = useState<string>("");
 
   // Factor scanner state
   const [factorSymbol, setFactorSymbol] = useState("NVDA");
@@ -364,6 +365,7 @@ export default function QuantLabPage() {
     if (!selectedTemplate || !userId) return;
     setRunning(true);
     setRunError(null);
+    setRunStage(zh ? "提交中…" : "Submitting…");
     try {
       const r = await fetch(`${API_BASE_URL}/v1/strategies/backtest`, {
         method: "POST",
@@ -379,19 +381,51 @@ export default function QuantLabPage() {
           engine: "vectorbt",
         }),
       });
-      if (!r.ok)
-        throw new Error((await r.json()).detail || "Backtest failed to start");
-      setSelectedTemplate(null);
-      setTimeout(fetchRuns, 1500);
-      let n = 0;
-      const timer = setInterval(() => {
-        fetchRuns();
-        if (++n > 30) clearInterval(timer);
-      }, 10_000);
+      if (!r.ok) throw new Error(await formatApiError(r));
+      const { run_id } = (await r.json()) as { run_id: string };
+
+      // Poll the run status until it transitions to done/failed
+      setRunStage(zh ? "回测进行中…" : "Running backtest…");
+      const startTime = Date.now();
+      const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes safety cap
+
+      let finalStatus: string | null = null;
+      while (Date.now() - startTime < MAX_WAIT_MS) {
+        await new Promise((res) => setTimeout(res, 2500));
+        const sr = await fetch(
+          `${API_BASE_URL}/v1/strategies/runs/${run_id}`,
+        ).catch(() => null);
+        if (!sr || !sr.ok) continue;
+        const data = (await sr.json()) as { status?: string };
+        if (data.status === "done" || data.status === "failed") {
+          finalStatus = data.status;
+          break;
+        }
+      }
+
+      // Refresh history list so the new row shows up
+      fetchRuns();
+
+      if (finalStatus === "done") {
+        setRunStage(zh ? "完成！跳转中…" : "Done! Redirecting…");
+        setTimeout(() => {
+          setSelectedTemplate(null);
+          router.push(`/dashboard/strategies/${run_id}`);
+        }, 600);
+      } else if (finalStatus === "failed") {
+        setRunError(zh ? "回测失败，请检查参数后重试" : "Backtest failed");
+      } else {
+        setRunError(
+          zh
+            ? "回测耗时过长，请稍后到回测历史查看结果"
+            : "Backtest is taking too long; check History later",
+        );
+      }
     } catch (e: unknown) {
       setRunError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       setRunning(false);
+      setRunStage("");
     }
   }
 
@@ -1127,7 +1161,7 @@ export default function QuantLabPage() {
                 {running ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                    {t("common.loading")}
+                    {runStage || t("common.loading")}
                   </>
                 ) : (
                   <>
