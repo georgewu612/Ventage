@@ -20,7 +20,7 @@ interface OptionsFlow {
   created_at: string;
 }
 
-export function useOptionsFlow(limit: number = 50) {
+export function useOptionsFlow(limit: number = 50, symbol?: string) {
   const [options, setOptions] = useState<OptionsFlow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -29,8 +29,10 @@ export function useOptionsFlow(limit: number = 50) {
     try {
       setLoading(true);
       setError(null);
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (symbol) params.set("symbol", symbol);
       const response = await fetch(
-        `${API_BASE_URL}/v1/options-flow?limit=${limit}`,
+        `${API_BASE_URL}/v1/options-flow?${params.toString()}`,
       );
       if (!response.ok) {
         throw new Error(`API request failed: ${response.status}`);
@@ -43,7 +45,7 @@ export function useOptionsFlow(limit: number = 50) {
     } finally {
       setLoading(false);
     }
-  }, [limit]);
+  }, [limit, symbol]);
 
   useEffect(() => {
     fetchOptions();

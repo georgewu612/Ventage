@@ -270,12 +270,25 @@ function TopSymbolsChart({ groups, onSelect }: TopSymbolsChartProps) {
 
 function OptionsInner() {
   const searchParams = useSearchParams();
-  const { options, loading, error } = useOptionsFlow(50);
   const { t, dateLocale } = useI18n();
   const [typeFilter, setTypeFilter] = useState<"" | "call" | "put">("");
   const [symbolFilter, setSymbolFilter] = useState(
     (searchParams.get("symbol") ?? "").toUpperCase(),
   );
+
+  // Global pool (latest 50 across ALL symbols) — drives the top summary cards
+  const { options: globalOptions } = useOptionsFlow(50);
+  // Filtered pool — when a symbol filter is active, fetch up to 200 matching rows
+  // so the detail panels (donut / OI by strike / table) actually have data.
+  const {
+    options: filteredFetched,
+    loading,
+    error,
+  } = useOptionsFlow(symbolFilter ? 200 : 50, symbolFilter || undefined);
+
+  // The detail-side dataset is `filteredFetched` (already symbol-filtered server-side
+  // when symbolFilter is set, or just the top 50 when not).
+  const options = symbolFilter ? filteredFetched : globalOptions;
 
   const filtered = options.filter((o) => {
     if (typeFilter && o.option_type !== typeFilter) return false;
@@ -284,9 +297,10 @@ function OptionsInner() {
     return true;
   });
 
-  // Symbol-level summary (based on unfiltered data)
+  // Symbol-level summary based on the GLOBAL pool, so it always shows top symbols
+  // regardless of which symbol the user has zoomed into.
   const symbolGroups = Object.values(
-    options.reduce<
+    globalOptions.reduce<
       Record<
         string,
         {
