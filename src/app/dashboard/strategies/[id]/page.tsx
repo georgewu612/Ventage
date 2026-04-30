@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -111,70 +111,224 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
   const maxV = Math.max(...values);
   const range = maxV - minV || 1;
   const W = 800;
-  const H = 180;
-  const pad = { x: 8, y: 12 };
+  const H = 220;
+  const pad = { x: 12, y: 18 };
 
-  const pts = data
-    .map((d, i) => {
-      const x = pad.x + (i / (data.length - 1)) * (W - 2 * pad.x);
-      const y = pad.y + ((maxV - d.value) / range) * (H - 2 * pad.y);
-      return `${x},${y}`;
-    })
-    .join(" ");
+  const xy = (i: number, v: number): [number, number] => {
+    const x = pad.x + (i / (data.length - 1)) * (W - 2 * pad.x);
+    const y = pad.y + ((maxV - v) / range) * (H - 2 * pad.y);
+    return [x, y];
+  };
 
-  // Filled area
-  const firstX = pad.x;
-  const lastX = pad.x + (W - 2 * pad.x);
+  const points = data.map((d, i) => xy(i, d.value));
+  const pts = points.map((p) => p.join(",")).join(" ");
+
+  // Smooth curve via Catmull-Rom → bezier
+  const smoothPath = (() => {
+    if (points.length < 2) return "";
+    const tension = 0.5;
+    const path: string[] = [`M${points[0][0]},${points[0][1]}`];
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i - 1] || points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] || p2;
+      const cp1x = p1[0] + ((p2[0] - p0[0]) / 6) * tension;
+      const cp1y = p1[1] + ((p2[1] - p0[1]) / 6) * tension;
+      const cp2x = p2[0] - ((p3[0] - p1[0]) / 6) * tension;
+      const cp2y = p2[1] - ((p3[1] - p1[1]) / 6) * tension;
+      path.push(`C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2[0]},${p2[1]}`);
+    }
+    return path.join(" ");
+  })();
+
   const baselineY = H - pad.y;
-  const area =
-    `M${firstX},${baselineY} ` +
-    pts
-      .split(" ")
-      .map((p, i) => `${i === 0 ? "L" : "L"}${p}`)
-      .join(" ") +
-    ` L${lastX},${baselineY} Z`;
+  const lastX = points[points.length - 1][0];
+  const lastY = points[points.length - 1][1];
+  const firstX = points[0][0];
+  const areaPath = `${smoothPath} L${lastX},${baselineY} L${firstX},${baselineY} Z`;
 
   const isUp = values[values.length - 1] >= values[0];
-  const color = isUp ? "#34d399" : "#f87171";
-  const fillId = isUp ? "fillGreen" : "fillRed";
+  const startCol = isUp ? "#10b981" : "#ef4444";
+  const midCol = isUp ? "#34d399" : "#f87171";
+  const endCol = isUp ? "#6ee7b7" : "#fca5a5";
+  const glowCol = isUp ? "rgba(16,185,129,0.55)" : "rgba(239,68,68,0.55)";
 
-  // Baseline at value=1
-  const baselineAtOne = pad.y + ((maxV - 1) / range) * (H - 2 * pad.y);
+  // 4 horizontal grid lines (25%/50%/75%)
+  const grid = [0.25, 0.5, 0.75].map((frac) => pad.y + frac * (H - 2 * pad.y));
+
+  // Baseline at value=1 if visible
+  const baselineAtOne =
+    1 >= minV && 1 <= maxV
+      ? pad.y + ((maxV - 1) / range) * (H - 2 * pad.y)
+      : null;
+
+  const uid = useId().replace(/[:]/g, "");
+  const lineGradId = `eq-line-${uid}`;
+  const fillGradId = `eq-fill-${uid}`;
+  const glowFilterId = `eq-glow-${uid}`;
+  const bgGradId = `eq-bg-${uid}`;
 
   return (
-    <div className="w-full overflow-hidden rounded-xl bg-black/20 p-2">
+    <div
+      className={`relative w-full overflow-hidden rounded-2xl border ${
+        isUp
+          ? "border-emerald-500/15 bg-gradient-to-br from-emerald-950/30 via-slate-900/40 to-slate-900/60"
+          : "border-red-500/15 bg-gradient-to-br from-red-950/30 via-slate-900/40 to-slate-900/60"
+      } p-3 shadow-inner`}
+    >
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
         preserveAspectRatio="none"
       >
         <defs>
-          <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          {/* Background subtle radial pulse */}
+          <radialGradient id={bgGradId} cx="50%" cy="0%" r="80%">
+            <stop offset="0%" stopColor={glowCol} stopOpacity="0.08" />
+            <stop offset="100%" stopColor={glowCol} stopOpacity="0" />
+          </radialGradient>
+          {/* Multi-stop area fill */}
+          <linearGradient id={fillGradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={midCol} stopOpacity="0.42" />
+            <stop offset="50%" stopColor={midCol} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={midCol} stopOpacity="0.01" />
           </linearGradient>
+          {/* Line gradient (left→right brightness) */}
+          <linearGradient id={lineGradId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={startCol} />
+            <stop offset="55%" stopColor={midCol} />
+            <stop offset="100%" stopColor={endCol} />
+          </linearGradient>
+          {/* Soft glow filter under the line */}
+          <filter
+            id={glowFilterId}
+            x="-20%"
+            y="-50%"
+            width="140%"
+            height="200%"
+          >
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
-        {/* Baseline */}
-        <line
-          x1={pad.x}
-          y1={baselineAtOne}
-          x2={W - pad.x}
-          y2={baselineAtOne}
-          stroke="#ffffff18"
-          strokeWidth="1"
-          strokeDasharray="6 4"
-        />
+
+        {/* Backdrop wash */}
+        <rect x="0" y="0" width={W} height={H} fill={`url(#${bgGradId})`} />
+
+        {/* Grid */}
+        {grid.map((y, i) => (
+          <line
+            key={i}
+            x1={pad.x}
+            y1={y}
+            x2={W - pad.x}
+            y2={y}
+            stroke="currentColor"
+            strokeOpacity="0.06"
+            strokeWidth="1"
+          />
+        ))}
+
+        {/* Baseline at 1.0 */}
+        {baselineAtOne !== null && (
+          <>
+            <line
+              x1={pad.x}
+              y1={baselineAtOne}
+              x2={W - pad.x}
+              y2={baselineAtOne}
+              stroke="currentColor"
+              strokeOpacity="0.18"
+              strokeWidth="1"
+              strokeDasharray="5 4"
+            />
+            <text
+              x={W - pad.x - 4}
+              y={baselineAtOne - 4}
+              fill="currentColor"
+              fillOpacity="0.4"
+              fontSize="10"
+              textAnchor="end"
+            >
+              1.0
+            </text>
+          </>
+        )}
+
         {/* Filled area */}
-        <path d={area} fill={`url(#${fillId})`} />
-        {/* Line */}
-        <polyline
-          points={pts}
+        <path d={areaPath} fill={`url(#${fillGradId})`} />
+
+        {/* Soft glow shadow under line */}
+        <path
+          d={smoothPath}
           fill="none"
-          stroke={color}
-          strokeWidth="2.5"
-          strokeLinejoin="round"
+          stroke={glowCol}
+          strokeWidth="6"
           strokeLinecap="round"
+          strokeLinejoin="round"
+          filter={`url(#${glowFilterId})`}
+          opacity="0.55"
         />
+
+        {/* Main line */}
+        <path
+          d={smoothPath}
+          fill="none"
+          stroke={`url(#${lineGradId})`}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* End point: outer pulse */}
+        <circle cx={lastX} cy={lastY} r="8" fill={endCol} opacity="0.18">
+          <animate
+            attributeName="r"
+            values="6;12;6"
+            dur="2.4s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.32;0;0.32"
+            dur="2.4s"
+            repeatCount="indefinite"
+          />
+        </circle>
+        {/* End point: inner dot */}
+        <circle
+          cx={lastX}
+          cy={lastY}
+          r="3.5"
+          fill={endCol}
+          stroke="white"
+          strokeOpacity="0.85"
+          strokeWidth="1.2"
+        />
+
+        {/* Y-axis min/max labels */}
+        <text
+          x={pad.x + 4}
+          y={pad.y + 10}
+          fill="currentColor"
+          fillOpacity="0.45"
+          fontSize="10"
+        >
+          {maxV.toFixed(2)}
+        </text>
+        <text
+          x={pad.x + 4}
+          y={H - pad.y - 4}
+          fill="currentColor"
+          fillOpacity="0.45"
+          fontSize="10"
+        >
+          {minV.toFixed(2)}
+        </text>
       </svg>
     </div>
   );
