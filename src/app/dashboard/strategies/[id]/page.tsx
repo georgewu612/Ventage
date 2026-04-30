@@ -193,7 +193,7 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
     setHoverIdx(bestI);
   };
 
-  // Compute tooltip position (clamped to chart bounds)
+  // Compute tooltip position (clamped to chart bounds; flips above/below the point)
   let tooltipStyle: React.CSSProperties = { display: "none" };
   let hoverX = 0;
   let hoverY = 0;
@@ -202,21 +202,44 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
   let hoverPct = 0;
   if (hoverIdx !== null && containerRef.current) {
     const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
     hoverX = points[hoverIdx][0];
     hoverY = points[hoverIdx][1];
     hoverV = data[hoverIdx].value;
     hoverDate = data[hoverIdx].date;
     hoverPct = (hoverV - 1) * 100;
-    const xPct = (hoverX / W) * 100;
-    const tooltipWidth = 140;
-    const leftPx = (xPct / 100) * cw;
+
+    const tooltipWidth = 160;
+    const tooltipHeight = 80;
+    const offsetY = 16; // distance between point and tooltip
+
+    // Convert SVG coords → CSS pixel coords inside container
+    const xPx = (hoverX / W) * cw;
+    const yPx = (hoverY / H) * ch;
+
+    // Horizontal: clamp so the centered tooltip stays inside the container
     const clampedLeft = Math.min(
-      Math.max(leftPx, tooltipWidth / 2 + 8),
+      Math.max(xPx, tooltipWidth / 2 + 8),
       cw - tooltipWidth / 2 - 8,
     );
+
+    // Vertical: prefer above the point; flip below if there's no room above
+    let topPx = yPx - tooltipHeight - offsetY;
+    let translateY = "0";
+    if (topPx < 8) {
+      // Not enough room above → place below
+      topPx = yPx + offsetY;
+      translateY = "0";
+      // If still no room below, anchor to bottom edge
+      if (topPx + tooltipHeight > ch - 8) {
+        topPx = ch - tooltipHeight - 8;
+      }
+    }
+
     tooltipStyle = {
       left: `${clampedLeft}px`,
-      transform: "translateX(-50%)",
+      top: `${topPx}px`,
+      transform: `translateX(-50%) translateY(${translateY})`,
     };
   }
 
@@ -472,7 +495,7 @@ function EquityChart({ data }: { data: { date: string; value: number }[] }) {
       {/* Hover tooltip */}
       {hoverIdx !== null && (
         <div
-          className={`pointer-events-none absolute top-2 z-10 min-w-[150px] rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-md ${
+          className={`pointer-events-none absolute z-10 min-w-[150px] rounded-lg border px-3 py-2 text-xs shadow-xl backdrop-blur-md transition-opacity ${
             hoverIsLoss
               ? "border-red-400/50 bg-slate-900/95 text-white"
               : "border-emerald-400/50 bg-slate-900/95 text-white"
