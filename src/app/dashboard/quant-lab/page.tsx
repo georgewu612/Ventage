@@ -19,6 +19,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
+import { useTheme } from "@/lib/theme/provider";
 
 // ── Strategy template description i18n (frontend-side, since DB has only EN) ──
 const TEMPLATE_DESC_ZH: Record<string, string> = {
@@ -141,8 +142,8 @@ interface TemplateTheme {
   ringColor: string; // subtle inner glow
 }
 
-const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
-  // 1. SMA 金叉死叉 — classic trend, sky cyan
+// Dark-mode themes (deep saturated tints on dark slate)
+const TEMPLATE_THEMES_DARK: Record<string, TemplateTheme> = {
   sma_crossover: {
     card: "border-cyan-400/25 bg-gradient-to-br from-cyan-950/40 via-slate-900/30 to-cyan-950/20",
     hover: "hover:border-cyan-400/50 hover:from-cyan-900/50",
@@ -152,7 +153,6 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
       "bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/30",
     ringColor: "shadow-cyan-500/10",
   },
-  // 2. RSI 均值回归 — counter-trend, deep purple
   rsi_mean_reversion: {
     card: "border-purple-400/25 bg-gradient-to-br from-purple-950/40 via-slate-900/30 to-purple-950/20",
     hover: "hover:border-purple-400/50 hover:from-purple-900/50",
@@ -162,7 +162,6 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
       "bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/30",
     ringColor: "shadow-purple-500/10",
   },
-  // 3. 布林带突破 — volatility breakout, indigo
   bollinger_band: {
     card: "border-indigo-400/25 bg-gradient-to-br from-indigo-950/40 via-slate-900/30 to-indigo-950/20",
     hover: "hover:border-indigo-400/50 hover:from-indigo-900/50",
@@ -172,7 +171,6 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
       "bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-400/30",
     ringColor: "shadow-indigo-500/10",
   },
-  // 4. MACD 信号线交叉 — momentum confirmation, amber
   macd_signal: {
     card: "border-amber-400/25 bg-gradient-to-br from-amber-950/40 via-slate-900/30 to-amber-950/20",
     hover: "hover:border-amber-400/50 hover:from-amber-900/50",
@@ -182,7 +180,6 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
       "bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/30",
     ringColor: "shadow-amber-500/10",
   },
-  // 5. 动量突破 — aggressive growth, red-orange "fire"
   "Momentum Breakout": {
     card: "border-orange-400/25 bg-gradient-to-br from-orange-950/40 via-slate-900/30 to-red-950/20",
     hover: "hover:border-orange-400/50 hover:from-orange-900/50",
@@ -192,7 +189,6 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
       "bg-orange-500/20 hover:bg-orange-500/30 text-orange-200 border border-orange-400/30",
     ringColor: "shadow-orange-500/10",
   },
-  // 6. 低波防守 — defensive / capital preservation, emerald
   "Low Volatility Defense": {
     card: "border-emerald-400/25 bg-gradient-to-br from-emerald-950/40 via-slate-900/30 to-teal-950/20",
     hover: "hover:border-emerald-400/50 hover:from-emerald-900/50",
@@ -203,11 +199,72 @@ const TEMPLATE_THEMES: Record<string, TemplateTheme> = {
     ringColor: "shadow-emerald-500/10",
   },
 };
+TEMPLATE_THEMES_DARK.momentum_breakout =
+  TEMPLATE_THEMES_DARK["Momentum Breakout"];
+TEMPLATE_THEMES_DARK.low_volatility_defense =
+  TEMPLATE_THEMES_DARK["Low Volatility Defense"];
 
-// Snake-case fallbacks for the new strategies
-TEMPLATE_THEMES.momentum_breakout = TEMPLATE_THEMES["Momentum Breakout"];
-TEMPLATE_THEMES.low_volatility_defense =
-  TEMPLATE_THEMES["Low Volatility Defense"];
+// Light-mode themes (pastel tints on white/slate-50)
+const TEMPLATE_THEMES_LIGHT: Record<string, TemplateTheme> = {
+  sma_crossover: {
+    card: "border-cyan-300 bg-gradient-to-br from-cyan-50 via-white to-sky-50",
+    hover: "hover:border-cyan-400 hover:shadow-cyan-200/40",
+    accentBar: "bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-500",
+    iconColor: "text-cyan-600",
+    buttonClass:
+      "bg-cyan-500 hover:bg-cyan-600 text-white border border-cyan-600/20",
+    ringColor: "shadow-cyan-200/30",
+  },
+  rsi_mean_reversion: {
+    card: "border-purple-300 bg-gradient-to-br from-purple-50 via-white to-fuchsia-50",
+    hover: "hover:border-purple-400 hover:shadow-purple-200/40",
+    accentBar: "bg-gradient-to-r from-purple-500 via-fuchsia-400 to-pink-500",
+    iconColor: "text-purple-600",
+    buttonClass:
+      "bg-purple-500 hover:bg-purple-600 text-white border border-purple-600/20",
+    ringColor: "shadow-purple-200/30",
+  },
+  bollinger_band: {
+    card: "border-indigo-300 bg-gradient-to-br from-indigo-50 via-white to-violet-50",
+    hover: "hover:border-indigo-400 hover:shadow-indigo-200/40",
+    accentBar: "bg-gradient-to-r from-indigo-500 via-blue-400 to-violet-500",
+    iconColor: "text-indigo-600",
+    buttonClass:
+      "bg-indigo-500 hover:bg-indigo-600 text-white border border-indigo-600/20",
+    ringColor: "shadow-indigo-200/30",
+  },
+  macd_signal: {
+    card: "border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50",
+    hover: "hover:border-amber-400 hover:shadow-amber-200/40",
+    accentBar: "bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-500",
+    iconColor: "text-amber-600",
+    buttonClass:
+      "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600/20",
+    ringColor: "shadow-amber-200/30",
+  },
+  "Momentum Breakout": {
+    card: "border-orange-300 bg-gradient-to-br from-orange-50 via-white to-red-50",
+    hover: "hover:border-orange-400 hover:shadow-orange-200/40",
+    accentBar: "bg-gradient-to-r from-orange-500 via-red-500 to-pink-500",
+    iconColor: "text-orange-600",
+    buttonClass:
+      "bg-orange-500 hover:bg-orange-600 text-white border border-orange-600/20",
+    ringColor: "shadow-orange-200/30",
+  },
+  "Low Volatility Defense": {
+    card: "border-emerald-300 bg-gradient-to-br from-emerald-50 via-white to-teal-50",
+    hover: "hover:border-emerald-400 hover:shadow-emerald-200/40",
+    accentBar: "bg-gradient-to-r from-emerald-500 via-teal-400 to-green-500",
+    iconColor: "text-emerald-600",
+    buttonClass:
+      "bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600/20",
+    ringColor: "shadow-emerald-200/30",
+  },
+};
+TEMPLATE_THEMES_LIGHT.momentum_breakout =
+  TEMPLATE_THEMES_LIGHT["Momentum Breakout"];
+TEMPLATE_THEMES_LIGHT.low_volatility_defense =
+  TEMPLATE_THEMES_LIGHT["Low Volatility Defense"];
 
 const DEFAULT_THEME: TemplateTheme = {
   card: "border-white/10 bg-white/5",
@@ -357,7 +414,10 @@ function ScoreBar({
 export default function QuantLabPage() {
   const router = useRouter();
   const { t, locale } = useI18n();
+  const { theme } = useTheme();
   const zh = locale === "zh";
+  const TEMPLATE_THEMES =
+    theme === "light" ? TEMPLATE_THEMES_LIGHT : TEMPLATE_THEMES_DARK;
 
   const [activeTab, setActiveTab] = useState<QuantTab>("templates");
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -663,7 +723,7 @@ export default function QuantLabPage() {
                       momentum: t("quant.catMomentum"),
                       volatility: t("quant.catVolatility"),
                     }[tmpl.category] ?? tmpl.category;
-                  const theme =
+                  const tmplTheme =
                     TEMPLATE_THEMES[tmpl.name] ??
                     TEMPLATE_THEMES[tmpl.name_zh] ??
                     DEFAULT_THEME;
@@ -671,18 +731,24 @@ export default function QuantLabPage() {
                     <div
                       key={tmpl.id}
                       onClick={() => openTemplate(tmpl)}
-                      className={`group relative cursor-pointer overflow-hidden rounded-2xl border p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${theme.card} ${theme.hover} ${theme.ringColor}`}
+                      className={`group relative cursor-pointer overflow-hidden rounded-2xl border p-5 shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg ${tmplTheme.card} ${tmplTheme.hover} ${tmplTheme.ringColor}`}
                     >
                       {/* Top accent bar — visible on hover via opacity */}
                       <div
-                        className={`absolute inset-x-0 top-0 h-0.5 opacity-50 transition-opacity group-hover:opacity-100 ${theme.accentBar}`}
+                        className={`absolute inset-x-0 top-0 h-0.5 opacity-50 transition-opacity group-hover:opacity-100 ${tmplTheme.accentBar}`}
                       />
 
                       {/* Strategy icon + category badge row */}
                       <div className="mb-3 flex items-start justify-between">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/20 backdrop-blur">
+                        <div
+                          className={`flex h-10 w-10 items-center justify-center rounded-xl border backdrop-blur ${
+                            theme === "light"
+                              ? "border-slate-200 bg-white/80 shadow-sm"
+                              : "border-white/10 bg-black/20"
+                          }`}
+                        >
                           <FlaskConical
-                            className={`h-5 w-5 ${theme.iconColor}`}
+                            className={`h-5 w-5 ${tmplTheme.iconColor}`}
                           />
                         </div>
                         <div
@@ -696,14 +762,18 @@ export default function QuantLabPage() {
                         </div>
                       </div>
 
-                      <h3 className="mb-1.5 text-base font-semibold text-white">
+                      <h3
+                        className={`mb-1.5 text-base font-semibold ${theme === "light" ? "text-slate-900" : "text-white"}`}
+                      >
                         {tmpl.name_zh}
                       </h3>
-                      <p className="mb-4 line-clamp-3 text-xs leading-relaxed text-gray-400">
+                      <p
+                        className={`mb-4 line-clamp-3 text-xs leading-relaxed ${theme === "light" ? "text-slate-600" : "text-gray-400"}`}
+                      >
                         {getTemplateDescription(tmpl, zh)}
                       </p>
                       <button
-                        className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${theme.buttonClass}`}
+                        className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors ${tmplTheme.buttonClass}`}
                       >
                         <Play className="h-3 w-3" /> {t("quant.run")}
                       </button>
