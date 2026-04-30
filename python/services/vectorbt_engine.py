@@ -64,16 +64,25 @@ def _trades_from_portfolio(portfolio) -> list[TradeRecord]:
     except Exception:
         return []
 
+    # vectorbt's records_readable uses different column names depending on version.
+    # Try multiple keys to be robust.
+    def _pick(row, *keys, default=0.0):
+        for k in keys:
+            v = row.get(k)
+            if v is not None and not pd.isna(v):
+                return v
+        return default
+
     result: list[TradeRecord] = []
     for _, row in trades.iterrows():
         try:
-            entry_price = _safe(float(row.get("Entry Price", 0) or 0))
-            exit_price = _safe(float(row.get("Exit Price", 0) or 0))
-            size = _safe(float(row.get("Size", 1) or 1))
-            pnl = _safe(float(row.get("PnL", 0) or 0))
-            pnl_pct = _safe(float(row.get("Return", 0) or 0))
-            entry_idx = row.get("Entry Index", row.get("Entry Timestamp"))
-            exit_idx = row.get("Exit Index", row.get("Exit Timestamp"))
+            entry_price = _safe(float(_pick(row, "Avg Entry Price", "Entry Price", default=0) or 0))
+            exit_price = _safe(float(_pick(row, "Avg Exit Price", "Exit Price", default=0) or 0))
+            size = _safe(float(_pick(row, "Size", default=1) or 1))
+            pnl = _safe(float(_pick(row, "PnL", default=0) or 0))
+            pnl_pct = _safe(float(_pick(row, "Return", default=0) or 0))
+            entry_idx = _pick(row, "Entry Index", "Entry Timestamp", default=None)
+            exit_idx = _pick(row, "Exit Index", "Exit Timestamp", default=None)
 
             entry_date = str(entry_idx)[:10] if entry_idx is not None else ""
             exit_date = str(exit_idx)[:10] if exit_idx is not None else None
