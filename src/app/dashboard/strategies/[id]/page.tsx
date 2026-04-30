@@ -19,6 +19,29 @@ import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
 
+// ── Strategy template name localization (DB stores English; UI shows Chinese) ──
+const TEMPLATE_NAME_ZH: Record<string, string> = {
+  sma_crossover: "SMA 金叉死叉",
+  rsi_mean_reversion: "RSI 均值回归",
+  bollinger_band: "布林带突破",
+  macd_signal: "MACD 信号线交叉",
+  "Momentum Breakout": "动量突破",
+  "Low Volatility Defense": "低波防守",
+  // Snake-case variants of the above
+  momentum_breakout: "动量突破",
+  low_volatility_defense: "低波防守",
+};
+
+function localizeTemplateName(raw: string, isZh: boolean): string {
+  if (!isZh) return raw;
+  if (TEMPLATE_NAME_ZH[raw]) return TEMPLATE_NAME_ZH[raw];
+  // Fallback: snake_case → Title Case
+  return raw
+    .split(/[_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface RunInfo {
@@ -571,7 +594,8 @@ function StatusBadge({ status }: { status: RunInfo["status"] }) {
 export default function StrategyDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const isZh = locale === "zh";
   const runId = params.id as string;
 
   const [run, setRun] = useState<RunInfo | null>(null);
@@ -643,14 +667,14 @@ export default function StrategyDetailPage() {
                 className="mb-2 flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Quant Lab
+                {isZh ? "返回 Quant Lab" : "Back to Quant Lab"}
               </Link>
               <h1 className="text-2xl font-bold text-white">
-                {run.template_name}
+                {localizeTemplateName(run.template_name, isZh)}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-400">
                 <span className="font-mono font-semibold text-cyan-400">
-                  ${run.symbol}
+                  {run.symbol.replace(/^\$+/, "")}
                 </span>
                 <span>·</span>
                 <span>
