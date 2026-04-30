@@ -46,6 +46,16 @@ def _download_prices(symbol: str, start: str, end: str) -> pd.Series:
     return close.dropna()
 
 
+def _download_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame:
+    """Download full OHLCV; used by strategies that need volume."""
+    df = yf.download(symbol, start=start, end=end, auto_adjust=True, progress=False)
+    if df is None or df.empty:
+        raise ValueError(f"No price data returned for {symbol} ({start}→{end})")
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    return df.dropna(how="all")
+
+
 def _equity_curve_from_portfolio(portfolio) -> list[EquityPoint]:
     """Convert vectorbt Portfolio equity curve to JSON-serialisable list."""
     value = portfolio.value()
@@ -208,11 +218,70 @@ def _signals_macd(close: pd.Series, params: dict):
     return entries, exits
 
 
+def _signals_momentum_breakout(close: pd.Series, params: dict, *, volume: pd.Series | None = None):
+    """52-week-high breakout with volume confirmation; exit when trend weakens.
+
+    Params:
+      lookback     — rolling window for the high (default 252 = 1 year of trading days)
+      volume_mult  — required volume multiple vs 20-day avg (default 2.0)
+    """
+    lookback = int(params.get("lookback", 252))
+    vol_mult = float(params.get("volume_mult", 2.0))
+
+    # Entry: close at/near rolling high (within 0.5%)
+    rolling_high = close.rolling(window=lookback, min_periods=20).max()
+    near_high = close >= rolling_high * 0.995
+
+    # Volume confirmation (when volume series available)
+    if volume is not None and len(volume) == len(close):
+        avg_vol = volume.rolling(window=20, min_periods=5).mean()
+        high_vol = volume >= avg_vol * vol_mult
+    else:
+        high_vol = pd.Series(True, index=close.index)
+
+    entries = near_high & high_vol & ~near_high.shift(1).fillna(False)
+
+    # Exit: close drops below rolling 50-day high (trend weakening)
+    short_high = close.rolling(window=max(20, lookback // 5), min_periods=10).max()
+    exits = close < short_high * 0.93  # 7% pullback from recent high
+    return entries, exits
+
+
+def _signals_low_volatility_defense(close: pd.Series, params: dict, *, volume: pd.Series | None = None):
+    """Defensive entry only during low-volatility regimes (proxy via realized vol).
+
+    Params:
+      vix_threshold — realized-vol threshold (annualized %), default 22
+      beta_max      — unused in single-symbol mode (informational)
+    """
+    vix_thresh = float(params.get("vix_threshold", 22))
+
+    # Realized vol = rolling std of daily returns × √252 × 100 (annualized %)
+    daily_ret = close.pct_change()
+    realized_vol = daily_ret.rolling(window=20, min_periods=10).std() * (252 ** 0.5) * 100
+
+    in_low_vol = realized_vol < vix_thresh
+    # Trend filter: only long when above 50-day MA
+    ma50 = close.rolling(window=50, min_periods=20).mean()
+    above_ma = close > ma50
+
+    entries = in_low_vol & above_ma & ~(in_low_vol.shift(1).fillna(False) & above_ma.shift(1).fillna(False))
+    # Exit when vol spikes above 1.5× threshold OR price drops below MA50
+    exits = (realized_vol > vix_thresh * 1.5) | (close < ma50 * 0.97)
+    return entries, exits
+
+
 _SIGNAL_MAP = {
+    # Original 4
     "sma_crossover": _signals_sma_crossover,
     "rsi_mean_reversion": _signals_rsi_mean_reversion,
     "bollinger_band": _signals_bollinger_band,
     "macd_signal": _signals_macd,
+    # New strategies (registered under both DB display name and snake_case)
+    "Momentum Breakout": _signals_momentum_breakout,
+    "momentum_breakout": _signals_momentum_breakout,
+    "Low Volatility Defense": _signals_low_volatility_defense,
+    "low_volatility_defense": _signals_low_volatility_defense,
 }
 
 
@@ -254,9 +323,19 @@ class VectorbtEngine(BacktestEngine):
 
         try:
             log.info("backtest_start")
-            close = _download_prices(symbol, start_date, end_date)
+            ohlcv = _download_ohlcv(symbol, start_date, end_date)
+            close = ohlcv["Close"].dropna()
+            volume = ohlcv.get("Volume")
+            if isinstance(volume, pd.DataFrame):
+                volume = volume.iloc[:, 0]
 
-            entries, exits = signal_fn(close, params)
+            # Pass volume only to strategies that accept it (introspect signature)
+            import inspect
+            sig = inspect.signature(signal_fn)
+            if "volume" in sig.parameters:
+                entries, exits = signal_fn(close, params, volume=volume)
+            else:
+                entries, exits = signal_fn(close, params)
 
             # Align booleans to close index
             entries = entries.reindex(close.index, fill_value=False)

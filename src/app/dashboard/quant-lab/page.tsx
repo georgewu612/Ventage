@@ -390,15 +390,22 @@ export default function QuantLabPage() {
       const MAX_WAIT_MS = 5 * 60 * 1000; // 5 minutes safety cap
 
       let finalStatus: string | null = null;
+      let finalError: string | null = null;
       while (Date.now() - startTime < MAX_WAIT_MS) {
         await new Promise((res) => setTimeout(res, 2500));
         const sr = await fetch(
           `${API_BASE_URL}/v1/strategies/runs/${run_id}`,
         ).catch(() => null);
         if (!sr || !sr.ok) continue;
-        const data = (await sr.json()) as { status?: string };
-        if (data.status === "done" || data.status === "failed") {
-          finalStatus = data.status;
+        // API returns { run: { status, error_msg, ... }, results, trades }
+        const data = (await sr.json()) as {
+          run?: { status?: string; error_msg?: string };
+          status?: string;
+        };
+        const status = data.run?.status ?? data.status;
+        if (status === "done" || status === "failed") {
+          finalStatus = status;
+          finalError = data.run?.error_msg ?? null;
           break;
         }
       }
@@ -413,7 +420,9 @@ export default function QuantLabPage() {
           router.push(`/dashboard/strategies/${run_id}`);
         }, 600);
       } else if (finalStatus === "failed") {
-        setRunError(zh ? "回测失败，请检查参数后重试" : "Backtest failed");
+        setRunError(
+          finalError ?? (zh ? "回测失败，请检查参数后重试" : "Backtest failed"),
+        );
       } else {
         setRunError(
           zh
