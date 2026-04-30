@@ -98,6 +98,29 @@ interface SensitivityResult {
   sharpe_std: number;
 }
 
+// ── API error helper ──────────────────────────────────────────────────────────
+// FastAPI returns either { detail: "string" } or { detail: [{ loc, msg, type }, ...] }
+// Without this, rendering the array in JSX produces "[object Object],[object Object]"
+async function formatApiError(r: Response): Promise<string> {
+  try {
+    const body = await r.json();
+    const d = body?.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) {
+      return d
+        .map((e: { loc?: string[]; msg?: string }) => {
+          const field = e.loc ? e.loc.slice(1).join(".") : "";
+          return field ? `${field}: ${e.msg}` : (e.msg ?? "");
+        })
+        .filter(Boolean)
+        .join("; ");
+    }
+    return r.statusText || `HTTP ${r.status}`;
+  } catch {
+    return r.statusText || `HTTP ${r.status}`;
+  }
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CAT_COLORS: Record<string, { color: string; bg: string }> = {
@@ -411,8 +434,7 @@ export default function QuantLabPage() {
           train_ratio: 0.7,
         }),
       });
-      if (!r.ok)
-        throw new Error((await r.json()).detail ?? "Walk-forward failed");
+      if (!r.ok) throw new Error(await formatApiError(r));
       setWfResult(await r.json());
     } catch (e: unknown) {
       setWfError(e instanceof Error ? e.message : String(e));
@@ -433,12 +455,12 @@ export default function QuantLabPage() {
         body: JSON.stringify({
           run_id: selectedRunId,
           param_key: sensParamKey,
-          range: [5, 50],
+          range_min: 5,
+          range_max: 50,
           steps: 6,
         }),
       });
-      if (!r.ok)
-        throw new Error((await r.json()).detail ?? "Sensitivity failed");
+      if (!r.ok) throw new Error(await formatApiError(r));
       setSensResult(await r.json());
     } catch (e: unknown) {
       setSensError(e instanceof Error ? e.message : String(e));
