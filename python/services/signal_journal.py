@@ -89,6 +89,7 @@ def persist_scored_signal(
     ohlcv_datetime: datetime,
     *,
     min_grade: str = "B",
+    mtf_result: dict | None = None,
 ) -> str | None:
     """Persist a single scored signal to DB.
 
@@ -99,6 +100,9 @@ def persist_scored_signal(
         min_grade: 'A' / 'B' / 'C' — only persist signals at-or-above this
             grade (default 'B' to keep journal lean — change to 'C' if you
             want to record everything).
+        mtf_result: optional output of multi_timeframe.confirm_with_mtf().
+            If status='contradicted', the signal is downgraded one grade
+            (A→B, B→C, C→dropped) before the min_grade check.
 
     Returns:
         signal_id (UUID string) on success, None if dedup hit / wrong grade.
@@ -106,10 +110,29 @@ def persist_scored_signal(
     grade_order = {"A": 3, "B": 2, "C": 1}
     if scored.score_grade is None:
         return None
-    if grade_order.get(scored.score_grade, 0) < grade_order.get(min_grade, 0):
+
+    effective_grade = scored.score_grade
+    if mtf_result and mtf_result.get("mtf_score_grade_adjustment", 0) < 0:
+        # Downgrade A→B, B→C, C→drop
+        downgrade = {"A": "B", "B": "C", "C": None}
+        effective_grade = downgrade.get(effective_grade)
+        if effective_grade is None:
+            return None
+
+    if grade_order.get(effective_grade, 0) < grade_order.get(min_grade, 0):
         return None
 
     row = _scored_to_row(scored, ohlcv_datetime)
+    if effective_grade != scored.score_grade:
+        row["score_grade"] = effective_grade
+        # Annotate the downgrade reason
+        notes = row.get("notes") or {}
+        notes["mtf_downgrade_from"] = scored.score_grade
+        row["notes"] = notes
+    if mtf_result:
+        row["mtf_status"] = mtf_result.get("status")
+        row["mtf_score"] = float(mtf_result.get("mtf_score") or 0)
+        row["mtf_analysis"] = mtf_result
     try:
         result = db.table("strategy_signals").insert(row).execute()
         rows = result.data or []
@@ -137,6 +160,7 @@ def persist_scan_results(
     *,
     bar_datetime: datetime | None = None,
     min_grade: str = "B",
+    enable_mtf: bool = True,
 ) -> dict:
     """Bulk-persist a router scan output.
 
@@ -146,22 +170,66 @@ def persist_scan_results(
             scoring helpers (router output post-score_all).
         bar_datetime: timestamp of the bar (defaults to now-utc).
         min_grade: filter threshold.
+        enable_mtf: if True, run 4h Alpaca confirmation per signal and
+            apply downgrade for contradicted ones. Auto-disabled if
+            Alpaca isn't configured.
 
     Returns:
-        {persisted: int, skipped: int, errors: int}.
+        {persisted: int, skipped: int, errors: int, mtf_*: int}.
     """
     if bar_datetime is None:
         bar_datetime = datetime.now(timezone.utc)
 
+    # Lazy import to avoid hard dependency
+    mtf_func = None
+    if enable_mtf:
+        try:
+            from services.alpaca_client import get_alpaca_client
+            from services.multi_timeframe import confirm_with_mtf
+            if get_alpaca_client() is not None:
+                mtf_func = confirm_with_mtf
+        except Exception:
+            mtf_func = None
+
     persisted = 0
     skipped = 0
     errors = 0
+    mtf_confirmed = 0
+    mtf_neutral = 0
+    mtf_contradicted = 0
+    mtf_no_data = 0
+
+    # Cache MTF result per (symbol, direction) — same result applies to all
+    # candidates of a symbol with same direction.
+    mtf_cache: dict[tuple[str, str], dict] = {}
 
     for symbol, scored_list in scan_results.items():
         for scored in scored_list:
             try:
+                mtf_result = None
+                if mtf_func is not None:
+                    cache_key = (symbol, scored.candidate.direction)
+                    if cache_key not in mtf_cache:
+                        try:
+                            mtf_obj = mtf_func(symbol, scored.candidate.direction)
+                            mtf_cache[cache_key] = mtf_obj.to_dict()
+                        except Exception as exc:
+                            logger.warning("mtf_call_failed symbol=%s err=%s", symbol, str(exc))
+                            mtf_cache[cache_key] = None  # type: ignore[assignment]
+                    mtf_result = mtf_cache.get(cache_key)
+                    if mtf_result:
+                        status = mtf_result.get("status")
+                        if status == "confirmed":
+                            mtf_confirmed += 1
+                        elif status == "neutral":
+                            mtf_neutral += 1
+                        elif status == "contradicted":
+                            mtf_contradicted += 1
+                        else:
+                            mtf_no_data += 1
+
                 sid = persist_scored_signal(
-                    db, scored, bar_datetime, min_grade=min_grade
+                    db, scored, bar_datetime, min_grade=min_grade, mtf_result=mtf_result
                 )
                 if sid:
                     persisted += 1
@@ -173,7 +241,15 @@ def persist_scan_results(
                     "scan_persist_error", symbol=symbol, error=str(exc)
                 )
 
-    return {"persisted": persisted, "skipped": skipped, "errors": errors}
+    return {
+        "persisted": persisted,
+        "skipped": skipped,
+        "errors": errors,
+        "mtf_confirmed": mtf_confirmed,
+        "mtf_neutral": mtf_neutral,
+        "mtf_contradicted": mtf_contradicted,
+        "mtf_no_data": mtf_no_data,
+    }
 
 
 # ── Query ───────────────────────────────────────────────────────────────────

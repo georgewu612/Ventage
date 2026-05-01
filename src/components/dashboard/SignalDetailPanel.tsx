@@ -64,6 +64,28 @@ export interface ScoredSignalDict {
     chip_warning: string[];
   };
 
+  // 4h Multi-Timeframe confirmation (optional — only on persisted signals)
+  mtf_status?: "confirmed" | "neutral" | "contradicted" | "no_data" | null;
+  mtf_score?: number | null;
+  mtf_analysis?: {
+    sub_scores?: {
+      ema_alignment: number;
+      close_position: number;
+      rsi: number;
+      momentum: number;
+    };
+    indicators?: {
+      ema_13: number | null;
+      ema_34: number | null;
+      rsi_14: number | null;
+      last_close: number | null;
+      close_pct_in_range: number | null;
+      last_3_bars_direction: string;
+    };
+    tags?: string[];
+    warnings?: string[];
+  } | null;
+
   // Score
   score_market: number;
   score_position: number;
@@ -491,6 +513,11 @@ export function SignalDetailPanel({
             </div>
           </div>
 
+          {/* MTF (4h) Confirmation */}
+          {signal.mtf_status && signal.mtf_status !== "no_data" && (
+            <MTFBadge signal={signal} isZh={isZh} />
+          )}
+
           {/* Invalidation */}
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-400" />
@@ -784,6 +811,99 @@ function PositionCalculator({
               </p>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MTF (4h Multi-Timeframe Confirmation) Badge ───────────────────────────
+
+function MTFBadge({
+  signal,
+  isZh,
+}: {
+  signal: ScoredSignalDict;
+  isZh: boolean;
+}) {
+  const status = signal.mtf_status;
+  const score = signal.mtf_score ?? 0;
+  const analysis = signal.mtf_analysis;
+  if (!status || status === "no_data") return null;
+
+  const statusColors = {
+    confirmed: {
+      border: "border-emerald-500/30",
+      bg: "bg-emerald-500/5",
+      text: "text-emerald-300",
+      label: isZh ? "4h 确认" : "4h Confirmed",
+      icon: "✓",
+    },
+    neutral: {
+      border: "border-amber-500/30",
+      bg: "bg-amber-500/5",
+      text: "text-amber-300",
+      label: isZh ? "4h 中性" : "4h Neutral",
+      icon: "~",
+    },
+    contradicted: {
+      border: "border-red-500/30",
+      bg: "bg-red-500/5",
+      text: "text-red-300",
+      label: isZh ? "4h 反向（已降级）" : "4h Contradicted (downgraded)",
+      icon: "✗",
+    },
+  } as const;
+
+  const cfg = statusColors[status as keyof typeof statusColors];
+  if (!cfg) return null;
+
+  return (
+    <div
+      className={`mb-3 rounded-lg border p-2.5 ${cfg.border} ${cfg.bg}`}
+    >
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className={`text-xs font-semibold ${cfg.text}`}>
+          {cfg.icon} {cfg.label}
+        </span>
+        <span className={`font-mono text-sm font-bold ${cfg.text}`}>
+          {score.toFixed(0)}/100
+        </span>
+      </div>
+
+      {analysis?.indicators && (
+        <div className="grid grid-cols-3 gap-1.5 text-center">
+          <div className="rounded bg-white/5 px-1.5 py-1">
+            <p className="text-[9px] text-gray-500">EMA13/34</p>
+            <p className="font-mono text-[10px] text-white">
+              {analysis.indicators.ema_13?.toFixed(1) ?? "—"}/
+              {analysis.indicators.ema_34?.toFixed(1) ?? "—"}
+            </p>
+          </div>
+          <div className="rounded bg-white/5 px-1.5 py-1">
+            <p className="text-[9px] text-gray-500">RSI</p>
+            <p className="font-mono text-[10px] text-white">
+              {analysis.indicators.rsi_14?.toFixed(0) ?? "—"}
+            </p>
+          </div>
+          <div className="rounded bg-white/5 px-1.5 py-1">
+            <p className="text-[9px] text-gray-500">
+              {isZh ? "区间位置" : "Range %"}
+            </p>
+            <p className="font-mono text-[10px] text-white">
+              {analysis.indicators.close_pct_in_range?.toFixed(0) ?? "—"}%
+            </p>
+          </div>
+        </div>
+      )}
+
+      {analysis?.warnings && analysis.warnings.length > 0 && (
+        <div className="mt-1.5 space-y-0.5">
+          {analysis.warnings.slice(0, 2).map((w, i) => (
+            <p key={i} className="text-[10px] text-red-300">
+              ⚠ {w}
+            </p>
+          ))}
         </div>
       )}
     </div>

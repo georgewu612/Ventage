@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # External data APIs (optional — ETL collectors degrade gracefully)
     polygon_api_key: str = ""
     unusual_whales_api_key: str = ""
+    alpaca_api_key: str = ""
+    alpaca_secret_key: str = ""
+
+    @property
+    def has_alpaca_config(self) -> bool:
+        return bool(self.alpaca_api_key and self.alpaca_secret_key)
 
     @property
     def has_supabase_config(self) -> bool:

@@ -420,6 +420,26 @@ def journal_update_outcomes() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"update-outcomes failed: {exc}")
 
 
+@router.get("/signals/mtf/{symbol}")
+def get_mtf_for_symbol(
+    symbol: str,
+    direction: str = Query(default="long", regex="^(long|short)$"),
+    lookback_days: int = Query(default=14, ge=3, le=60),
+) -> dict[str, Any]:
+    """Run 4h multi-timeframe confirmation for a symbol on demand.
+
+    Pulls fresh 4h bars from Alpaca and analyzes them against the given
+    direction. Returns 503 if Alpaca is not configured.
+    """
+    from services.multi_timeframe import confirm_with_mtf
+
+    try:
+        result = confirm_with_mtf(symbol.upper(), direction, lookback_days=lookback_days)
+        return result.to_dict()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"mtf failed: {exc}")
+
+
 @router.post("/signals/journal/test-telegram")
 def journal_test_telegram(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Send a synthetic A-grade test alert to verify Telegram credentials.
