@@ -460,7 +460,7 @@ export default function SignalJournalPage() {
         <span className="ml-2 font-semibold tracking-wider text-gray-500 uppercase">
           {isZh ? "时间窗" : "Window"}:
         </span>
-        {[7, 30, 90, 180].map((d) => (
+        {[7, 30, 90, 180, 365, 730].map((d) => (
           <button
             key={d}
             onClick={() => setDays(d)}

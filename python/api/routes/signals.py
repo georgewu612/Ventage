@@ -189,7 +189,7 @@ def journal_history(
     symbol: str | None = Query(default=None),
     grade: str | None = Query(default=None),
     regime: str | None = Query(default=None),
-    days: int = Query(default=30, ge=1, le=365),
+    days: int = Query(default=30, ge=1, le=730),
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, Any]:
     """List historical strategy signals with optional filters.
@@ -241,7 +241,7 @@ def journal_history(
 def journal_stats(
     strategy: str | None = Query(default=None),
     regime: str | None = Query(default=None),
-    days: int = Query(default=90, ge=1, le=365),
+    days: int = Query(default=90, ge=1, le=730),
 ) -> dict[str, Any]:
     """Aggregate hit-rate / avg-R / etc for closed signals."""
     from services.signal_journal import compute_stats
