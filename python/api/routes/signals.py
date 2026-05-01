@@ -271,9 +271,16 @@ def journal_get_signal(signal_id: str) -> dict[str, Any]:
 
 
 @router.post("/signals/journal/scan-now")
-def journal_scan_now() -> dict[str, Any]:
+def journal_scan_now(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     """Manual trigger for the daily scan-and-persist job (admin/testing).
 
+    Body (optional):
+      {
+        "symbols": ["NVDA", "GOOGL", ...],   // override universe
+        "min_grade": "C"                      // default "B"
+      }
+
+    If no symbols provided, defaults to all users' watchlists + holdings.
     Synchronous — may take 30-60 seconds depending on universe size.
     """
     from services.regime_classifier import classify
@@ -285,13 +292,26 @@ def journal_scan_now() -> dict[str, Any]:
     import yfinance as yf
     from datetime import datetime, timezone
 
+    payload = payload or {}
+    override_symbols = payload.get("symbols")
+    min_grade = (payload.get("min_grade") or "B").upper()
+    if min_grade not in ("A", "B", "C"):
+        min_grade = "B"
+
     try:
         db = _get_supabase_client()
         symbols: set[str] = set()
-        wl = db.table("watchlists").select("symbol").execute()
-        symbols.update(r["symbol"] for r in (wl.data or []) if r.get("symbol"))
-        hd = db.table("portfolio_holdings").select("symbol").execute()
-        symbols.update(r["symbol"] for r in (hd.data or []) if r.get("symbol"))
+        if override_symbols and isinstance(override_symbols, list):
+            symbols.update(
+                s.upper().strip()
+                for s in override_symbols
+                if isinstance(s, str) and s.strip()
+            )
+        else:
+            wl = db.table("watchlists").select("symbol").execute()
+            symbols.update(r["symbol"] for r in (wl.data or []) if r.get("symbol"))
+            hd = db.table("portfolio_holdings").select("symbol").execute()
+            symbols.update(r["symbol"] for r in (hd.data or []) if r.get("symbol"))
 
         if not symbols:
             return {"status": "ok", "scanned": 0, "persisted": 0}
@@ -322,7 +342,7 @@ def journal_scan_now() -> dict[str, Any]:
                 continue
 
         counts = persist_scan_results(
-            db, scan_results, bar_datetime=bar_dt, min_grade="B"
+            db, scan_results, bar_datetime=bar_dt, min_grade=min_grade
         )
         return {
             "status": "ok",
