@@ -405,6 +405,124 @@ async def run_value_screener(db) -> dict:
     return result
 
 
+async def run_symbol_regime_scan(db) -> dict:
+    """Classify per-symbol regime for Watchlist + holdings universe.
+
+    Phase A.4 of Trading System v2. Pulls all distinct symbols from:
+      - watchlists  (user-curated)
+      - portfolio_holdings (active positions)
+    Then computes 6-state regime via regime_classifier and writes to
+    symbol_regimes table. Runs daily after US market close (22:00 UTC).
+    """
+    import yfinance as yf
+    import pandas as pd
+
+    from services.regime_classifier import classify
+
+    start = time.perf_counter()
+    logger.info("symbol_regime_scan_start")
+
+    # ── Pull union of watchlist + holdings symbols ────────────────────────
+    symbols: set[str] = set()
+    try:
+        wl = db.table("watchlists").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (wl.data or []) if r.get("symbol"))
+    except Exception as exc:
+        logger.warning("watchlist_fetch_failed", error=str(exc))
+    try:
+        hd = db.table("portfolio_holdings").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (hd.data or []) if r.get("symbol"))
+    except Exception as exc:
+        logger.warning("holdings_fetch_failed", error=str(exc))
+
+    if not symbols:
+        logger.info("symbol_regime_scan_no_symbols")
+        _write_job_run(
+            db,
+            job_name="symbol_regime_scan",
+            status="success",
+            loaded=0,
+            duration_ms=int((time.perf_counter() - start) * 1000),
+        )
+        return {"status": "success", "scanned": 0, "loaded": 0}
+
+    scanned = 0
+    loaded = 0
+    failed = 0
+    rows: list[dict] = []
+
+    # ── Classify each symbol ──────────────────────────────────────────────
+    for sym in sorted(symbols):
+        scanned += 1
+        try:
+            df = yf.download(
+                sym, period="1y", interval="1d", auto_adjust=True, progress=False
+            )
+            if df is None or df.empty or len(df) < 60:
+                logger.warning("regime_scan_insufficient_data", symbol=sym)
+                failed += 1
+                continue
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            res = classify(df)
+            last_ts = df.index[-1]
+            if hasattr(last_ts, "tz") and last_ts.tz is None:
+                last_ts = last_ts.tz_localize("UTC")
+            rows.append(
+                {
+                    "symbol": sym,
+                    "timeframe": "1d",
+                    "datetime": last_ts.isoformat(),
+                    "regime": res.regime,
+                    "regime_score": float(res.regime_score),
+                    "adx": res.adx,
+                    "ema_alignment": res.ema_alignment,
+                    "ema_squeeze_pct": res.ema_squeeze_pct,
+                    "bb_width": res.bb_width,
+                    "atr_pct": res.atr_pct,
+                    "risk_flag": res.risk_flag,
+                    "notes": res.notes,
+                }
+            )
+            loaded += 1
+        except Exception as exc:
+            failed += 1
+            logger.warning("regime_scan_failed", symbol=sym, error=str(exc))
+
+    # ── Bulk insert ──────────────────────────────────────────────────────
+    if rows:
+        try:
+            db.table("symbol_regimes").insert(rows).execute()
+        except Exception as exc:
+            logger.error("regime_scan_insert_failed", error=str(exc))
+            _write_job_run(
+                db,
+                job_name="symbol_regime_scan",
+                status="error",
+                error_message=str(exc),
+                loaded=0,
+                duration_ms=int((time.perf_counter() - start) * 1000),
+            )
+            return {"status": "error", "error": str(exc)}
+
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    logger.info(
+        "symbol_regime_scan_done",
+        scanned=scanned,
+        loaded=loaded,
+        failed=failed,
+        duration_ms=duration_ms,
+    )
+    _write_job_run(
+        db,
+        job_name="symbol_regime_scan",
+        status="success",
+        loaded=loaded,
+        duration_ms=duration_ms,
+    )
+    return {"status": "success", "scanned": scanned, "loaded": loaded, "failed": failed}
+
+
 def start_scheduler():
     """Start the APScheduler with configured intervals."""
     db = _create_supabase_client()
@@ -601,6 +719,21 @@ def start_scheduler():
         args=[db],
         id="value_screener",
         name="Daily Value Screener (V&M)",
+        max_instances=1,
+    )
+
+    # Per-symbol regime scan: daily 22:00 UTC (~17:00 ET, after US market close)
+    # Classifies Watchlist + holdings symbols into 6 regime states.
+    # Trading System v2 — Phase A.4
+    scheduler.add_job(
+        run_symbol_regime_scan,
+        "cron",
+        hour=22,
+        minute=0,
+        timezone="UTC",
+        args=[db],
+        id="symbol_regime_scan",
+        name="Per-Symbol Regime Scan (Trading System v2)",
         max_instances=1,
     )
 

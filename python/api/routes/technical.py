@@ -45,37 +45,42 @@ INTERVAL_MAX_PERIOD = {
 }
 
 
+# Indicator functions delegated to the shared library so all parts of the
+# trading system (regime_classifier, strategies, scoring) use identical math.
+# The wrapper names are kept for backwards compatibility with this module.
+from services.indicators import (
+    bollinger as _shared_bollinger,
+    macd as _shared_macd,
+    rsi as _shared_rsi,
+    safe_float as _shared_safe_float,
+)
+
+
 def _compute_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
-    delta = prices.diff()
-    gain = delta.where(delta > 0, 0.0).rolling(period).mean()
-    loss = (-delta.where(delta < 0, 0.0)).rolling(period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+    return _shared_rsi(prices, period)
 
 
 def _compute_macd(
     prices: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    ema_fast = prices.ewm(span=fast, adjust=False).mean()
-    ema_slow = prices.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
+    return _shared_macd(prices, fast, slow, signal)
 
 
 def _compute_bollinger(
     prices: pd.Series, period: int = 20, num_std: float = 2.0
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    sma = prices.rolling(period).mean()
-    std = prices.rolling(period).std()
-    upper = sma + num_std * std
-    lower = sma - num_std * std
-    return upper, sma, lower
+    return _shared_bollinger(prices, period, num_std)
 
 
 def _safe_float(val: Any) -> float | None:
-    """Convert numpy/pandas value to Python float, handling NaN."""
+    """Convert numpy/pandas value to Python float, handling NaN.
+
+    Wrapper kept for module-local callers; delegates to services.indicators.safe_float.
+    """
+    result = _shared_safe_float(val)
+    if result is not None:
+        return result
+    # Original fallback path (for cases the shared safe_float returns None)
     if val is None or (isinstance(val, float) and np.isnan(val)):
         return None
     try:

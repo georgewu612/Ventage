@@ -77,3 +77,85 @@ async def refresh_regime() -> dict[str, Any]:
         "spy_vs_200ma_pct": snapshot.spy_vs_200ma_pct,
         "generated_at": snapshot.generated_at,
     }
+
+
+# ── Per-symbol regime (Trading System v2) ────────────────────────────────────
+
+
+@router.get("/regime/symbol/{symbol}")
+def get_symbol_regime(symbol: str, fresh: bool = False) -> dict[str, Any]:
+    """Per-symbol 6-state regime classification.
+
+    By default returns the most recent snapshot from `symbol_regimes` (written
+    by the daily ETL job). Pass `?fresh=true` to recompute on demand using
+    yfinance (slower, ~3-5 s).
+
+    Args:
+        symbol: Ticker (case-insensitive).
+        fresh: If True, recompute live and skip DB cache.
+    """
+    sym = symbol.upper()
+    db = _get_supabase_client()
+
+    if not fresh:
+        try:
+            result = (
+                db.table("symbol_regimes")
+                .select("*")
+                .eq("symbol", sym)
+                .eq("timeframe", "1d")
+                .order("datetime", desc=True)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"DB query failed: {exc}")
+
+        rows = result.data or []
+        if rows:
+            return {**rows[0], "source": "db_cache"}
+
+    # Cache miss or fresh=true → compute on the fly
+    import pandas as pd
+    import yfinance as yf
+
+    from services.regime_classifier import classify
+
+    try:
+        df = yf.download(
+            sym, period="1y", interval="1d", auto_adjust=True, progress=False
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"yfinance failed: {exc}")
+
+    if df is None or df.empty or len(df) < 60:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Insufficient data for {sym} (need ≥60 daily bars)",
+        )
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    res = classify(df)
+    last_ts = df.index[-1]
+    last_ts_str = (
+        last_ts.tz_localize("UTC").isoformat()
+        if hasattr(last_ts, "tz") and last_ts.tz is None
+        else last_ts.isoformat()
+    )
+
+    return {
+        "symbol": sym,
+        "timeframe": "1d",
+        "datetime": last_ts_str,
+        "regime": res.regime,
+        "regime_score": res.regime_score,
+        "adx": res.adx,
+        "ema_alignment": res.ema_alignment,
+        "ema_squeeze_pct": res.ema_squeeze_pct,
+        "bb_width": res.bb_width,
+        "atr_pct": res.atr_pct,
+        "risk_flag": res.risk_flag,
+        "notes": res.notes,
+        "source": "live_compute",
+    }
