@@ -424,7 +424,7 @@ def journal_update_outcomes() -> dict[str, Any]:
 def get_mtf_for_symbol(
     symbol: str,
     direction: str = Query(default="long", regex="^(long|short)$"),
-    lookback_days: int = Query(default=14, ge=3, le=60),
+    lookback_days: int = Query(default=35, ge=3, le=60),
 ) -> dict[str, Any]:
     """Run 4h multi-timeframe confirmation for a symbol on demand.
 
