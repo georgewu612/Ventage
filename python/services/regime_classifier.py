@@ -208,13 +208,15 @@ def classify(
     align = ema_alignment(e13, e34, e55)
     sqz_pct = ema_squeeze_pct(e13, e34, e55)
 
+    # NOTE: All boolean values stored in `notes` MUST be coerced to native Python
+    # `bool` (not numpy.bool_) so the dict is JSON-serializable by FastAPI.
     notes: dict = {
         "last_close": safe_float(last_close),
         "above_ma200": (
-            last_close > last_ma200 if last_close and last_ma200 else None
+            bool(last_close > last_ma200) if last_close and last_ma200 else None
         ),
         "ma50_above_ma200": (
-            last_ma50 > last_ma200 if last_ma50 and last_ma200 else None
+            bool(last_ma50 > last_ma200) if last_ma50 and last_ma200 else None
         ),
     }
 
@@ -330,15 +332,15 @@ def classify(
 
     notes.update(
         {
-            "is_strong_uptrend": is_strong_uptrend,
-            "is_strong_downtrend": is_strong_downtrend,
-            "is_squeeze": is_squeeze,
-            "is_exhaustion": is_exhaustion,
-            "is_ranging": is_ranging,
-            "has_higher_highs_lows": has_hh_hl,
-            "has_lower_highs_lows": has_lh_ll,
-            "has_bearish_divergence": has_bear_div,
-            "has_bullish_divergence": has_bull_div,
+            "is_strong_uptrend": bool(is_strong_uptrend),
+            "is_strong_downtrend": bool(is_strong_downtrend),
+            "is_squeeze": bool(is_squeeze),
+            "is_exhaustion": bool(is_exhaustion),
+            "is_ranging": bool(is_ranging),
+            "has_higher_highs_lows": bool(has_hh_hl),
+            "has_lower_highs_lows": bool(has_lh_ll),
+            "has_bearish_divergence": bool(has_bear_div),
+            "has_bullish_divergence": bool(has_bull_div),
         }
     )
 
