@@ -133,19 +133,31 @@ export default function SettingsPage() {
       grade: "A",
       pct: 1.0,
       dollar: accSizeNum * 0.01,
-      color: "text-emerald-300 bg-emerald-500/10 border-emerald-500/40",
+      style: {
+        color: "#059669",
+        backgroundColor: "rgba(16, 185, 129, 0.12)",
+        borderColor: "#10b981",
+      },
     },
     {
       grade: "B",
       pct: 0.75,
       dollar: accSizeNum * 0.0075,
-      color: "text-amber-300 bg-amber-500/10 border-amber-500/40",
+      style: {
+        color: "#b45309",
+        backgroundColor: "rgba(245, 158, 11, 0.12)",
+        borderColor: "#f59e0b",
+      },
     },
     {
       grade: "C",
       pct: 0.5,
       dollar: accSizeNum * 0.005,
-      color: "text-slate-300 bg-slate-500/10 border-slate-500/40",
+      style: {
+        color: "#475569",
+        backgroundColor: "rgba(100, 116, 139, 0.12)",
+        borderColor: "#64748b",
+      },
     },
   ];
 
@@ -273,11 +285,25 @@ export default function SettingsPage() {
             {examples.map((ex) => (
               <div
                 key={ex.grade}
-                className={`rounded-md border-2 px-3 py-2.5 text-center ${ex.color}`}
+                className="rounded-md border-2 px-3 py-2.5 text-center"
+                style={ex.style}
               >
-                <p className="text-xl font-bold">{ex.grade}</p>
-                <p className="text-sm font-bold">{ex.pct}%</p>
-                <p className="mt-0.5 font-mono text-sm font-semibold">
+                <p
+                  className="text-xl font-bold"
+                  style={{ color: ex.style.color }}
+                >
+                  {ex.grade}
+                </p>
+                <p
+                  className="text-sm font-bold"
+                  style={{ color: ex.style.color }}
+                >
+                  {ex.pct}%
+                </p>
+                <p
+                  className="mt-0.5 font-mono text-sm font-semibold"
+                  style={{ color: ex.style.color }}
+                >
                   $
                   {ex.dollar.toLocaleString(undefined, {
                     maximumFractionDigits: 0,
