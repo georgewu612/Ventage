@@ -405,13 +405,23 @@ export default function SignalsPage() {
       {!loading && data && (
         <div>
           {filteredSignals.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center">
-              <p className="text-sm text-gray-500">
-                {isZh
-                  ? "当前过滤条件下无信号。试试切换等级或包含未达标信号。"
-                  : "No signals match current filters."}
-              </p>
-            </div>
+            <EmptyStateExplainer
+              data={data}
+              isZh={isZh}
+              hasFilters={gradeFilter !== "all" || strategyFilter !== "all"}
+              onAddDefaults={() => {
+                const merged = Array.from(
+                  new Set([...universe, ...DEFAULT_SCAN_UNIVERSE]),
+                );
+                setUniverse(merged);
+                setUniverseSource("user");
+              }}
+              onClearFilters={() => {
+                setGradeFilter("all");
+                setStrategyFilter("all");
+                setIncludeUnscored(true);
+              }}
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {filteredSignals.map((s, i) => (
@@ -465,6 +475,127 @@ function SummaryCard({
       <p className={`text-2xl font-bold tabular-nums ${colorMap[tone]}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+// ── Empty state with diagnostic info ─────────────────────────────────────
+
+const REGIME_ZH: Record<string, string> = {
+  strong_uptrend: "强趋势上涨",
+  strong_downtrend: "强趋势下跌",
+  squeeze_breakout_setup: "蓄势突破",
+  ranging: "区间震荡",
+  exhaustion_reversal: "趋势衰竭",
+  elevated_event_risk: "事件风险期",
+};
+
+function EmptyStateExplainer({
+  data,
+  isZh,
+  hasFilters,
+  onAddDefaults,
+  onClearFilters,
+}: {
+  data: ScanResult;
+  isZh: boolean;
+  hasFilters: boolean;
+  onAddDefaults: () => void;
+  onClearFilters: () => void;
+}) {
+  const totalSignals = data.summary.total_signals;
+  const symbols = Object.entries(data.results);
+
+  // Case 1: Filters are too restrictive (signals exist but filtered out)
+  if (totalSignals > 0 && hasFilters) {
+    return (
+      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 text-center">
+        <p className="mb-3 text-sm text-amber-300">
+          {isZh
+            ? `共有 ${totalSignals} 个信号，但当前过滤条件把它们都筛掉了。`
+            : `${totalSignals} signals exist but are filtered out.`}
+        </p>
+        <button
+          onClick={onClearFilters}
+          className="rounded-lg bg-amber-500/20 px-4 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-500/30"
+        >
+          {isZh ? "清除过滤条件" : "Clear filters"}
+        </button>
+      </div>
+    );
+  }
+
+  // Case 2: Genuinely no signals — show diagnostic
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+      <div className="mb-4 text-center">
+        <p className="mb-1 text-sm font-semibold text-gray-300">
+          {isZh ? "今日无入场信号" : "No entry signals today"}
+        </p>
+        <p className="text-xs text-gray-500">
+          {isZh
+            ? "这是正常的 — 4 套规则化策略对入场质量要求严格，并非每天都有理想形态。"
+            : "This is normal — the 4 rule-based strategies are strict; ideal setups don't appear every day."}
+        </p>
+      </div>
+
+      {/* Per-symbol regime table */}
+      <div className="mb-4 overflow-hidden rounded-lg border border-white/10">
+        <table className="w-full text-xs">
+          <thead className="bg-white/5">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-gray-500">
+                {isZh ? "标的" : "Symbol"}
+              </th>
+              <th className="px-3 py-2 text-left font-semibold text-gray-500">
+                {isZh ? "市场状态" : "Regime"}
+              </th>
+              <th className="px-3 py-2 text-right font-semibold text-gray-500">
+                {isZh ? "状态" : "Status"}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {symbols.map(([sym, r]) => (
+              <tr key={sym} className="hover:bg-white/5">
+                <td className="px-3 py-2 font-mono font-semibold text-cyan-400">
+                  {sym}
+                </td>
+                <td className="px-3 py-2 text-gray-300">
+                  {r.error
+                    ? "—"
+                    : isZh
+                      ? (REGIME_ZH[r.regime ?? ""] ?? r.regime)
+                      : r.regime}
+                </td>
+                <td className="px-3 py-2 text-right text-[10px] text-gray-500">
+                  {r.error
+                    ? `⚠ ${r.error}`
+                    : (r.candidates?.length ?? 0) === 0
+                      ? isZh
+                        ? "形态未匹配"
+                        : "no pattern match"
+                      : `${r.candidates!.length} ${isZh ? "信号" : "signals"}`}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-col items-center gap-2 text-center">
+        <p className="text-[11px] text-gray-500">
+          {isZh
+            ? "建议：扩大扫描范围到热门大盘股，看看其他标的有没有信号。"
+            : "Tip: expand scan to popular large caps to find more candidates."}
+        </p>
+        <button
+          onClick={onAddDefaults}
+          className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20"
+        >
+          {isZh ? "+ 加入 12 只热门大盘股扫描" : "+ Add 12 popular large caps"}
+        </button>
+      </div>
     </div>
   );
 }
