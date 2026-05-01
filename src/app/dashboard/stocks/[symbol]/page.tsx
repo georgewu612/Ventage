@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
+import { ActiveSignalsForSymbol } from "@/components/dashboard/ActiveSignalsForSymbol";
 import { ChipStructureCard } from "@/components/dashboard/ChipStructureCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
@@ -907,6 +908,9 @@ function StockWorkbenchInner() {
                 <ChipStructureCard symbol={symbol} />
               </div>
             </div>
+
+            {/* ── Active rule-based signals (4-strategy scan) ─────────── */}
+            <ActiveSignalsForSymbol symbol={symbol} />
 
             {/* Historical Analog */}
             <HistoricalAnalogCard symbol={symbol} />

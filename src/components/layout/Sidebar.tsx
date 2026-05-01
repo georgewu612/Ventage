@@ -21,6 +21,7 @@ import {
   Newspaper,
   Radio,
   Settings,
+  Sparkles,
   TrendingUp,
   User,
   Users,
@@ -133,6 +134,12 @@ export function Sidebar() {
       name: t("nav.strategies"),
       href: "/dashboard/strategies",
       icon: BarChart3,
+      feature: "quant_lab",
+    },
+    {
+      name: locale === "zh" ? "信号中心" : "Signal Center",
+      href: "/dashboard/signals",
+      icon: Sparkles,
       feature: "quant_lab",
     },
     {
