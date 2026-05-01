@@ -16,9 +16,12 @@ import {
 } from "lucide-react";
 
 import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
+import { ChipStructureCard } from "@/components/dashboard/ChipStructureCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
+import { SymbolRegimeCard } from "@/components/dashboard/SymbolRegimeCard";
 import { VMScoreCard } from "@/components/dashboard/VMScoreCard";
+import { VolumeAnalysisCard } from "@/components/dashboard/VolumeAnalysisCard";
 import {
   TechnicalLevelsCard,
   type TechnicalLevelsData,
@@ -885,6 +888,25 @@ function StockWorkbenchInner() {
               onRefresh={fetchDesk}
               locale={locale}
             />
+
+            {/* ── Trading System v2 — 3 引擎演示 ───────────────────────── */}
+            <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 p-1">
+              <div className="mb-2 flex items-center gap-2 px-4 pt-3">
+                <span className="rounded-md bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold tracking-wider text-cyan-300 uppercase">
+                  Trading System v2
+                </span>
+                <span className="text-xs text-gray-500">
+                  {locale === "zh"
+                    ? "六维度协同：状态 / 量能 / 筹码"
+                    : "Six-dim engine: Regime / Volume / Chip"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 p-2 lg:grid-cols-3">
+                <SymbolRegimeCard symbol={symbol} />
+                <VolumeAnalysisCard symbol={symbol} />
+                <ChipStructureCard symbol={symbol} />
+              </div>
+            </div>
 
             {/* Historical Analog */}
             <HistoricalAnalogCard symbol={symbol} />
