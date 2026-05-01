@@ -309,7 +309,10 @@ def get_chip_structure(
 def scan_signals(payload: dict[str, Any]) -> dict[str, Any]:
     """Scan a list of symbols for signal candidates from all 4 strategies.
 
-    Body: {"symbols": ["NVDA", "AAPL", ...]}
+    Body: {
+        "symbols": ["NVDA", "AAPL", ...],
+        "include_unscored": false  // optional; if true returns C-graded too
+    }
 
     Returns:
         {
@@ -317,8 +320,16 @@ def scan_signals(payload: dict[str, Any]) -> dict[str, Any]:
             "results": {
                 "NVDA": {
                     "regime": "...",
-                    "candidates": [SignalCandidate, ...]
+                    "regime_score": 75.0,
+                    "candidates": [ScoredSignal.to_dict(), ...]  // sorted by score desc
                 }
+            },
+            "summary": {
+                "total_signals": int,
+                "grade_a": int,
+                "grade_b": int,
+                "grade_c": int,
+                "top_signal": {symbol, strategy_name, grade, score} | null
             }
         }
     """
@@ -328,14 +339,19 @@ def scan_signals(payload: dict[str, Any]) -> dict[str, Any]:
             status_code=400,
             detail="Body must include 'symbols' as a non-empty array",
         )
+    drop_unscored = not bool(payload.get("include_unscored"))
 
     import pandas as pd
     import yfinance as yf
 
     from services.regime_classifier import classify
+    from services.signal_scorer import score_all
     from services.strategy_router import scan_symbol
 
-    out: dict[str, Any] = {}
+    results: dict[str, Any] = {}
+    grade_counts = {"A": 0, "B": 0, "C": 0}
+    all_signals_flat: list[dict[str, Any]] = []
+
     for raw_sym in symbols:
         if not isinstance(raw_sym, str):
             continue
@@ -345,21 +361,49 @@ def scan_signals(payload: dict[str, Any]) -> dict[str, Any]:
                 sym, period="1y", interval="1d", auto_adjust=True, progress=False
             )
             if df is None or df.empty or len(df) < 60:
-                out[sym] = {"error": "insufficient_data"}
+                results[sym] = {"error": "insufficient_data"}
                 continue
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
             regime = classify(df).to_dict()
             cands = scan_symbol(sym, df, regime_override=regime)
-            out[sym] = {
+            scored = score_all(cands, regime, drop_unscored=drop_unscored)
+            scored_dicts = [s.to_dict() for s in scored]
+
+            for s in scored:
+                if s.score_grade in grade_counts:
+                    grade_counts[s.score_grade] += 1
+                all_signals_flat.append(
+                    {
+                        "symbol": sym,
+                        "strategy_name": s.candidate.strategy_name,
+                        "grade": s.score_grade,
+                        "score": s.score_total,
+                    }
+                )
+
+            results[sym] = {
                 "regime": regime["regime"],
                 "regime_score": regime["regime_score"],
-                "candidates": [c.to_dict() for c in cands],
+                "risk_flag": regime.get("risk_flag"),
+                "candidates": scored_dicts,
             }
         except Exception as exc:
-            out[sym] = {"error": str(exc)}
+            results[sym] = {"error": str(exc)}
+
+    # Compute top signal
+    top = None
+    if all_signals_flat:
+        top = max(all_signals_flat, key=lambda x: x["score"])
 
     return {
         "scanned": len(symbols),
-        "results": out,
+        "results": results,
+        "summary": {
+            "total_signals": sum(grade_counts.values()),
+            "grade_a": grade_counts["A"],
+            "grade_b": grade_counts["B"],
+            "grade_c": grade_counts["C"],
+            "top_signal": top,
+        },
     }
