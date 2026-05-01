@@ -324,7 +324,7 @@ def confirm_with_mtf(
     symbol: str,
     direction: str,
     *,
-    lookback_days: int = 14,
+    lookback_days: int = 35,   # ~60 4H bars over US trading hours
 ) -> MTFConfirmation:
     """Top-level entry: pulls 4h bars from Alpaca and runs analyze_4h.
 
