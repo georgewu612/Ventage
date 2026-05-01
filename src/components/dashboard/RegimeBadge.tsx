@@ -32,24 +32,28 @@ const REGIME_CONFIG = {
   },
 } as const;
 
-const VOL_LABEL: Record<MarketRegime["volatility"], string> = {
-  low: "Low",
-  normal: "Normal",
-  high: "High",
-  very_high: "Very High",
+const VOL_LABEL: Record<
+  MarketRegime["volatility"],
+  { zh: string; en: string }
+> = {
+  low: { zh: "低", en: "Low" },
+  normal: { zh: "正常", en: "Normal" },
+  high: { zh: "高", en: "High" },
+  very_high: { zh: "极高", en: "Very High" },
 };
 
 const REC_CONFIG: Record<
   MarketRegime["recommendation"],
-  { text: string; color: string }
+  { zh: string; en: string; color: string }
 > = {
-  offense: { text: "Offense", color: "text-emerald-400" },
-  neutral: { text: "Neutral", color: "text-yellow-400" },
-  defense: { text: "Defense", color: "text-red-400" },
+  offense: { zh: "进攻", en: "Offense", color: "text-emerald-400" },
+  neutral: { zh: "中性", en: "Neutral", color: "text-yellow-400" },
+  defense: { zh: "防守", en: "Defense", color: "text-red-400" },
 };
 
 export function RegimeBadge({ regime, compact = false }: RegimeBadgeProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const zh = locale === "zh";
   const cfg = REGIME_CONFIG[regime.regime];
   const rec = REC_CONFIG[regime.recommendation];
 
@@ -96,18 +100,24 @@ export function RegimeBadge({ regime, compact = false }: RegimeBadgeProps) {
         )}
         <Metric
           label={t("regime.volatility")}
-          value={VOL_LABEL[regime.volatility]}
+          value={
+            zh
+              ? VOL_LABEL[regime.volatility].zh
+              : VOL_LABEL[regime.volatility].en
+          }
         />
         <Metric
           label={t("regime.recommendation")}
-          value={rec.text}
+          value={zh ? rec.zh : rec.en}
           customColor={rec.color}
         />
       </div>
 
       {/* Chief summary */}
       <p className="text-sm leading-relaxed text-slate-300">
-        {regime.chief_summary_en}
+        {zh && regime.chief_summary
+          ? regime.chief_summary
+          : regime.chief_summary_en}
       </p>
     </div>
   );

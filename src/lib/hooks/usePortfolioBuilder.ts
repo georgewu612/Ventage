@@ -64,7 +64,12 @@ export interface RecommendationSummary {
   portfolio_type: string;
   portfolio_type_en: string;
   regime_at_creation: string;
+  risk_level: string;
   confidence_score: number;
+  allocation_structure: Record<string, number> | null;
+  ai_explanation: string | null;
+  ai_explanation_en: string | null;
+  backtest_summary: Record<string, number> | null;
   created_at: string;
 }
 
