@@ -344,11 +344,65 @@ def journal_scan_now(payload: dict[str, Any] | None = None) -> dict[str, Any]:
         counts = persist_scan_results(
             db, scan_results, bar_datetime=bar_dt, min_grade=min_grade
         )
+
+        # Telegram alert for A-grade signals (Phase H.3)
+        a_grade_alerts = 0
+        if not payload.get("skip_telegram"):
+            try:
+                from alerting.telegram import TelegramNotifier
+                from config.settings import get_settings
+                import asyncio
+
+                a_grade = []
+                for sym, scored_list in scan_results.items():
+                    for s in scored_list:
+                        if s.score_grade == "A":
+                            a_grade.append(
+                                {
+                                    "symbol": s.candidate.symbol,
+                                    "strategy_name": s.candidate.strategy_name,
+                                    "direction": s.candidate.direction,
+                                    "score_grade": "A",
+                                    "score_total": s.score_total,
+                                    "regime_at_signal": s.candidate.market_regime,
+                                    "entry_price": s.candidate.entry_price,
+                                    "stop_price": s.candidate.stop_price,
+                                    "target_1": s.candidate.target_1,
+                                    "target_2": s.candidate.target_2,
+                                    "pattern_tags": s.candidate.pattern_tags or [],
+                                }
+                            )
+
+                if a_grade:
+                    settings = get_settings()
+                    if settings.telegram_bot_token and settings.telegram_chat_id:
+                        notifier = TelegramNotifier(
+                            bot_token=settings.telegram_bot_token,
+                            chat_id=settings.telegram_chat_id,
+                        )
+                        # Run the async send synchronously
+                        loop = asyncio.new_event_loop()
+                        try:
+                            if len(a_grade) == 1:
+                                loop.run_until_complete(
+                                    notifier.send_strategy_signal_alert(a_grade[0])
+                                )
+                            else:
+                                loop.run_until_complete(
+                                    notifier.send_strategy_signals_batch(a_grade)
+                                )
+                            a_grade_alerts = len(a_grade)
+                        finally:
+                            loop.close()
+            except Exception:
+                pass  # alert failures shouldn't fail the request
+
         return {
             "status": "ok",
             "scanned": len(symbols),
             "bar_datetime": bar_dt.isoformat() if bar_dt else None,
             **counts,
+            "a_grade_alerts_sent": a_grade_alerts,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"scan-now failed: {exc}")

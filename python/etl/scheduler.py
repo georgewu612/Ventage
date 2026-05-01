@@ -599,6 +599,43 @@ async def run_signal_scan_and_persist(db) -> dict:
     # Persist B+ grade signals (skip C-grade noise)
     counts = persist_scan_results(db, scan_results, bar_datetime=bar_dt, min_grade="B")
 
+    # ── Telegram alert for A-grade signals (Phase H.3) ───────────────────
+    a_grade_signals = []
+    for sym, scored_list in scan_results.items():
+        for s in scored_list:
+            if s.score_grade == "A":
+                a_grade_signals.append(
+                    {
+                        "symbol": s.candidate.symbol,
+                        "strategy_name": s.candidate.strategy_name,
+                        "direction": s.candidate.direction,
+                        "score_grade": s.score_grade,
+                        "score_total": s.score_total,
+                        "regime_at_signal": s.candidate.market_regime,
+                        "entry_price": s.candidate.entry_price,
+                        "stop_price": s.candidate.stop_price,
+                        "target_1": s.candidate.target_1,
+                        "target_2": s.candidate.target_2,
+                        "pattern_tags": s.candidate.pattern_tags or [],
+                    }
+                )
+
+    if a_grade_signals:
+        try:
+            settings = get_settings()
+            if settings.telegram_bot_token and settings.telegram_chat_id:
+                notifier = TelegramNotifier(
+                    bot_token=settings.telegram_bot_token,
+                    chat_id=settings.telegram_chat_id,
+                )
+                if len(a_grade_signals) == 1:
+                    await notifier.send_strategy_signal_alert(a_grade_signals[0])
+                else:
+                    await notifier.send_strategy_signals_batch(a_grade_signals)
+                logger.info("a_grade_alerts_sent", count=len(a_grade_signals))
+        except Exception as exc:
+            logger.warning("a_grade_alert_failed", error=str(exc))
+
     duration_ms = int((time.perf_counter() - start) * 1000)
     logger.info(
         "signal_scan_persist_done",
@@ -607,6 +644,7 @@ async def run_signal_scan_and_persist(db) -> dict:
         skipped=counts["skipped"],
         errors=counts["errors"],
         failed_fetches=failed,
+        a_grade_alerts=len(a_grade_signals),
         duration_ms=duration_ms,
     )
     _write_job_run(
@@ -620,6 +658,7 @@ async def run_signal_scan_and_persist(db) -> dict:
         "status": "success",
         "scanned": len(symbols),
         **counts,
+        "a_grade_alerts": len(a_grade_signals),
         "failed_fetches": failed,
     }
 
