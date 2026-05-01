@@ -36,14 +36,24 @@ class WyckoffLiquiditySweepStrategy(StrategyBase):
     name = "wyckoff_liquidity_sweep"
     eligible_regimes = ["ranging", "exhaustion_reversal"]
 
-    # Tunables
-    LOOKBACK_KEY_LEVEL = 20      # find recent N-bar high/low
-    SWEEP_WINDOW = 3              # how many bars within which the reclaim must happen
-    SWEEP_PIERCE_PCT = 0.3        # piercing must be ≥0.3% past the level (otherwise it's just a touch)
-    LOWER_SHADOW_MIN = 0.40       # ≥40% lower shadow for long
-    UPPER_SHADOW_MIN = 0.40       # ≥40% upper shadow for short
+    # Tunables — Phase G calibration (2026-05-01)
+    # Backtest learnings: longs in ranging regime had -0.46R avg, deep sweeps
+    # didn't outperform, body size inversely correlated with outcome.
+    # → tighten pierce, increase shadow requirement, drop body requirement,
+    #   disable LONG in pure ranging (only allow LONG when there's confirmed
+    #   exhaustion/divergence)
+    LOOKBACK_KEY_LEVEL = 20
+    SWEEP_WINDOW = 3
+    SWEEP_PIERCE_PCT = 0.6        # was 0.3 — require deeper sweep (less noise)
+    LOWER_SHADOW_MIN = 0.50       # was 0.40 — stronger reversal candle
+    UPPER_SHADOW_MIN = 0.50       # same for shorts
     RSI_OVERSOLD = 35
     RSI_OVERBOUGHT = 65
+    # New: minimum 1× ATR away from key level (avoids tight chop near resistance)
+    MIN_PIERCE_ATR = 0.3
+    # In pure 'ranging' regime, LONG signals lost money historically.
+    # Require divergence confirmation OR force exhaustion_reversal regime for longs.
+    REQUIRE_DIVERGENCE_FOR_LONG_IN_RANGING = True
 
     def detect(
         self,
@@ -95,7 +105,10 @@ class WyckoffLiquiditySweepStrategy(StrategyBase):
         # ── LONG SWEEP detection ──────────────────────────────────────────
         # 1. At some point in last 3 bars, low broke below prior_low
         sweep_low = float(recent["Low"].min())
-        pierced_below = sweep_low < prior_low * (1 - self.SWEEP_PIERCE_PCT / 100)
+        # Two pierce conditions: pct AND minimum ATR-distance (avoids chop)
+        pct_pierce_threshold = prior_low * (1 - self.SWEEP_PIERCE_PCT / 100)
+        atr_pierce_threshold = prior_low - self.MIN_PIERCE_ATR * atr_14
+        pierced_below = sweep_low < min(pct_pierce_threshold, atr_pierce_threshold)
         # 2. Today closes BACK above prior_low (reclaim)
         reclaimed_above = last_close > prior_low
         # 3. Today is a reversal candle: long lower shadow OR bullish engulfing
@@ -109,28 +122,49 @@ class WyckoffLiquiditySweepStrategy(StrategyBase):
             )
         )
 
-        if pierced_below and reclaimed_above and is_long_reversal_candle:
+        # Phase G: in pure 'ranging' regime, longs lost -0.46R historically.
+        # Require bullish divergence OR exhaustion_reversal regime to enable LONG.
+        divergence_long = bool(regime.get("notes", {}).get("has_bullish_divergence"))
+        regime_name = regime.get("regime", "")
+        long_regime_allowed = (
+            regime_name == "exhaustion_reversal"
+            or (
+                regime_name == "ranging"
+                and (
+                    not self.REQUIRE_DIVERGENCE_FOR_LONG_IN_RANGING
+                    or divergence_long
+                )
+            )
+        )
+
+        if (
+            pierced_below
+            and reclaimed_above
+            and is_long_reversal_candle
+            and long_regime_allowed
+        ):
             direction = "long"
             entry_price = last_close
             stop_price = sweep_low - 0.3 * atr_14
             r = entry_price - stop_price
             if r <= 0:
                 return None
-            mid_range = (prior_high + prior_low) / 2
-            target_1 = mid_range
-            target_2 = prior_high
+            # Phase G: tighter, more achievable targets.
+            # Old: T1 = mid-range (often unreachable in 20 bars); T2 = prior_high.
+            # New: T1 = 1.5×R fixed; T2 = mid-range (capped by prior_high).
+            target_1 = entry_price + 1.5 * r
+            target_2 = min((prior_high + prior_low) / 2, prior_high)
             invalidation = (
                 f"Sweep failed if close back below {sweep_low:.2f}; "
                 f"or no follow-through within next 2 bars"
             )
 
-            divergence = bool(regime.get("notes", {}).get("has_bullish_divergence"))
             tags = ["liquidity_sweep_long", "reversal_candle"]
             if rv20 > 1.3:
                 tags.append("sweep_with_volume")
             if rsi_now < self.RSI_OVERSOLD:
                 tags.append("oversold_bounce")
-            if divergence:
+            if divergence_long:
                 tags.append("bullish_divergence_confirmation")
 
             return self._build_candidate(
@@ -156,14 +190,16 @@ class WyckoffLiquiditySweepStrategy(StrategyBase):
                     "rsi": round(rsi_now, 1),
                     "atr_14": round(atr_14, 3),
                     "r_dollars": round(r, 2),
-                    "has_bullish_divergence": divergence,
+                    "has_bullish_divergence": divergence_long,
                 },
                 key_level=prior_low,
             )
 
         # ── SHORT SWEEP detection ─────────────────────────────────────────
         sweep_high = float(recent["High"].max())
-        pierced_above = sweep_high > prior_high * (1 + self.SWEEP_PIERCE_PCT / 100)
+        pct_pierce_threshold_high = prior_high * (1 + self.SWEEP_PIERCE_PCT / 100)
+        atr_pierce_threshold_high = prior_high + self.MIN_PIERCE_ATR * atr_14
+        pierced_above = sweep_high > max(pct_pierce_threshold_high, atr_pierce_threshold_high)
         reclaimed_below = last_close < prior_high
         is_short_reversal_candle = (
             (upper_ratio >= self.UPPER_SHADOW_MIN and last_close <= last_open)
@@ -182,9 +218,9 @@ class WyckoffLiquiditySweepStrategy(StrategyBase):
             r = stop_price - entry_price
             if r <= 0:
                 return None
-            mid_range = (prior_high + prior_low) / 2
-            target_1 = mid_range
-            target_2 = prior_low
+            # Phase G: tighter targets for shorts too.
+            target_1 = entry_price - 1.5 * r
+            target_2 = max((prior_high + prior_low) / 2, prior_low)
             invalidation = (
                 f"Sweep failed if close back above {sweep_high:.2f}; "
                 f"or no follow-through within next 2 bars"
