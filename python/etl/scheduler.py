@@ -523,6 +523,142 @@ async def run_symbol_regime_scan(db) -> dict:
     return {"status": "success", "scanned": scanned, "loaded": loaded, "failed": failed}
 
 
+# ── Trading System v2 — Phase F: Signal Journal ETL ─────────────────────────
+
+
+async def run_signal_scan_and_persist(db) -> dict:
+    """Scan Watchlist + holdings for rule-based signals; persist B+ to DB.
+
+    Phase F.3 of Trading System v2. Runs at end-of-day after the symbol
+    regime scan so the regime is fresh.
+    """
+    import yfinance as yf
+    import pandas as pd
+
+    from services.regime_classifier import classify
+    from services.signal_journal import persist_scan_results
+    from services.signal_scorer import score_all
+    from services.strategy_router import scan_symbol
+
+    start = time.perf_counter()
+    logger.info("signal_scan_persist_start")
+
+    # Build universe — union of all users' watchlist + holdings
+    symbols: set[str] = set()
+    try:
+        wl = db.table("watchlists").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (wl.data or []) if r.get("symbol"))
+    except Exception as exc:
+        logger.warning("watchlist_fetch_failed", error=str(exc))
+    try:
+        hd = db.table("portfolio_holdings").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (hd.data or []) if r.get("symbol"))
+    except Exception as exc:
+        logger.warning("holdings_fetch_failed", error=str(exc))
+
+    if not symbols:
+        logger.info("signal_scan_no_symbols")
+        _write_job_run(
+            db,
+            job_name="signal_scan_persist",
+            status="success",
+            loaded=0,
+            duration_ms=int((time.perf_counter() - start) * 1000),
+        )
+        return {"status": "success", "scanned": 0, "persisted": 0}
+
+    scan_results: dict[str, list] = {}
+    bar_dt = None
+    failed = 0
+    for sym in sorted(symbols):
+        try:
+            df = yf.download(
+                sym, period="1y", interval="1d", auto_adjust=True, progress=False
+            )
+            if df is None or df.empty or len(df) < 60:
+                failed += 1
+                continue
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            regime = classify(df).to_dict()
+            cands = scan_symbol(sym, df, regime_override=regime)
+            scored = score_all(cands, regime, drop_unscored=True)
+            scan_results[sym] = scored
+            # Use the latest bar's timestamp as signal time
+            if bar_dt is None:
+                last_ts = df.index[-1]
+                bar_dt = (
+                    last_ts.tz_localize("UTC")
+                    if hasattr(last_ts, "tz") and last_ts.tz is None
+                    else last_ts
+                ).to_pydatetime()
+        except Exception as exc:
+            failed += 1
+            logger.warning("scan_symbol_failed", symbol=sym, error=str(exc))
+
+    # Persist B+ grade signals (skip C-grade noise)
+    counts = persist_scan_results(db, scan_results, bar_datetime=bar_dt, min_grade="B")
+
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    logger.info(
+        "signal_scan_persist_done",
+        scanned=len(symbols),
+        persisted=counts["persisted"],
+        skipped=counts["skipped"],
+        errors=counts["errors"],
+        failed_fetches=failed,
+        duration_ms=duration_ms,
+    )
+    _write_job_run(
+        db,
+        job_name="signal_scan_persist",
+        status="success",
+        loaded=counts["persisted"],
+        duration_ms=duration_ms,
+    )
+    return {
+        "status": "success",
+        "scanned": len(symbols),
+        **counts,
+        "failed_fetches": failed,
+    }
+
+
+async def run_signal_outcome_update(db) -> dict:
+    """Walk forward through active signals; mark hit/miss/expired.
+
+    Phase F.4 of Trading System v2. Runs daily after market close.
+    """
+    from services.signal_journal import update_outcomes
+
+    start = time.perf_counter()
+    logger.info("signal_outcome_update_start")
+    try:
+        result = update_outcomes(db, lookback_days=60, expire_after_days=20)
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.error("signal_outcome_update_error", error=str(exc))
+        _write_job_run(
+            db,
+            job_name="signal_outcome_update",
+            status="error",
+            error_message=str(exc),
+            duration_ms=duration_ms,
+        )
+        return {"status": "error", "error": str(exc)}
+
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    logger.info("signal_outcome_update_done", duration_ms=duration_ms, **result)
+    _write_job_run(
+        db,
+        job_name="signal_outcome_update",
+        status="success",
+        loaded=result["closed"] + result["expired"],
+        duration_ms=duration_ms,
+    )
+    return result
+
+
 def start_scheduler():
     """Start the APScheduler with configured intervals."""
     db = _create_supabase_client()
@@ -734,6 +870,36 @@ def start_scheduler():
         args=[db],
         id="symbol_regime_scan",
         name="Per-Symbol Regime Scan (Trading System v2)",
+        max_instances=1,
+    )
+
+    # Signal scan + persist: daily 22:30 UTC (after regime scan completes)
+    # Scans Watchlist + holdings, runs all 4 strategies, persists B+ signals
+    # to strategy_signals table. Trading System v2 — Phase F.3
+    scheduler.add_job(
+        run_signal_scan_and_persist,
+        "cron",
+        hour=22,
+        minute=30,
+        timezone="UTC",
+        args=[db],
+        id="signal_scan_persist",
+        name="Signal Scan + Journal Persist (Trading System v2)",
+        max_instances=1,
+    )
+
+    # Signal outcome update: daily 23:00 UTC (after signal scan)
+    # Walks forward through active signals; marks hit/miss/expired.
+    # Trading System v2 — Phase F.4
+    scheduler.add_job(
+        run_signal_outcome_update,
+        "cron",
+        hour=23,
+        minute=0,
+        timezone="UTC",
+        args=[db],
+        id="signal_outcome_update",
+        name="Signal Outcome Update (Trading System v2)",
         max_instances=1,
     )
 

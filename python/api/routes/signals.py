@@ -178,3 +178,169 @@ def get_signal_by_id(signal_id: str) -> dict[str, Any]:
         raise
     except Exception as exc:  # pragma: no cover - defensive fallback
         raise HTTPException(status_code=500, detail=f"Failed to fetch signal: {exc}") from exc
+
+
+# ── Trading System v2 — Phase F: Signal Journal API ─────────────────────────
+
+
+@router.get("/signals/journal/history")
+def journal_history(
+    strategy: str | None = Query(default=None),
+    symbol: str | None = Query(default=None),
+    grade: str | None = Query(default=None),
+    regime: str | None = Query(default=None),
+    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    """List historical strategy signals with optional filters.
+
+    Joins each signal with its outcome (when available) so the frontend
+    can show win/loss inline without a second round-trip.
+    """
+    from services.signal_journal import query_history
+
+    try:
+        db = _get_supabase_client()
+        signals = query_history(
+            db,
+            strategy=strategy,
+            symbol=symbol.upper() if symbol else None,
+            grade=grade,
+            regime=regime,
+            days=days,
+            limit=limit,
+        )
+        if not signals:
+            return {"count": 0, "signals": []}
+
+        # Bulk-fetch outcomes
+        sig_ids = [s["id"] for s in signals]
+        outcomes_map: dict[str, dict] = {}
+        for i in range(0, len(sig_ids), 50):
+            chunk = sig_ids[i : i + 50]
+            outs = (
+                db.table("signal_outcomes")
+                .select("*")
+                .in_("signal_id", chunk)
+                .execute()
+                .data
+                or []
+            )
+            for o in outs:
+                outcomes_map[o["signal_id"]] = o
+
+        for s in signals:
+            s["outcome"] = outcomes_map.get(s["id"])
+
+        return {"count": len(signals), "signals": signals}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"journal_history failed: {exc}")
+
+
+@router.get("/signals/journal/stats")
+def journal_stats(
+    strategy: str | None = Query(default=None),
+    regime: str | None = Query(default=None),
+    days: int = Query(default=90, ge=1, le=365),
+) -> dict[str, Any]:
+    """Aggregate hit-rate / avg-R / etc for closed signals."""
+    from services.signal_journal import compute_stats
+
+    try:
+        db = _get_supabase_client()
+        return compute_stats(db, strategy=strategy, regime=regime, days=days)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"journal_stats failed: {exc}")
+
+
+@router.get("/signals/journal/{signal_id}")
+def journal_get_signal(signal_id: str) -> dict[str, Any]:
+    """Retrieve a single strategy_signals row + its outcome (if any)."""
+    from services.signal_journal import get_signal_with_outcome
+
+    try:
+        db = _get_supabase_client()
+        result = get_signal_with_outcome(db, signal_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="signal not found")
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"journal_get failed: {exc}")
+
+
+@router.post("/signals/journal/scan-now")
+def journal_scan_now() -> dict[str, Any]:
+    """Manual trigger for the daily scan-and-persist job (admin/testing).
+
+    Synchronous — may take 30-60 seconds depending on universe size.
+    """
+    from services.regime_classifier import classify
+    from services.signal_journal import persist_scan_results
+    from services.signal_scorer import score_all
+    from services.strategy_router import scan_symbol
+
+    import pandas as pd
+    import yfinance as yf
+    from datetime import datetime, timezone
+
+    try:
+        db = _get_supabase_client()
+        symbols: set[str] = set()
+        wl = db.table("watchlists").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (wl.data or []) if r.get("symbol"))
+        hd = db.table("portfolio_holdings").select("symbol").execute()
+        symbols.update(r["symbol"] for r in (hd.data or []) if r.get("symbol"))
+
+        if not symbols:
+            return {"status": "ok", "scanned": 0, "persisted": 0}
+
+        scan_results: dict[str, list] = {}
+        bar_dt = None
+        for sym in sorted(symbols):
+            try:
+                df = yf.download(
+                    sym, period="1y", interval="1d", auto_adjust=True, progress=False
+                )
+                if df is None or df.empty or len(df) < 60:
+                    continue
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                regime = classify(df).to_dict()
+                cands = scan_symbol(sym, df, regime_override=regime)
+                scored = score_all(cands, regime, drop_unscored=True)
+                scan_results[sym] = scored
+                if bar_dt is None:
+                    last_ts = df.index[-1]
+                    bar_dt = (
+                        last_ts.tz_localize("UTC")
+                        if hasattr(last_ts, "tz") and last_ts.tz is None
+                        else last_ts
+                    ).to_pydatetime()
+            except Exception:
+                continue
+
+        counts = persist_scan_results(
+            db, scan_results, bar_datetime=bar_dt, min_grade="B"
+        )
+        return {
+            "status": "ok",
+            "scanned": len(symbols),
+            "bar_datetime": bar_dt.isoformat() if bar_dt else None,
+            **counts,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"scan-now failed: {exc}")
+
+
+@router.post("/signals/journal/update-outcomes")
+def journal_update_outcomes() -> dict[str, Any]:
+    """Manual trigger for outcome update (admin/testing)."""
+    from services.signal_journal import update_outcomes
+
+    try:
+        db = _get_supabase_client()
+        return update_outcomes(db, lookback_days=60, expire_after_days=20)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"update-outcomes failed: {exc}")

@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   Bell,
+  BookOpen,
   Brain,
   CandlestickChart,
   ChevronDown,
@@ -140,6 +141,12 @@ export function Sidebar() {
       name: locale === "zh" ? "信号中心" : "Signal Center",
       href: "/dashboard/signals",
       icon: Sparkles,
+      feature: "quant_lab",
+    },
+    {
+      name: locale === "zh" ? "信号复盘" : "Signal Journal",
+      href: "/dashboard/signals/journal",
+      icon: BookOpen,
       feature: "quant_lab",
     },
     {
