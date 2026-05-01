@@ -300,3 +300,66 @@ def get_chip_structure(
         "last_close": round(last_close, 2),
         **res.to_dict(),
     }
+
+
+# ── Strategy Scanner (Trading System v2 — Phase D) ──────────────────────────
+
+
+@router.post("/signals/scan")
+def scan_signals(payload: dict[str, Any]) -> dict[str, Any]:
+    """Scan a list of symbols for signal candidates from all 4 strategies.
+
+    Body: {"symbols": ["NVDA", "AAPL", ...]}
+
+    Returns:
+        {
+            "scanned": int,
+            "results": {
+                "NVDA": {
+                    "regime": "...",
+                    "candidates": [SignalCandidate, ...]
+                }
+            }
+        }
+    """
+    symbols = payload.get("symbols") or []
+    if not isinstance(symbols, list) or not symbols:
+        raise HTTPException(
+            status_code=400,
+            detail="Body must include 'symbols' as a non-empty array",
+        )
+
+    import pandas as pd
+    import yfinance as yf
+
+    from services.regime_classifier import classify
+    from services.strategy_router import scan_symbol
+
+    out: dict[str, Any] = {}
+    for raw_sym in symbols:
+        if not isinstance(raw_sym, str):
+            continue
+        sym = raw_sym.upper().strip()
+        try:
+            df = yf.download(
+                sym, period="1y", interval="1d", auto_adjust=True, progress=False
+            )
+            if df is None or df.empty or len(df) < 60:
+                out[sym] = {"error": "insufficient_data"}
+                continue
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            regime = classify(df).to_dict()
+            cands = scan_symbol(sym, df, regime_override=regime)
+            out[sym] = {
+                "regime": regime["regime"],
+                "regime_score": regime["regime_score"],
+                "candidates": [c.to_dict() for c in cands],
+            }
+        except Exception as exc:
+            out[sym] = {"error": str(exc)}
+
+    return {
+        "scanned": len(symbols),
+        "results": out,
+    }
