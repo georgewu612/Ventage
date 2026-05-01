@@ -4,6 +4,9 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  Calculator,
+  ChevronDown,
+  ChevronUp,
   Crosshair,
   ExternalLink,
   Shield,
@@ -13,8 +16,10 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { useState, useCallback } from "react";
 
 import { useI18n } from "@/lib/i18n/provider";
+import { API_BASE_URL } from "@/lib/config";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -503,6 +508,9 @@ export function SignalDetailPanel({
             </div>
           </div>
 
+          {/* Position Calculator */}
+          <PositionCalculator signal={signal} isZh={isZh} />
+
           {/* Workbench link */}
           <Link
             href={`/dashboard/stocks/${signal.symbol}`}
@@ -512,6 +520,245 @@ export function SignalDetailPanel({
             {isZh ? "在工作台查看完整分析" : "Open Workbench"}
           </Link>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Position Calculator ────────────────────────────────────────────────────
+
+interface PositionResult {
+  risk_pct: number;
+  dollar_risk: number;
+  risk_per_share: number;
+  suggested_shares: number;
+  suggested_amount: number;
+  rr_t1: number | null;
+  rr_t2: number | null;
+  potential_gain_t1: number | null;
+  warnings: string[];
+  is_contrarian: boolean;
+}
+
+function PositionCalculator({
+  signal,
+  isZh,
+}: {
+  signal: ScoredSignalDict;
+  isZh: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [accountSize, setAccountSize] = useState("100000");
+  const [pref, setPref] = useState<"conservative" | "moderate" | "aggressive">(
+    "moderate",
+  );
+  const [result, setResult] = useState<PositionResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const calculate = useCallback(async () => {
+    const size = parseFloat(accountSize.replace(/,/g, ""));
+    if (!size || size < 1000) {
+      setError(
+        isZh
+          ? "请输入有效账户规模（≥$1,000）"
+          : "Enter valid account size (≥$1,000)",
+      );
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/risk/position-size`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: signal.symbol,
+          grade: signal.score_grade ?? "C",
+          strategy_name: signal.strategy_name,
+          direction: signal.direction,
+          entry_price: signal.entry_price,
+          stop_price: signal.stop_price,
+          target_1: signal.target_1,
+          target_2: signal.target_2,
+          account_size: size,
+          risk_preference: pref,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setResult(await res.json());
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [accountSize, pref, signal, isZh]);
+
+  return (
+    <div className="mb-3 overflow-hidden rounded-lg border border-white/10 bg-white/5">
+      {/* Header toggle */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Calculator className="h-3.5 w-3.5 text-violet-400" />
+          <span className="text-xs font-semibold text-violet-300">
+            {isZh ? "仓位计算器" : "Position Calculator"}
+          </span>
+        </div>
+        {open ? (
+          <ChevronUp className="h-3.5 w-3.5 text-gray-500" />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+        )}
+      </button>
+
+      {open && (
+        <div className="border-t border-white/10 px-3 pt-2.5 pb-3">
+          {/* Inputs */}
+          <div className="mb-3 flex gap-2">
+            <div className="flex-1">
+              <label className="mb-1 block text-[10px] text-gray-500">
+                {isZh ? "账户规模 ($)" : "Account Size ($)"}
+              </label>
+              <input
+                type="number"
+                value={accountSize}
+                onChange={(e) => setAccountSize(e.target.value)}
+                className="w-full rounded-md border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white focus:ring-1 focus:ring-violet-500 focus:outline-none"
+                placeholder="100000"
+              />
+            </div>
+            <div className="w-32">
+              <label className="mb-1 block text-[10px] text-gray-500">
+                {isZh ? "风险偏好" : "Risk Pref"}
+              </label>
+              <select
+                value={pref}
+                onChange={(e) =>
+                  setPref(
+                    e.target.value as
+                      | "conservative"
+                      | "moderate"
+                      | "aggressive",
+                  )
+                }
+                className="w-full rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs text-white focus:ring-1 focus:ring-violet-500 focus:outline-none"
+              >
+                <option value="conservative">
+                  {isZh ? "保守" : "Conservative"}
+                </option>
+                <option value="moderate">{isZh ? "稳健" : "Moderate"}</option>
+                <option value="aggressive">
+                  {isZh ? "进取" : "Aggressive"}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={calculate}
+            disabled={loading}
+            className="mb-3 w-full rounded-md bg-violet-600 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
+          >
+            {loading
+              ? isZh
+                ? "计算中…"
+                : "Calculating…"
+              : isZh
+                ? "计算建议仓位"
+                : "Calculate"}
+          </button>
+
+          {error && <p className="mb-2 text-[11px] text-red-400">{error}</p>}
+
+          {result && (
+            <div className="space-y-2">
+              {/* Core result */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-md bg-violet-500/10 px-2.5 py-2 text-center">
+                  <p className="text-[10px] text-gray-400">
+                    {isZh ? "建议股数" : "Shares"}
+                  </p>
+                  <p className="font-mono text-lg font-bold text-violet-300">
+                    {result.suggested_shares.toLocaleString()}
+                  </p>
+                </div>
+                <div className="rounded-md bg-white/5 px-2.5 py-2 text-center">
+                  <p className="text-[10px] text-gray-400">
+                    {isZh ? "投入金额" : "Amount"}
+                  </p>
+                  <p className="font-mono text-sm font-bold text-white">
+                    $
+                    {result.suggested_amount.toLocaleString(undefined, {
+                      maximumFractionDigits: 0,
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Risk / R:R */}
+              <div className="grid grid-cols-3 gap-1.5 text-center">
+                <div className="rounded-md bg-red-500/10 px-1.5 py-1.5">
+                  <p className="text-[9px] text-gray-500">
+                    {isZh ? "风险金额" : "$ Risk"}
+                  </p>
+                  <p className="font-mono text-xs font-semibold text-red-300">
+                    $
+                    {result.dollar_risk.toLocaleString(undefined, {
+                      maximumFractionDigits: 0,
+                    })}
+                  </p>
+                </div>
+                <div className="rounded-md bg-emerald-500/10 px-1.5 py-1.5">
+                  <p className="text-[9px] text-gray-500">R:R T1</p>
+                  <p className="font-mono text-xs font-semibold text-emerald-300">
+                    {result.rr_t1 != null ? `${result.rr_t1.toFixed(1)}R` : "—"}
+                  </p>
+                </div>
+                <div className="rounded-md bg-emerald-500/10 px-1.5 py-1.5">
+                  <p className="text-[9px] text-gray-500">R:R T2</p>
+                  <p className="font-mono text-xs font-semibold text-emerald-300">
+                    {result.rr_t2 != null ? `${result.rr_t2.toFixed(1)}R` : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Risk % */}
+              <p className="text-center text-[10px] text-gray-500">
+                {isZh ? "单笔风险" : "Risk per trade"}:{" "}
+                <span className="text-violet-300">{result.risk_pct}%</span>
+                {result.is_contrarian && (
+                  <span className="ml-1 text-amber-400">
+                    ({isZh ? "逆向折扣" : "contrarian ×0.75"})
+                  </span>
+                )}
+              </p>
+
+              {/* Warnings */}
+              {result.warnings.length > 0 && (
+                <div className="space-y-1">
+                  {result.warnings.map((w, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5"
+                    >
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
+                      <p className="text-[10px] text-amber-300">{w}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-center text-[9px] text-gray-600">
+                {isZh
+                  ? "* 仅供参考，不构成投资建议"
+                  : "* For reference only, not investment advice"}
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
