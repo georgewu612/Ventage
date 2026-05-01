@@ -231,3 +231,72 @@ def get_volume_analysis(
         "context": context,
         **res.to_dict(),
     }
+
+
+# ── Chip Structure Engine (Trading System v2 — Phase C) ─────────────────────
+
+
+@router.get("/chip/{symbol}")
+def get_chip_structure(
+    symbol: str,
+    period: str = "2y",
+    lookback: int = 180,
+    n_buckets: int = 50,
+) -> dict[str, Any]:
+    """Per-symbol cost-basis / chip structure analysis (Volume Profile based).
+
+    Live-computes from yfinance.
+
+    Args:
+        symbol: Ticker (case-insensitive).
+        period: yfinance period (default '2y' to give the lookback window
+            enough history to infer cost zone migration).
+        lookback: Number of trailing daily bars used for the profile
+            (default 180 ≈ 9 months).
+        n_buckets: Price-bucket count (default 50).
+
+    Returns:
+        ChipAnalysis JSON with:
+          cost_zone_position, overhead_supply_density, below_support_density,
+          chip_concentration_score, chip_migration_direction,
+          breakout_air_pocket_score, profile_tag, chip_warning, chip_score,
+          plus visualization aids (cost_zone_low/high/center, poc_price).
+    """
+    sym = symbol.upper()
+
+    import pandas as pd
+    import yfinance as yf
+
+    from services.chip_structure import analyze_chip_structure
+
+    try:
+        df = yf.download(
+            sym, period=period, interval="1d", auto_adjust=True, progress=False
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"yfinance failed: {exc}")
+
+    if df is None or df.empty or len(df) < 30:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Insufficient data for {sym} (need ≥30 daily bars)",
+        )
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    res = analyze_chip_structure(df, lookback=lookback, n_buckets=n_buckets)
+    last_ts = df.index[-1]
+    last_ts_str = (
+        last_ts.tz_localize("UTC").isoformat()
+        if hasattr(last_ts, "tz") and last_ts.tz is None
+        else last_ts.isoformat()
+    )
+    last_close = float(df["Close"].iloc[-1])
+
+    return {
+        "symbol": sym,
+        "timeframe": "1d",
+        "datetime": last_ts_str,
+        "last_close": round(last_close, 2),
+        **res.to_dict(),
+    }
