@@ -16,11 +16,12 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 import { useI18n } from "@/lib/i18n/provider";
 import { API_BASE_URL } from "@/lib/config";
 import { ExitPlanCard } from "@/components/dashboard/ExitPlanCard";
+import { useProfile } from "@/lib/hooks/useProfile";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -561,12 +562,23 @@ function PositionCalculator({
   signal: ScoredSignalDict;
   isZh: boolean;
 }) {
+  const { profile } = useProfile();
   const [open, setOpen] = useState(false);
   const [accountSize, setAccountSize] = useState("100000");
   const [pref, setPref] = useState<"conservative" | "moderate" | "aggressive">(
     "moderate",
   );
   const [result, setResult] = useState<PositionResult | null>(null);
+
+  // Auto-load saved settings from profile
+  useEffect(() => {
+    if (profile?.risk_account_size != null) {
+      setAccountSize(String(profile.risk_account_size));
+    }
+    if (profile?.risk_preference) {
+      setPref(profile.risk_preference);
+    }
+  }, [profile]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

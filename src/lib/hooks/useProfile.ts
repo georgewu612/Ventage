@@ -13,6 +13,10 @@ export interface Profile {
   stripe_subscription_id: string | null;
   plan_expires_at: string | null;
   created_at: string;
+  // Risk Engine settings
+  risk_account_size?: number | null;
+  risk_preference?: "conservative" | "moderate" | "aggressive" | null;
+  risk_max_position_pct?: number | null;
 }
 
 export function useProfile() {

@@ -361,6 +361,20 @@ export function Sidebar() {
                 {locale === "zh" ? "我的会员" : "Membership"}
               </span>
             </Link>
+            <Link
+              href="/dashboard/settings"
+              onClick={close}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all ${
+                pathname === "/dashboard/settings"
+                  ? "bg-cyan-500/20 font-medium text-cyan-200"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">
+                {locale === "zh" ? "设置" : "Settings"}
+              </span>
+            </Link>
           </div>
         </nav>
 
