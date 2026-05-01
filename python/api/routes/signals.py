@@ -418,3 +418,95 @@ def journal_update_outcomes() -> dict[str, Any]:
         return update_outcomes(db, lookback_days=60, expire_after_days=20)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"update-outcomes failed: {exc}")
+
+
+@router.post("/signals/journal/test-telegram")
+def journal_test_telegram(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Send a synthetic A-grade test alert to verify Telegram credentials.
+
+    Body (optional):
+      {
+        "symbol": "NVDA",         // default "TEST"
+        "strategy": "trend_pullback_breakout",
+        "batch": false            // true → send batch message (2 fake signals)
+      }
+    """
+    import asyncio
+    from alerting.telegram import TelegramNotifier
+    from config.settings import get_settings
+
+    payload = payload or {}
+    symbol = str(payload.get("symbol") or "TEST").upper()
+    strategy = str(payload.get("strategy") or "trend_pullback_breakout")
+    send_batch = bool(payload.get("batch", False))
+
+    settings = get_settings()
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        raise HTTPException(
+            status_code=503,
+            detail="TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured",
+        )
+
+    fake_signal = {
+        "symbol": symbol,
+        "strategy_name": strategy,
+        "direction": "long",
+        "score_grade": "A",
+        "score_total": 88.5,
+        "regime_at_signal": "strong_uptrend",
+        "entry_price": 150.00,
+        "stop_price": 145.00,
+        "target_1": 157.50,
+        "target_2": 165.00,
+        "pattern_tags": ["test_signal", "two_bar_confirmation"],
+    }
+
+    try:
+        notifier = TelegramNotifier(
+            bot_token=settings.telegram_bot_token,
+            chat_id=settings.telegram_chat_id,
+        )
+        loop = asyncio.new_event_loop()
+        try:
+            if send_batch:
+                fake_signal_2 = dict(fake_signal)
+                fake_signal_2.update(
+                    {
+                        "symbol": symbol + "2",
+                        "strategy_name": "wyckoff_liquidity_sweep",
+                        "score_total": 82.0,
+                        "entry_price": 200.00,
+                        "stop_price": 194.00,
+                        "target_1": 209.00,
+                        "target_2": 215.00,
+                    }
+                )
+                sent = loop.run_until_complete(
+                    notifier.send_strategy_signals_batch([fake_signal, fake_signal_2])
+                )
+                msg_type = "batch"
+            else:
+                sent = loop.run_until_complete(
+                    notifier.send_strategy_signal_alert(fake_signal)
+                )
+                msg_type = "single"
+        finally:
+            loop.close()
+
+        if not sent:
+            raise HTTPException(
+                status_code=502,
+                detail="Telegram API returned failure — check bot token and chat_id",
+            )
+
+        return {
+            "status": "ok",
+            "sent": sent,
+            "type": msg_type,
+            "symbol": symbol,
+            "chat_id": settings.telegram_chat_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"test-telegram failed: {exc}")
