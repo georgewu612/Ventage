@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -25,6 +26,12 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+
+    @field_validator("telegram_chat_id", "telegram_bot_token", mode="before")
+    @classmethod
+    def _strip_telegram_fields(cls, v: str) -> str:
+        """Strip accidental whitespace/newlines that Railway can inject."""
+        return str(v).strip() if v else v
 
     # Frontend URL for CORS (production)
     frontend_url: str = ""
