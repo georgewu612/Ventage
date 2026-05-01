@@ -540,3 +540,188 @@ html.dark * {
 .animate-slide-in-right {
   animation: slideInRight 0.3s ease-out both;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * LIGHT-MODE THEME SAFETY OVERRIDES (added 2026-05-01)
+ *
+ * Two systemic problems these rules fix:
+ *
+ * 1) text-white on saturated colored buttons becomes invisible
+ *    Root cause: html.light .text-white forces near-black for general
+ *      readability when text-white was used as "contrast on dark surface".
+ *    Fix: when text-white sits on a saturated colored button bg
+ *      (cyan/violet/emerald/amber/red/blue/purple/indigo/sky/teal/pink/orange,
+ *      shades 400–700), restore real white.
+ *
+ * 2) bg-slate-{800,900}/{10..50} translucent versions stay dark in light mode
+ *    Root cause: existing overrides only catch the opaque shorthand
+ *      (bg-slate-900) and /95, not the common /10../50 variants used as
+ *      "subtle dark surface" cards.
+ *    Fix: map them to a translucent light surface.
+ *
+ *   Document this contract in CLAUDE.md → "Frontend Theme Safety".
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/* Fix 1: keep white text on saturated colored buttons/badges */
+html.light
+  :is(
+    .bg-cyan-400,
+    .bg-cyan-500,
+    .bg-cyan-600,
+    .bg-cyan-700,
+    .bg-violet-400,
+    .bg-violet-500,
+    .bg-violet-600,
+    .bg-violet-700,
+    .bg-emerald-400,
+    .bg-emerald-500,
+    .bg-emerald-600,
+    .bg-emerald-700,
+    .bg-amber-400,
+    .bg-amber-500,
+    .bg-amber-600,
+    .bg-amber-700,
+    .bg-red-400,
+    .bg-red-500,
+    .bg-red-600,
+    .bg-red-700,
+    .bg-blue-400,
+    .bg-blue-500,
+    .bg-blue-600,
+    .bg-blue-700,
+    .bg-purple-400,
+    .bg-purple-500,
+    .bg-purple-600,
+    .bg-purple-700,
+    .bg-indigo-400,
+    .bg-indigo-500,
+    .bg-indigo-600,
+    .bg-indigo-700,
+    .bg-sky-400,
+    .bg-sky-500,
+    .bg-sky-600,
+    .bg-sky-700,
+    .bg-teal-400,
+    .bg-teal-500,
+    .bg-teal-600,
+    .bg-teal-700,
+    .bg-pink-400,
+    .bg-pink-500,
+    .bg-pink-600,
+    .bg-pink-700,
+    .bg-orange-400,
+    .bg-orange-500,
+    .bg-orange-600,
+    .bg-orange-700,
+    .bg-fuchsia-500,
+    .bg-fuchsia-600,
+    .bg-rose-500,
+    .bg-rose-600
+  ).text-white,
+html.light
+  :is(
+    .bg-cyan-400,
+    .bg-cyan-500,
+    .bg-cyan-600,
+    .bg-cyan-700,
+    .bg-violet-400,
+    .bg-violet-500,
+    .bg-violet-600,
+    .bg-violet-700,
+    .bg-emerald-400,
+    .bg-emerald-500,
+    .bg-emerald-600,
+    .bg-emerald-700,
+    .bg-amber-400,
+    .bg-amber-500,
+    .bg-amber-600,
+    .bg-amber-700,
+    .bg-red-400,
+    .bg-red-500,
+    .bg-red-600,
+    .bg-red-700,
+    .bg-blue-400,
+    .bg-blue-500,
+    .bg-blue-600,
+    .bg-blue-700,
+    .bg-purple-400,
+    .bg-purple-500,
+    .bg-purple-600,
+    .bg-purple-700,
+    .bg-indigo-400,
+    .bg-indigo-500,
+    .bg-indigo-600,
+    .bg-indigo-700,
+    .bg-sky-400,
+    .bg-sky-500,
+    .bg-sky-600,
+    .bg-sky-700,
+    .bg-teal-400,
+    .bg-teal-500,
+    .bg-teal-600,
+    .bg-teal-700,
+    .bg-pink-400,
+    .bg-pink-500,
+    .bg-pink-600,
+    .bg-pink-700,
+    .bg-orange-400,
+    .bg-orange-500,
+    .bg-orange-600,
+    .bg-orange-700,
+    .bg-fuchsia-500,
+    .bg-fuchsia-600,
+    .bg-rose-500,
+    .bg-rose-600
+  )
+  .text-white {
+  color: #ffffff !important;
+}
+
+/* Fix 2: translucent slate/gray/zinc dark surfaces → light surfaces in light mode */
+html.light .bg-slate-900\/10,
+html.light .bg-slate-900\/20,
+html.light .bg-slate-900\/30,
+html.light .bg-slate-900\/40,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/70,
+html.light .bg-slate-900\/80,
+html.light .bg-slate-900\/90,
+html.light .bg-gray-900\/10,
+html.light .bg-gray-900\/20,
+html.light .bg-gray-900\/30,
+html.light .bg-gray-900\/40,
+html.light .bg-gray-900\/50,
+html.light .bg-gray-900\/60,
+html.light .bg-zinc-900\/10,
+html.light .bg-zinc-900\/20,
+html.light .bg-zinc-900\/30,
+html.light .bg-zinc-900\/40,
+html.light .bg-zinc-900\/50,
+html.light .bg-black\/10,
+html.light .bg-black\/20,
+html.light .bg-black\/30,
+html.light .bg-black\/40,
+html.light .bg-black\/50 {
+  background-color: rgba(248, 250, 252, 0.7) !important;
+}
+
+html.light .bg-slate-800\/10,
+html.light .bg-slate-800\/20,
+html.light .bg-slate-800\/30,
+html.light .bg-slate-800\/40,
+html.light .bg-slate-800\/50,
+html.light .bg-slate-800\/60,
+html.light .bg-slate-800\/70,
+html.light .bg-gray-800\/10,
+html.light .bg-gray-800\/20,
+html.light .bg-gray-800\/30,
+html.light .bg-gray-800\/40,
+html.light .bg-gray-800\/50,
+html.light .bg-zinc-800\/30,
+html.light .bg-zinc-800\/40,
+html.light .bg-zinc-800\/50 {
+  background-color: rgba(241, 245, 249, 0.7) !important;
+}
+
+/* End of light-mode theme safety overrides */

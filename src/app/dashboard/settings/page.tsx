@@ -14,7 +14,6 @@ import Link from "next/link";
 import { useI18n } from "@/lib/i18n/provider";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useTheme } from "@/lib/theme/provider";
 
 type RiskPref = "conservative" | "moderate" | "aggressive";
 
@@ -42,9 +41,6 @@ const RISK_PREF_INFO: Record<
 export default function SettingsPage() {
   const { locale } = useI18n();
   const isZh = locale === "zh";
-  const { theme } = useTheme();
-  const isLight = theme === "light";
-
   const { profile, loading: profileLoading, refetch } = useProfile();
 
   const [accountSize, setAccountSize] = useState("100000");
@@ -278,21 +274,8 @@ export default function SettingsPage() {
         </div>
 
         {/* Risk Examples Preview */}
-        <div
-          className="mt-5 rounded-lg border p-4"
-          style={{
-            backgroundColor: isLight
-              ? "rgba(248, 250, 252, 0.8)"
-              : "rgba(15, 23, 42, 0.4)",
-            borderColor: isLight
-              ? "rgba(0, 0, 0, 0.08)"
-              : "rgba(255, 255, 255, 0.1)",
-          }}
-        >
-          <p
-            className="mb-2 text-[11px] font-semibold"
-            style={{ color: isLight ? "#475569" : "#9ca3af" }}
-          >
+        <div className="mt-5 rounded-lg border border-white/10 bg-slate-900/40 p-4">
+          <p className="mb-2 text-[11px] font-semibold text-gray-400">
             {isZh
               ? "按当前设置，每笔交易的最大风险金额："
               : "Per-trade $ risk under current settings:"}
@@ -335,10 +318,9 @@ export default function SettingsPage() {
           <button
             onClick={save}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold transition-colors hover:bg-violet-500 disabled:opacity-50"
-            style={{ color: "#ffffff" }}
+            className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:opacity-50"
           >
-            <Save className="h-4 w-4" style={{ color: "#ffffff" }} />
+            <Save className="h-4 w-4" />
             {saving
               ? isZh
                 ? "保存中…"

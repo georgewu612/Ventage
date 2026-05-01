@@ -104,6 +104,49 @@ export default async function Page() {
 - 深色主题优先（`bg-slate-900`、`text-white`）
 - 使用 `backdrop-blur` 和 `bg-white/10` 做玻璃效果
 
+### 🚨 双主题安全契约（Light/Dark Mode）
+
+> 项目支持深色（默认）和浅色两种主题，通过 `html.light` / `html.dark` 类切换。
+> `globals.css` 里有大量 `html.light .xxx` 全局覆盖。**写新组件前必须知道这些坑：**
+
+#### 坑 1：`text-white` 在浅色模式会被强制改成近黑
+
+`globals.css` 里有：`html.light .text-white { color: #0f172a !important }`
+这是为了让"用作标题/标签"的 `text-white` 在浅色模式可读。
+
+✅ **白底/暗面 backdrop 上用 `text-white` 没问题**（自动变深字）
+✅ **饱和色按钮/徽章上用 `text-white` 也没问题**（globals.css 已加规则保留白字）：
+`.bg-cyan-500.text-white`、`.bg-violet-600.text-white`、`.bg-emerald-500.text-white` 等
+覆盖颜色：cyan/violet/emerald/amber/red/blue/purple/indigo/sky/teal/pink/orange/fuchsia/rose
+覆盖深度：400-700
+
+⚠️ **若用了不在覆盖列表内的颜色（如 `bg-lime-500`）**，需要在 `globals.css` 的"LIGHT-MODE THEME SAFETY OVERRIDES"区追加。
+
+#### 坑 2：`bg-slate-900/40` 类的透明深色背景在浅色模式仍然是深色
+
+`globals.css` 已对 `bg-slate-900/{10..90}`、`bg-gray-900/{10..60}`、`bg-zinc-900/{10..50}`、
+`bg-black/{10..50}`、`bg-slate-800/{10..70}` 等加了浅色覆盖。
+
+✅ **这些常用透明深色 bg 可以安心用**
+⚠️ **若用了 `bg-neutral-900/40` 这种没覆盖的，会撞坑**——加进 globals.css 或换用上面的安全选项。
+
+#### 坑 3：使用了 `globals.css` 没覆盖的颜色类
+
+写组件前可以快速检查：
+
+```bash
+grep "html.light .text-XXX\|html.light .bg-XXX" src/app/globals.css
+```
+
+没结果就先加覆盖再用，不要用 inline `style={{ color: ... }}` 绕过——那是上次救火的临时方案，不可持续。
+
+#### 自检清单
+
+- [ ] 在 dashboard 里点右上角 ☀️/🌙 切换主题，所有文字都清晰可读？
+- [ ] 按钮文字（尤其是彩色 bg 上的 `text-white`）在两种模式下都可见？
+- [ ] 卡片/容器的背景在浅色模式下不是大片深灰？
+- [ ] 文字颜色不是从 globals.css 里取灰色然后又被深色背景吞掉？
+
 ---
 
 ## 🐍 Python 规范
