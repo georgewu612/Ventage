@@ -152,3 +152,85 @@ def position_size_from_signal(
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"position-size-from-signal failed: {exc}")
+
+
+# ── Trade Manager endpoints ───────────────────────────────────────────────────
+
+@router.get("/risk/exit-plan/{signal_id}")
+def get_exit_plan(signal_id: str) -> dict[str, Any]:
+    """Return the full 4-type exit plan for a strategy signal.
+
+    Does NOT need current price data — the plan is generated from the
+    signal's entry / stop / targets alone.
+    """
+    from services.trade_manager import get_exit_plan as _get_exit_plan
+
+    try:
+        db = _get_supabase()
+        resp = (
+            db.table("strategy_signals")
+            .select("*")
+            .eq("id", signal_id)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            raise HTTPException(status_code=404, detail="Signal not found")
+        plan = _get_exit_plan(rows[0])
+        return plan.to_dict()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"exit-plan failed: {exc}")
+
+
+@router.get("/risk/exit-evaluate/{signal_id}")
+def evaluate_exit(signal_id: str) -> dict[str, Any]:
+    """Evaluate the current exit status of a signal using live OHLCV data.
+
+    Fetches the signal from DB, downloads fresh OHLCV since signal_date,
+    runs the 4-type exit evaluation, and returns status + recommended action.
+    """
+    import pandas as pd
+    import yfinance as yf
+    from services.trade_manager import evaluate_exit as _evaluate_exit
+
+    try:
+        db = _get_supabase()
+        resp = (
+            db.table("strategy_signals")
+            .select("*")
+            .eq("id", signal_id)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            raise HTTPException(status_code=404, detail="Signal not found")
+
+        sig = rows[0]
+        symbol = sig.get("symbol", "")
+        signal_date = sig.get("signal_date") or sig.get("datetime") or sig.get("created_at")
+
+        # Download OHLCV from signal date to today
+        df = yf.download(
+            symbol,
+            start=str(signal_date)[:10] if signal_date else None,
+            period="3mo" if not signal_date else None,
+            interval="1d",
+            auto_adjust=True,
+            progress=False,
+        )
+        if df is None or df.empty:
+            raise HTTPException(status_code=502, detail=f"Could not fetch OHLCV for {symbol}")
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        result = _evaluate_exit(sig, df, entry_bar_index=0)
+        return result.to_dict()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"exit-evaluate failed: {exc}")

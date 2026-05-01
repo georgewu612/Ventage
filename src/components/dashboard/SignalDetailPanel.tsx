@@ -20,6 +20,7 @@ import { useState, useCallback } from "react";
 
 import { useI18n } from "@/lib/i18n/provider";
 import { API_BASE_URL } from "@/lib/config";
+import { ExitPlanCard } from "@/components/dashboard/ExitPlanCard";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -510,6 +511,19 @@ export function SignalDetailPanel({
 
           {/* Position Calculator */}
           <PositionCalculator signal={signal} isZh={isZh} />
+
+          {/* Exit Plan */}
+          <ExitPlanCard
+            signal={{
+              symbol: signal.symbol,
+              strategy_name: signal.strategy_name,
+              direction: signal.direction,
+              entry_price: signal.entry_price,
+              stop_price: signal.stop_price,
+              target_1: signal.target_1,
+              target_2: signal.target_2,
+            }}
+          />
 
           {/* Workbench link */}
           <Link
