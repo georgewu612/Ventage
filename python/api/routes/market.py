@@ -159,3 +159,75 @@ def get_symbol_regime(symbol: str, fresh: bool = False) -> dict[str, Any]:
         "notes": res.notes,
         "source": "live_compute",
     }
+
+
+# ── Volume Engine (Trading System v2 — Phase B) ──────────────────────────────
+
+
+@router.get("/volume/{symbol}")
+def get_volume_analysis(
+    symbol: str,
+    signal_type: str | None = None,
+    key_level: float | None = None,
+    direction: str = "long",
+    period: str = "6mo",
+) -> dict[str, Any]:
+    """Per-symbol volume analysis with optional signal context.
+
+    Live-computes from yfinance (no DB cache). Returns the full VolumeAnalysis
+    dataclass as JSON.
+
+    Args:
+        symbol: Ticker (case-insensitive).
+        signal_type: Optional context — 'breakout' / 'pullback' / 'sweep' /
+            'trend' / 'reversal'. Enables context-specific tag emission.
+        key_level: Required when signal_type='breakout' — the resistance
+            (long) or support (short) level being tested.
+        direction: 'long' or 'short' (default 'long'). Used for pullback
+            quality direction-aware checks.
+        period: yfinance period string. Default '6mo' is enough for the
+            30-bar minimum required for stage_rhythm analysis.
+    """
+    sym = symbol.upper()
+
+    import pandas as pd
+    import yfinance as yf
+
+    from services.volume_engine import analyze_volume
+
+    try:
+        df = yf.download(
+            sym, period=period, interval="1d", auto_adjust=True, progress=False
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"yfinance failed: {exc}")
+
+    if df is None or df.empty or len(df) < 30:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Insufficient data for {sym} (need ≥30 daily bars)",
+        )
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    context = None
+    if signal_type:
+        context = {"signal_type": signal_type, "direction": direction}
+        if key_level is not None:
+            context["key_level"] = float(key_level)
+
+    res = analyze_volume(df, context)
+    last_ts = df.index[-1]
+    last_ts_str = (
+        last_ts.tz_localize("UTC").isoformat()
+        if hasattr(last_ts, "tz") and last_ts.tz is None
+        else last_ts.isoformat()
+    )
+
+    return {
+        "symbol": sym,
+        "timeframe": "1d",
+        "datetime": last_ts_str,
+        "context": context,
+        **res.to_dict(),
+    }
