@@ -133,19 +133,19 @@ export default function SettingsPage() {
       grade: "A",
       pct: 1.0,
       dollar: accSizeNum * 0.01,
-      color: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+      color: "text-emerald-300 bg-emerald-500/10 border-emerald-500/40",
     },
     {
       grade: "B",
       pct: 0.75,
       dollar: accSizeNum * 0.0075,
-      color: "text-amber-300 bg-amber-500/10 border-amber-500/30",
+      color: "text-amber-300 bg-amber-500/10 border-amber-500/40",
     },
     {
       grade: "C",
       pct: 0.5,
       dollar: accSizeNum * 0.005,
-      color: "text-slate-300 bg-slate-500/10 border-slate-500/30",
+      color: "text-slate-300 bg-slate-500/10 border-slate-500/40",
     },
   ];
 
@@ -273,11 +273,11 @@ export default function SettingsPage() {
             {examples.map((ex) => (
               <div
                 key={ex.grade}
-                className={`rounded-md border px-3 py-2.5 text-center ${ex.color}`}
+                className={`rounded-md border-2 px-3 py-2.5 text-center ${ex.color}`}
               >
-                <p className="text-lg font-bold">{ex.grade}</p>
-                <p className="text-xs font-semibold">{ex.pct}%</p>
-                <p className="mt-0.5 font-mono text-xs">
+                <p className="text-xl font-bold">{ex.grade}</p>
+                <p className="text-sm font-bold">{ex.pct}%</p>
+                <p className="mt-0.5 font-mono text-sm font-semibold">
                   $
                   {ex.dollar.toLocaleString(undefined, {
                     maximumFractionDigits: 0,
