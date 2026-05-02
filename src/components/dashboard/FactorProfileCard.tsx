@@ -129,7 +129,11 @@ function RadarChart({
           key={i}
           points={ring.points}
           fill="none"
-          stroke={i === rings.length - 1 ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.06)"}
+          stroke={
+            i === rings.length - 1
+              ? "rgba(255,255,255,0.15)"
+              : "rgba(255,255,255,0.06)"
+          }
           strokeWidth="1"
         />
       ))}
@@ -161,7 +165,9 @@ function RadarChart({
         const a = angle(i);
         const px = cx + Math.cos(a) * r;
         const py = cy + Math.sin(a) * r;
-        return <circle key={i} cx={px} cy={py} r="3.5" fill="rgb(167, 139, 250)" />;
+        return (
+          <circle key={i} cx={px} cy={py} r="3.5" fill="rgb(167, 139, 250)" />
+        );
       })}
 
       {/* Labels */}
@@ -180,7 +186,7 @@ function RadarChart({
             x={lp.x}
             y={lp.y + 9}
             textAnchor={lp.anchor}
-            className="fill-violet-300 text-[10px] font-mono"
+            className="fill-violet-300 font-mono text-[10px]"
             style={{ fill: "#c4b5fd" }}
           >
             {lp.value.toFixed(0)}%
@@ -210,7 +216,10 @@ export function FactorProfileCard({ symbol }: { symbol: string }) {
         let msg = `HTTP ${res.status}`;
         try {
           const body = await res.json();
-          msg = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
+          msg =
+            typeof body?.detail === "string"
+              ? body.detail
+              : JSON.stringify(body);
         } catch {
           msg = await res.text();
         }
@@ -239,7 +248,9 @@ export function FactorProfileCard({ symbol }: { symbol: string }) {
         </div>
         <div className="h-48 animate-pulse rounded bg-white/5" />
         <p className="mt-2 text-center text-[10px] text-gray-500">
-          {isZh ? "首次加载较慢（计算同行业 30+ 只股票）..." : "First load is slow (computing 30+ peers)..."}
+          {isZh
+            ? "首次加载较慢（计算同行业 30+ 只股票）..."
+            : "First load is slow (computing 30+ peers)..."}
         </p>
       </div>
     );
@@ -255,7 +266,13 @@ export function FactorProfileCard({ symbol }: { symbol: string }) {
           </span>
         </div>
         <p className="text-xs text-gray-500">
-          {error ? (isZh ? `数据不足：${error.slice(0, 150)}` : `Insufficient data: ${error.slice(0, 150)}`) : (isZh ? "暂无数据" : "No data")}
+          {error
+            ? isZh
+              ? `数据不足：${error.slice(0, 150)}`
+              : `Insufficient data: ${error.slice(0, 150)}`
+            : isZh
+              ? "暂无数据"
+              : "No data"}
         </p>
         {error && (
           <button
@@ -270,7 +287,7 @@ export function FactorProfileCard({ symbol }: { symbol: string }) {
   }
 
   const labels = FACTOR_ORDER.map((f) =>
-    isZh ? FACTOR_LABELS_ZH[f] : FACTOR_LABELS_EN[f]
+    isZh ? FACTOR_LABELS_ZH[f] : FACTOR_LABELS_EN[f],
   );
   const values = FACTOR_ORDER.map((f) => data.factors[f]?.percentile ?? 50);
 

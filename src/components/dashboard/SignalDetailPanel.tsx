@@ -518,6 +518,14 @@ export function SignalDetailPanel({
             <MTFBadge signal={signal} isZh={isZh} />
           )}
 
+          {/* Triple Confirmation (Signal + DCF + F-Score) */}
+          <TripleConfirmationBadge
+            symbol={signal.symbol}
+            signalGrade={signal.score_grade}
+            direction={signal.direction}
+            isZh={isZh}
+          />
+
           {/* Invalidation */}
           <div className="mb-3 flex items-start gap-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-400" />
@@ -859,9 +867,7 @@ function MTFBadge({
   if (!cfg) return null;
 
   return (
-    <div
-      className={`mb-3 rounded-lg border p-2.5 ${cfg.border} ${cfg.bg}`}
-    >
+    <div className={`mb-3 rounded-lg border p-2.5 ${cfg.border} ${cfg.bg}`}>
       <div className="mb-1.5 flex items-center justify-between">
         <span className={`text-xs font-semibold ${cfg.text}`}>
           {cfg.icon} {cfg.label}
@@ -905,6 +911,205 @@ function MTFBadge({
             </p>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Triple Confirmation Badge (Signal + DCF + F-Score) ──────────────────────
+
+interface DCFSummary {
+  rating: "undervalued" | "fairly_valued" | "overvalued";
+  upside_pct: number;
+}
+
+interface FScoreSummary {
+  score: number;
+  rating: "high_quality" | "neutral" | "low_quality" | "not_applicable";
+  applicable: boolean;
+}
+
+function TripleConfirmationBadge({
+  symbol,
+  signalGrade,
+  direction,
+  isZh,
+}: {
+  symbol: string;
+  signalGrade: "A" | "B" | "C" | null;
+  direction: "long" | "short";
+  isZh: boolean;
+}) {
+  const [dcf, setDcf] = useState<DCFSummary | null>(null);
+  const [fscore, setFscore] = useState<FScoreSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    Promise.all([
+      fetch(`${API_BASE_URL}/v1/valuation/dcf/${symbol}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${API_BASE_URL}/v1/quality/fscore/${symbol}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]).then(([dcfData, fscoreData]) => {
+      if (!mounted) return;
+      if (dcfData)
+        setDcf({ rating: dcfData.rating, upside_pct: dcfData.upside_pct });
+      if (fscoreData)
+        setFscore({
+          score: fscoreData.score,
+          rating: fscoreData.rating,
+          applicable: fscoreData.applicable,
+        });
+      setLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [symbol]);
+
+  if (loading || (!dcf && !fscore)) return null;
+
+  // Score the alignment for long signals:
+  //   DCF undervalued = good for long; overvalued = bad
+  //   F-Score high = good; low = bad
+  // For short signals, invert DCF logic
+  const isLong = direction === "long";
+  const dcfAlign = dcf
+    ? isLong
+      ? dcf.rating === "undervalued"
+        ? "good"
+        : dcf.rating === "overvalued"
+          ? "bad"
+          : "neutral"
+      : dcf.rating === "overvalued"
+        ? "good"
+        : dcf.rating === "undervalued"
+          ? "bad"
+          : "neutral"
+    : null;
+
+  const fscoreAlign =
+    fscore && fscore.applicable
+      ? fscore.rating === "high_quality"
+        ? "good"
+        : fscore.rating === "low_quality"
+          ? "bad"
+          : "neutral"
+      : null;
+
+  // Count "good" alignments
+  const alignedCount = [
+    signalGrade === "A" || signalGrade === "B" ? "good" : "neutral",
+    dcfAlign,
+    fscoreAlign,
+  ].filter((a) => a === "good").length;
+
+  // Pick banner style based on alignment
+  let bannerClass = "border-white/10 bg-white/5";
+  let titleColor = "text-gray-300";
+  let icon = "📊";
+  let titleText = isZh ? "三维分析" : "3-View Analysis";
+
+  if (alignedCount >= 3) {
+    bannerClass = "border-emerald-500/40 bg-emerald-500/10";
+    titleColor = "text-emerald-300";
+    icon = "⭐";
+    titleText = isZh ? "三重确认" : "Triple Confirmation";
+  } else if (alignedCount === 2) {
+    bannerClass = "border-cyan-500/30 bg-cyan-500/5";
+    titleColor = "text-cyan-300";
+    icon = "✓";
+    titleText = isZh ? "双重支持" : "Dual Support";
+  }
+
+  // Build status pills
+  type Pill = { label: string; tone: "good" | "bad" | "neutral" };
+  const pills: Pill[] = [];
+
+  // Signal pill
+  pills.push({
+    label: `${isZh ? "信号" : "Signal"} ${signalGrade ?? "—"}`,
+    tone:
+      signalGrade === "A" ? "good" : signalGrade === "C" ? "bad" : "neutral",
+  });
+
+  // DCF pill
+  if (dcf) {
+    const upside = dcf.upside_pct;
+    const dcfLabel =
+      dcf.rating === "undervalued"
+        ? isZh
+          ? `DCF 低估 ${upside > 0 ? "+" : ""}${upside.toFixed(0)}%`
+          : `DCF +${upside.toFixed(0)}%`
+        : dcf.rating === "overvalued"
+          ? isZh
+            ? `DCF 高估 ${upside.toFixed(0)}%`
+            : `DCF ${upside.toFixed(0)}%`
+          : isZh
+            ? "DCF 合理"
+            : "DCF Fair";
+    pills.push({
+      label: dcfLabel,
+      tone: dcfAlign as "good" | "bad" | "neutral",
+    });
+  }
+
+  // F-Score pill
+  if (fscore && fscore.applicable) {
+    const ratingZh = {
+      high_quality: "高质量",
+      neutral: "中性",
+      low_quality: "低质量",
+      not_applicable: "N/A",
+    }[fscore.rating];
+    const ratingEn = {
+      high_quality: "High Q",
+      neutral: "Neutral",
+      low_quality: "Low Q",
+      not_applicable: "N/A",
+    }[fscore.rating];
+    pills.push({
+      label: `F-Score ${fscore.score}/9 ${isZh ? ratingZh : ratingEn}`,
+      tone: fscoreAlign as "good" | "bad" | "neutral",
+    });
+  }
+
+  const pillToneCls: Record<"good" | "bad" | "neutral", string> = {
+    good: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+    bad: "border-red-500/30 bg-red-500/10 text-red-300",
+    neutral: "border-white/10 bg-white/5 text-gray-300",
+  };
+
+  return (
+    <div className={`mb-3 rounded-lg border p-2.5 ${bannerClass}`}>
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className={`text-[11px] font-semibold ${titleColor}`}>
+          {icon} {titleText}
+        </span>
+        <span className="text-[9px] text-gray-500">
+          {alignedCount}/3 {isZh ? "对齐" : "aligned"}
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {pills.map((p, i) => (
+          <span
+            key={i}
+            className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${pillToneCls[p.tone]}`}
+          >
+            {p.label}
+          </span>
+        ))}
+      </div>
+      {alignedCount >= 3 && (
+        <p className="mt-1.5 text-[9px] text-emerald-400">
+          {isZh
+            ? "信号 + 估值 + 财务质量三方一致，胜率较高"
+            : "Signal + valuation + financial quality all aligned"}
+        </p>
       )}
     </div>
   );
