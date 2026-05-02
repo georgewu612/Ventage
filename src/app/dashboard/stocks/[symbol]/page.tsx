@@ -19,6 +19,7 @@ import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
 import { ActiveSignalsForSymbol } from "@/components/dashboard/ActiveSignalsForSymbol";
 import { ChipStructureCard } from "@/components/dashboard/ChipStructureCard";
 import { DCFCard } from "@/components/dashboard/DCFCard";
+import { FactorProfileCard } from "@/components/dashboard/FactorProfileCard";
 import { QualityScoreCard } from "@/components/dashboard/QualityScoreCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
@@ -919,6 +920,9 @@ function StockWorkbenchInner() {
 
             {/* Quality Score (Piotroski F-Score) */}
             <QualityScoreCard symbol={symbol} />
+
+            {/* Factor Profile (6-dim style radar) */}
+            <FactorProfileCard symbol={symbol} />
 
             {/* Historical Analog */}
             <HistoricalAnalogCard symbol={symbol} />

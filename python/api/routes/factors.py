@@ -218,3 +218,32 @@ def factor_correlation(req: CorrelationRequest) -> dict[str, Any]:
     except Exception as exc:
         log.error("correlation_failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── Factor Profile (6-dim style exposure radar) ──────────────────────────────
+
+
+@router.get("/factors/profile/{symbol}")
+def get_factor_profile(symbol: str) -> dict[str, Any]:
+    """Compute 6-dimension factor exposure profile for a stock.
+
+    Returns each factor's raw value + percentile vs peer universe + interpretation.
+    Factors: Value / Quality / Momentum / Size / Low Vol / Low Investment.
+    Peer universe: ~50 large-cap representatives across all sectors.
+
+    First call may take 30-60 seconds (cold peer cache).
+    Subsequent calls return in <100ms (24h cache).
+    """
+    from services.factor_profile import compute_factor_profile
+    from services.financials_provider import FinancialsError
+
+    try:
+        result = compute_factor_profile(symbol.upper())
+        return result.to_dict()
+    except FinancialsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]
+        detail = f"Factor profile failed: {exc} | {' | '.join(tb)}"
+        raise HTTPException(status_code=500, detail=detail[:500])
