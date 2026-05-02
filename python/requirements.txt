@@ -23,3 +23,6 @@ openai>=1.30.0
 
 # Quant Lab
 vectorbt>=0.26.0
+
+# Factor research (Newey-West, Spearman corr, normal p-values)
+scipy>=1.11.0

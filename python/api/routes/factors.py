@@ -220,6 +220,56 @@ def factor_correlation(req: CorrelationRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Universe-level factor correlation (cross-section over symbols) ───────────
+
+
+@router.get("/factors/correlation/universe")
+def universe_factor_correlation() -> dict[str, Any]:
+    """Cross-sectional correlation matrix of the 6 style factors across the universe.
+
+    For each pair of factors, computes Pearson correlation across all symbols
+    that have both factor values cached. Useful for detecting factor crowding
+    (highly correlated factors are redundant — book Section 4.x).
+    """
+    from services.factor_universe import FACTOR_NAMES, get_universe_panel
+
+    try:
+        panel = get_universe_panel(factor_names=FACTOR_NAMES)
+        if panel.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Factor universe is empty. Call /v1/factors/research/refresh first.",
+            )
+        # Drop sector/market_cap meta + standardize within each factor
+        factor_df = panel[FACTOR_NAMES].dropna(how="all")
+        # Z-score each factor before correlation (so scale doesn't bias)
+        z = (factor_df - factor_df.mean()) / factor_df.std().replace(0, 1)
+        corr = z.corr().round(3)
+
+        # Detect strong overlaps
+        warnings: list[str] = []
+        for i, f1 in enumerate(FACTOR_NAMES):
+            for j, f2 in enumerate(FACTOR_NAMES):
+                if i >= j:
+                    continue
+                rho = corr.at[f1, f2] if f1 in corr.columns and f2 in corr.index else 0
+                if abs(rho) >= 0.7:
+                    warnings.append(
+                        f"{f1} ↔ {f2} 高度相关 (ρ={rho:.2f})，可能存在因子冗余"
+                    )
+
+        return {
+            "factors": FACTOR_NAMES,
+            "n_symbols": int(factor_df.shape[0]),
+            "correlation": corr.to_dict(),
+            "warnings": warnings,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Universe correlation failed: {exc}")
+
+
 # ── Factor Profile (6-dim style exposure radar) ──────────────────────────────
 
 
