@@ -19,6 +19,7 @@ import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
 import { ActiveSignalsForSymbol } from "@/components/dashboard/ActiveSignalsForSymbol";
 import { ChipStructureCard } from "@/components/dashboard/ChipStructureCard";
 import { DCFCard } from "@/components/dashboard/DCFCard";
+import { QualityScoreCard } from "@/components/dashboard/QualityScoreCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
 import { SymbolRegimeCard } from "@/components/dashboard/SymbolRegimeCard";
@@ -915,6 +916,9 @@ function StockWorkbenchInner() {
 
             {/* DCF Valuation (fundamental view) */}
             <DCFCard symbol={symbol} />
+
+            {/* Quality Score (Piotroski F-Score) */}
+            <QualityScoreCard symbol={symbol} />
 
             {/* Historical Analog */}
             <HistoricalAnalogCard symbol={symbol} />
