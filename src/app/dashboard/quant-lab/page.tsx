@@ -20,6 +20,7 @@ import { API_BASE_URL } from "@/lib/config";
 import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
 import { useTheme } from "@/lib/theme/provider";
+import { FactorResearchPanel } from "@/components/quant-lab/FactorResearchPanel";
 
 // ── Strategy template description i18n (frontend-side, since DB has only EN) ──
 const TEMPLATE_DESC_ZH: Record<string, string> = {
@@ -878,6 +879,27 @@ export default function QuantLabPage() {
                 </p>
               )}
             </section>
+          )}
+
+          {/* ── Factor Research Workshop (Phase II) ───────────────── */}
+          {activeTab === "factors" && (
+            <div className="mt-6">
+              <div className="mb-3 flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-violet-400" />
+                <h3 className="text-sm font-semibold text-white">
+                  {zh ? "因子研究工作台" : "Factor Research Workshop"}
+                </h3>
+                <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                  {zh ? "学术级方法" : "Academic-grade"}
+                </span>
+              </div>
+              <p className="mb-4 text-[11px] text-gray-500">
+                {zh
+                  ? "依据《因子投资：方法与实践》方法论：横截面排序、Fama-MacBeth 回归（Newey-West 调整）、多空对冲组合回测"
+                  : "Per book methodology: cross-section sort, Fama-MacBeth regression (NW-adjusted), long-short portfolio backtest"}
+              </p>
+              <FactorResearchPanel />
+            </div>
           )}
 
           {/* ── Tab 3: Run History ── */}
