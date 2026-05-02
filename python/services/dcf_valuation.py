@@ -418,6 +418,14 @@ def valuate(symbol: str) -> DCFResult:
     if growth >= MAX_GROWTH_RATE:
         warnings.append(f"增长率被限制在 {MAX_GROWTH_RATE*100:.0f}% 上限")
 
+    # DCF 不适用的行业警告
+    if sector in ("Financial Services", "Financials"):
+        warnings.append("⚠️ DCF 模型不适用于银行/金融股（FCF 算法把放贷当成资本开支），请用 P/B、ROE、股息折现等方法")
+        passes = False
+    elif fair_value < 0:
+        warnings.append("⚠️ 公允价值为负，可能是 FCF 数据异常或不适用 DCF 模型")
+        passes = False
+
     return DCFResult(
         symbol=symbol.upper(),
         sector=sector,
