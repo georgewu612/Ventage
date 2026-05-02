@@ -78,12 +78,20 @@ export function DCFCard({ symbol }: { symbol: string }) {
     try {
       const res = await fetch(`${API_BASE_URL}/v1/valuation/dcf/${symbol}`);
       if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText.slice(0, 200));
+        // Extract human-readable message from FastAPI's {detail: "..."} envelope
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          msg = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
+        } catch {
+          msg = await res.text();
+        }
+        throw new Error(msg);
       }
       setData(await res.json());
     } catch (e) {
-      setError(String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -119,12 +127,20 @@ export function DCFCard({ symbol }: { symbol: string }) {
         <p className="text-xs text-gray-500">
           {error
             ? isZh
-              ? `数据不足：${error.slice(0, 100)}`
-              : `Insufficient data: ${error.slice(0, 100)}`
+              ? `数据不足：${error.slice(0, 150)}`
+              : `Insufficient data: ${error.slice(0, 150)}`
             : isZh
               ? "暂无数据"
               : "No data"}
         </p>
+        {error && (
+          <button
+            onClick={load}
+            className="mt-2 text-[11px] text-cyan-300 hover:underline"
+          >
+            {isZh ? "重试" : "Retry"}
+          </button>
+        )}
       </div>
     );
   }

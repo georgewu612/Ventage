@@ -29,4 +29,7 @@ def get_dcf(symbol: str) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"DCF valuation failed: {exc}")
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]   # last 3 lines for context
+        detail = f"DCF valuation failed: {exc} | trace: {' | '.join(tb)}"
+        raise HTTPException(status_code=500, detail=detail[:500])

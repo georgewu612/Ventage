@@ -142,45 +142,106 @@ class DCFResult:
 
 # ── Step 1: Data gathering ────────────────────────────────────────────────────
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Convert to float, defaulting on None/NaN/error."""
+    if value is None:
+        return default
+    try:
+        f = float(value)
+        return f if pd.notna(f) else default
+    except (TypeError, ValueError):
+        return default
+
+
 def _fetch_data(symbol: str) -> dict[str, Any]:
     """Pull all required data from yfinance.
 
     Returns dict with: fcf_history, current_price, market_cap, sector,
     total_debt, cash, shares_outstanding, beta, debt_to_equity.
+    Raises ValueError with a friendly message if data is insufficient.
     """
     ticker = yf.Ticker(symbol)
-    info = ticker.info or {}
-    cf_stmt = ticker.cashflow
+    try:
+        info = ticker.info or {}
+    except Exception as exc:
+        raise ValueError(f"yfinance info fetch failed for {symbol}: {exc}")
 
-    if cf_stmt is None or cf_stmt.empty:
+    try:
+        cf_stmt = ticker.cashflow
+    except Exception as exc:
+        raise ValueError(f"yfinance cashflow fetch failed for {symbol}: {exc}")
+
+    if cf_stmt is None or (hasattr(cf_stmt, "empty") and cf_stmt.empty):
         raise ValueError(f"No cash flow data for {symbol}")
 
-    # FCF = Operating Cash Flow - CapEx (most-recent first → reverse later)
-    operating_cf = _row(cf_stmt, ["Operating Cash Flow", "Total Cash From Operating Activities"])
-    capex = _row(cf_stmt, ["Capital Expenditure", "Capital Expenditures"])
+    # Try direct Free Cash Flow row first (saves a step + safer when CapEx
+    # naming changes), then fall back to OCF - CapEx.
+    fcf_row = _row(cf_stmt, ["Free Cash Flow", "Free Cashflow"])
+    if fcf_row is not None and fcf_row.dropna().shape[0] >= 2:
+        fcf_series = fcf_row.dropna()
+    else:
+        operating_cf = _row(cf_stmt, [
+            "Operating Cash Flow",
+            "Total Cash From Operating Activities",
+            "Cash Flow From Continuing Operating Activities",
+        ])
+        capex = _row(cf_stmt, ["Capital Expenditure", "Capital Expenditures"])
 
-    if operating_cf is None or capex is None:
-        raise ValueError(f"Missing OCF/CapEx for {symbol}")
+        if operating_cf is None or capex is None:
+            raise ValueError(
+                f"Missing FCF/OCF/CapEx data for {symbol} — yfinance "
+                f"returned an unexpected cashflow schema"
+            )
 
-    # capex usually comes back negative — abs() it
-    fcf_series = (operating_cf + capex.apply(lambda x: -abs(x) if pd.notna(x) else x)).dropna()
-    fcf_history = [float(x) for x in fcf_series.values]   # newest first
+        # capex usually comes back negative — abs() it
+        fcf_series = (
+            operating_cf + capex.apply(lambda x: -abs(x) if pd.notna(x) else x)
+        ).dropna()
+
+    fcf_history = [_safe_float(x) for x in fcf_series.values]
+    fcf_history = [x for x in fcf_history if x != 0]   # drop zeros from coercion
 
     if len(fcf_history) < 2:
         raise ValueError(f"Need ≥2 years FCF history for {symbol}")
 
+    # Get current price from multiple fallback sources
+    current_price = (
+        _safe_float(info.get("currentPrice"))
+        or _safe_float(info.get("regularMarketPrice"))
+        or _safe_float(info.get("previousClose"))
+    )
+    if current_price <= 0:
+        # Fallback: try ticker.history
+        try:
+            hist = ticker.history(period="5d")
+            if hist is not None and not hist.empty:
+                current_price = _safe_float(hist["Close"].iloc[-1])
+        except Exception:
+            pass
+
+    if current_price <= 0:
+        raise ValueError(f"Could not determine current price for {symbol}")
+
+    shares = (
+        _safe_float(info.get("sharesOutstanding"))
+        or _safe_float(info.get("impliedSharesOutstanding"))
+        or _safe_float(info.get("floatShares"))
+    )
+    if shares <= 0:
+        raise ValueError(f"Invalid shares outstanding for {symbol}")
+
     return {
         "fcf_history": fcf_history,
-        "current_price": float(info.get("currentPrice") or info.get("regularMarketPrice") or 0),
-        "market_cap": float(info.get("marketCap")) if info.get("marketCap") else None,
+        "current_price": current_price,
+        "market_cap": _safe_float(info.get("marketCap")) or None,
         "sector": info.get("sector"),
         "industry": info.get("industry"),
-        "total_debt": float(info.get("totalDebt") or 0),
-        "cash": float(info.get("totalCash") or 0),
-        "shares_outstanding": float(info.get("sharesOutstanding") or info.get("impliedSharesOutstanding") or 0),
-        "beta": float(info.get("beta") or 1.0),
-        "debt_to_equity": float(info.get("debtToEquity") or 0) / 100,   # yfinance returns %
-        "roic": float(info.get("returnOnInvestedCapital") or 0),
+        "total_debt": _safe_float(info.get("totalDebt")),
+        "cash": _safe_float(info.get("totalCash")),
+        "shares_outstanding": shares,
+        "beta": _safe_float(info.get("beta"), 1.0),
+        "debt_to_equity": _safe_float(info.get("debtToEquity")) / 100,   # yfinance returns %
+        "roic": _safe_float(info.get("returnOnInvestedCapital")),
     }
 
 
