@@ -15,6 +15,7 @@ from api.routes.signals import router as signals_router
 from api.routes.execution import router as execution_router
 from api.routes.portfolio import router as portfolio_router
 from api.routes.risk import router as risk_router
+from api.routes.valuation import router as valuation_router
 from api.routes.strategies import router as strategies_router
 from api.routes.system import router as system_router
 from api.routes.technical import router as technical_router
@@ -66,3 +67,4 @@ app.include_router(factors_router, prefix="/v1", tags=["quant-lab"])
 app.include_router(portfolio_router, prefix="/v1", tags=["portfolio"])
 app.include_router(execution_router, prefix="/v1", tags=["execution"])
 app.include_router(risk_router, prefix="/v1", tags=["risk"])
+app.include_router(valuation_router, prefix="/v1", tags=["valuation"])

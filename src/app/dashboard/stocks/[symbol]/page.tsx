@@ -18,6 +18,7 @@ import {
 import { CandlestickChart } from "@/components/dashboard/CandlestickChart";
 import { ActiveSignalsForSymbol } from "@/components/dashboard/ActiveSignalsForSymbol";
 import { ChipStructureCard } from "@/components/dashboard/ChipStructureCard";
+import { DCFCard } from "@/components/dashboard/DCFCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
 import { SymbolRegimeCard } from "@/components/dashboard/SymbolRegimeCard";
@@ -911,6 +912,9 @@ function StockWorkbenchInner() {
 
             {/* ── Active rule-based signals (4-strategy scan) ─────────── */}
             <ActiveSignalsForSymbol symbol={symbol} />
+
+            {/* DCF Valuation (fundamental view) */}
+            <DCFCard symbol={symbol} />
 
             {/* Historical Analog */}
             <HistoricalAnalogCard symbol={symbol} />
