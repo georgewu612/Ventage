@@ -511,10 +511,12 @@ def get_universe_panel(
 
     factors = factor_names or FACTOR_NAMES
 
-    # Pull rows
+    # Pull rows. NOTE: supabase-py defaults to range(0, 999) so without
+    # an explicit limit we silently truncate at 1000 rows ≈ 71 symbols.
+    # Set a generous limit (50k) to handle full S&P 500 × 14 factors = 7000.
     query = db.table("factor_universe").select(
         "symbol,factor_name,factor_value,sector,market_cap,expires_at"
-    ).in_("factor_name", factors)
+    ).in_("factor_name", factors).limit(50000)
     if symbols:
         query = query.in_("symbol", [s.upper() for s in symbols])
     if fresh_only:
@@ -585,12 +587,20 @@ def get_status(db=None) -> dict[str, Any]:
             "expires_at", now_iso
         ).execute()
         total = db.table("factor_universe").select("symbol", count="exact").execute()
+        # Count distinct symbols in fresh cache (so UI shows actual size, not
+        # the hardcoded core50 default).
+        fresh_rows_count = fresh.count or 0
+        unique_fresh_symbols = max(
+            1, fresh_rows_count // max(len(FACTOR_NAMES), 1)
+        ) if fresh_rows_count > 0 else 0
         return {
-            "fresh_rows": fresh.count or 0,
+            "fresh_rows": fresh_rows_count,
             "total_rows": total.count or 0,
             "cache_ttl_hours": CACHE_TTL_HOURS,
             "factors_per_symbol": len(FACTOR_NAMES),
             "factor_names": FACTOR_NAMES,
+            "default_universe_size": len(DEFAULT_UNIVERSE),
+            "fresh_symbols_estimate": unique_fresh_symbols,
         }
     except Exception as exc:
         return {"error": str(exc)}

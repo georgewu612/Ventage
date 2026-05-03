@@ -103,6 +103,7 @@ function StatusHeader({
     total_rows: number;
     default_universe_size: number;
     factors_per_symbol?: number;
+    fresh_symbols_estimate?: number;
   } | null;
   refreshing: boolean;
   onRefresh: (force?: boolean) => void;
@@ -121,8 +122,11 @@ function StatusHeader({
   zh: boolean;
 }) {
   const fresh = status?.fresh_rows ?? 0;
-  const total = status?.default_universe_size ?? 50;
   const factorsPerSym = status?.factors_per_symbol ?? 14;
+  // Display the actual number of distinct symbols in cache, not the hardcoded
+  // core50 default — so SP500 refresh shows '~498' not '59'
+  const total =
+    status?.fresh_symbols_estimate ?? status?.default_universe_size ?? 50;
   const expected = total * factorsPerSym;
   const pctFresh = expected > 0 ? (fresh / expected) * 100 : 0;
   const isReady = pctFresh >= 80 && !refreshing;
@@ -313,12 +317,13 @@ function UniversePanel({ zh }: { zh: boolean }) {
     );
   }
 
+  const factorCount = Object.keys(data.factors ?? {}).length;
   return (
     <div>
       <p className="mb-3 text-xs text-gray-400">
         {zh
-          ? `共 ${data.symbols.length} 只股票的 6 维因子值（按市值排序）`
-          : `${data.symbols.length} symbols × 6 factors (sorted by market cap)`}
+          ? `共 ${data.symbols.length} 只股票的 ${factorCount} 维因子值（按代码排序）`
+          : `${data.symbols.length} symbols × ${factorCount} factors (sorted by symbol)`}
       </p>
       <div className="overflow-x-auto rounded-lg border border-white/10">
         <table className="w-full text-[11px]">
