@@ -207,6 +207,134 @@ def fama_macbeth(req: FMRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"FM failed: {exc} | {' | '.join(tb)}"[:500])
 
 
+# ── Stock Screener endpoint ───────────────────────────────────────────────
+
+
+class ScreenerCondition(BaseModel):
+    factor: str                                              # raw factor or cluster name
+    op: Literal[">=", ">", "<=", "<", "==", "!="]
+    value: float
+
+
+class ScreenerRequest(BaseModel):
+    conditions: list[ScreenerCondition] = []
+    sector_filter: list[str] | None = None
+    min_market_cap: float | None = None    # USD, e.g. 20_000_000_000 for $20B
+    sort_by: str | None = None             # column name to sort by
+    sort_desc: bool = True
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+@router.post("/factors/screener")
+def screen_stocks(req: ScreenerRequest) -> dict[str, Any]:
+    """Filter SP500 universe by user-defined factor conditions.
+
+    Returns matching stocks with all their (raw + cluster) factor values.
+    Applies conditions in order — each narrows the result set.
+
+    Operators: >= > <= < == !=
+    Factor names: any of the 14 raw factors + 3 clusters + 'market_cap'.
+    """
+    from services.factor_universe import (
+        CLUSTERS,
+        FACTOR_NAMES,
+        get_universe_panel,
+    )
+    import pandas as pd
+
+    try:
+        panel = get_universe_panel(transform="raw", include_clusters=True)
+        if panel.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Factor universe cache is empty. Refresh first.",
+            )
+
+        df = panel.copy()
+        applied: list[dict[str, Any]] = []
+        valid_factors = set(FACTOR_NAMES) | set(CLUSTERS.keys()) | {"market_cap"}
+
+        # Apply each condition
+        for cond in req.conditions:
+            if cond.factor not in valid_factors:
+                applied.append({"condition": cond.dict(), "matched": "invalid_factor"})
+                continue
+            if cond.factor not in df.columns:
+                applied.append({"condition": cond.dict(), "matched": "factor_missing"})
+                continue
+            col = df[cond.factor]
+            before = len(df)
+            if cond.op == ">=":
+                df = df[col >= cond.value]
+            elif cond.op == ">":
+                df = df[col > cond.value]
+            elif cond.op == "<=":
+                df = df[col <= cond.value]
+            elif cond.op == "<":
+                df = df[col < cond.value]
+            elif cond.op == "==":
+                df = df[col == cond.value]
+            elif cond.op == "!=":
+                df = df[col != cond.value]
+            applied.append({
+                "condition": cond.dict(),
+                "before": before,
+                "after": len(df),
+                "filtered_out": before - len(df),
+            })
+
+        # Sector filter
+        if req.sector_filter and "sector" in df.columns:
+            df = df[df["sector"].isin(req.sector_filter)]
+
+        # Min market cap
+        if req.min_market_cap is not None and "market_cap" in df.columns:
+            df = df[df["market_cap"] >= req.min_market_cap]
+
+        # Sort
+        if req.sort_by and req.sort_by in df.columns:
+            df = df.sort_values(req.sort_by, ascending=not req.sort_desc, na_position="last")
+        else:
+            # Default: sort by market cap desc
+            if "market_cap" in df.columns:
+                df = df.sort_values("market_cap", ascending=False, na_position="last")
+
+        # Limit results
+        df = df.head(req.limit)
+
+        # Build response
+        results = []
+        for idx, row in df.iterrows():
+            factor_dict = {}
+            for col in df.columns:
+                if col in ("sector", "market_cap"):
+                    continue
+                v = row[col]
+                if pd.notna(v):
+                    factor_dict[col] = float(v)
+                else:
+                    factor_dict[col] = None
+            results.append({
+                "symbol": idx,
+                "sector": row.get("sector"),
+                "market_cap": float(row["market_cap"]) if pd.notna(row.get("market_cap")) else None,
+                "factors": factor_dict,
+            })
+
+        return {
+            "matched": len(df),
+            "total_in_universe": int(len(panel)),
+            "applied_conditions": applied,
+            "results": results,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]
+        raise HTTPException(status_code=500, detail=f"Screener failed: {exc} | {' | '.join(tb)}"[:500])
+
+
 # ── IC Analysis endpoints (Phase III) ─────────────────────────────────────
 
 
