@@ -106,14 +106,17 @@ function StatusHeader({
     fresh_rows: number;
     total_rows: number;
     default_universe_size: number;
+    factors_per_symbol?: number;
   } | null;
   refreshing: boolean;
-  onRefresh: () => void;
+  onRefresh: (force?: boolean) => void;
   zh: boolean;
 }) {
   const fresh = status?.fresh_rows ?? 0;
   const total = status?.default_universe_size ?? 50;
-  const pctFresh = (fresh / (total * 6)) * 100;
+  const factorsPerSym = status?.factors_per_symbol ?? 14;
+  const expected = total * factorsPerSym;
+  const pctFresh = expected > 0 ? (fresh / expected) * 100 : 0;
   const isReady = pctFresh >= 80;
 
   return (
@@ -126,8 +129,8 @@ function StatusHeader({
           </p>
           <p className="text-[10px] text-gray-500">
             {zh
-              ? `${fresh} / ${total * 6} 条新鲜因子值（${total} 只股 × 6 因子）`
-              : `${fresh} / ${total * 6} fresh values (${total} symbols × 6 factors)`}
+              ? `${fresh} / ${expected} 条新鲜因子值（${total} 只股 × ${factorsPerSym} 因子）`
+              : `${fresh} / ${expected} fresh values (${total} symbols × ${factorsPerSym} factors)`}
           </p>
         </div>
         {isReady ? (
@@ -142,24 +145,44 @@ function StatusHeader({
           </span>
         )}
       </div>
-      <button
-        onClick={onRefresh}
-        disabled={refreshing}
-        className="flex items-center gap-2 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
-      >
-        {refreshing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <RefreshCw className="h-3.5 w-3.5" />
-        )}
-        {refreshing
-          ? zh
-            ? "计算中（约 3-5 分钟）..."
-            : "Computing (3-5 min)..."
-          : zh
-            ? "刷新缓存"
-            : "Refresh"}
-      </button>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onRefresh(false)}
+          disabled={refreshing}
+          className="flex items-center gap-2 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
+          title={zh ? "只补算缺失的因子" : "Only compute missing factors"}
+        >
+          {refreshing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          {refreshing
+            ? zh
+              ? "计算中..."
+              : "Computing..."
+            : zh
+              ? "刷新缓存"
+              : "Refresh"}
+        </button>
+        <button
+          onClick={() => {
+            if (
+              confirm(
+                zh
+                  ? "强制刷新会重算所有 59 只股 × 14 因子（约 4-6 分钟）。确定？"
+                  : "Force will recompute all 59 × 14 factors (~4-6 min). Continue?",
+              )
+            )
+              onRefresh(true);
+          }}
+          disabled={refreshing}
+          className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+          title={zh ? "强制重算所有因子" : "Force recompute all factors"}
+        >
+          {zh ? "强制" : "Force"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -999,19 +1022,22 @@ export function FactorResearchPanel() {
     loadStatus();
   }, [loadStatus]);
 
-  const refresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetch(`${API_BASE_URL}/v1/factors/research/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      await loadStatus();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadStatus]);
+  const refresh = useCallback(
+    async (force: boolean = false) => {
+      setRefreshing(true);
+      try {
+        await fetch(`${API_BASE_URL}/v1/factors/research/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force }),
+        });
+        await loadStatus();
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [loadStatus],
+  );
 
   const subTabs: {
     key: SubTab;

@@ -142,19 +142,30 @@ def refresh_universe(
     skipped = 0
     errors = 0
 
-    # Find symbols already fresh in cache
+    # Find symbols whose ALL FACTOR_NAMES are fresh in cache.
+    # A symbol is only "fresh" if it has all 14 factor values within TTL —
+    # otherwise we recompute (handles the case of newly-added factors).
     fresh_set: set[str] = set()
     if not force:
         try:
             now_iso = datetime.now(timezone.utc).isoformat()
             resp = (
                 db.table("factor_universe")
-                .select("symbol")
+                .select("symbol,factor_name")
                 .gt("expires_at", now_iso)
                 .in_("symbol", syms)
                 .execute()
             )
-            fresh_set = {r["symbol"] for r in (resp.data or [])}
+            # Build per-symbol set of fresh factor names
+            sym_factors: dict[str, set[str]] = {}
+            for r in (resp.data or []):
+                sym_factors.setdefault(r["symbol"], set()).add(r["factor_name"])
+            # Symbol is fresh only if it has every required factor
+            required = set(FACTOR_NAMES)
+            fresh_set = {
+                sym for sym, fnames in sym_factors.items()
+                if required.issubset(fnames)
+            }
         except Exception as exc:
             logger.warning("Cache probe failed: %s", exc)
 
@@ -383,6 +394,8 @@ def get_status(db=None) -> dict[str, Any]:
             "fresh_rows": fresh.count or 0,
             "total_rows": total.count or 0,
             "cache_ttl_hours": CACHE_TTL_HOURS,
+            "factors_per_symbol": len(FACTOR_NAMES),
+            "factor_names": FACTOR_NAMES,
         }
     except Exception as exc:
         return {"error": str(exc)}
