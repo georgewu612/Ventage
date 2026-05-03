@@ -358,6 +358,62 @@ function SnapshotStatusBar({ zh }: { zh: boolean }) {
     }
   };
 
+  // ── Backfill historical technical factors (Phase V.3) ────────────────
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{
+    running: boolean;
+    completed_symbols: number;
+    total_symbols: number;
+    persisted_rows: number;
+    errors: number;
+    eta_seconds: number | null;
+    elapsed_s: number;
+  } | null>(null);
+
+  const loadBackfillProgress = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/backfill/progress`);
+      if (r.ok) {
+        const p = await r.json();
+        setBackfillProgress(p);
+        setBackfilling(p.running);
+        if (!p.running) loadStatus();
+      }
+    } catch {}
+  }, [loadStatus]);
+
+  useEffect(() => {
+    loadBackfillProgress();
+  }, [loadBackfillProgress]);
+
+  useEffect(() => {
+    if (!backfilling) return;
+    const id = setInterval(loadBackfillProgress, 5000);
+    return () => clearInterval(id);
+  }, [backfilling, loadBackfillProgress]);
+
+  const startBackfill = async () => {
+    if (
+      !confirm(
+        zh
+          ? "回填过去 24 个月的技术因子（10 个，需 ~3-5 分钟）。完成后 PIT 真回测立即可用。"
+          : "Backfill 24 months of 10 technical factors (~3-5 min). PIT backtest available immediately after.",
+      )
+    )
+      return;
+    setBackfilling(true);
+    try {
+      await fetch(`${API_BASE_URL}/v1/factors/backfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookback_months: 24, max_workers: 5 }),
+      });
+      setTimeout(loadBackfillProgress, 500);
+    } catch {
+      setBackfilling(false);
+    }
+  };
+
   if (!status) return null;
 
   const n = status.n_snapshots;
@@ -409,9 +465,33 @@ function SnapshotStatusBar({ zh }: { zh: boolean }) {
             {snapProgress.completed} / {snapProgress.total}
           </span>
         )}
+        {backfillProgress?.running && backfillProgress.total_symbols > 0 && (
+          <span className="text-[10px] text-emerald-300">
+            {zh ? "回填" : "backfill"}: {backfillProgress.completed_symbols} /{" "}
+            {backfillProgress.total_symbols}
+          </span>
+        )}
+        <button
+          onClick={startBackfill}
+          disabled={backfilling || snapping}
+          className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+          title={
+            zh
+              ? "用 5y 价格历史回填过去 24 月的 10 个技术因子。完成后 PIT 真回测立即可用。"
+              : "Use 5y price history to backfill 24 months of 10 technical factors. PIT backtest works immediately after."
+          }
+        >
+          {backfilling
+            ? zh
+              ? "回填中..."
+              : "Backfilling..."
+            : zh
+              ? "📥 回填技术因子"
+              : "📥 Backfill Tech"}
+        </button>
         <button
           onClick={startSnapshot}
-          disabled={snapping}
+          disabled={snapping || backfilling}
           className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-medium text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
           title={zh ? "立即拍一份月度快照" : "Snapshot now"}
         >
@@ -420,8 +500,8 @@ function SnapshotStatusBar({ zh }: { zh: boolean }) {
               ? "拍照中..."
               : "Snapshotting..."
             : zh
-              ? "立即拍照"
-              : "Snapshot Now"}
+              ? "📸 立即拍照"
+              : "📸 Snapshot Now"}
         </button>
       </div>
     </div>

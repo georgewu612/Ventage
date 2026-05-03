@@ -391,6 +391,50 @@ def get_snapshot_status_endpoint() -> dict[str, Any]:
     return get_snapshot_status()
 
 
+# ── Factor Backfill (Phase V.3 — historical technical-factor reconstruction) ──
+
+
+class BackfillRequest(BaseModel):
+    lookback_months: int = Field(default=24, ge=3, le=60)
+    universe: list[str] | None = None
+    max_workers: int = 5
+
+
+@router.post("/factors/backfill")
+def run_backfill(req: BackfillRequest | None = None) -> dict[str, Any]:
+    """Kick off background backfill of technical factors over N past month-ends.
+
+    Computes 10 of 14 factors (technical only — those derivable from price/
+    volume history without lookahead bias). Saves to factor_history with
+    historical snapshot_dates so PIT backtest can use them immediately.
+
+    Skipped factors (require fundamental data with PIT issues): value,
+    quality, size, low_inv. PIT backtest gracefully ignores conditions
+    referencing these for backfilled snapshots.
+
+    Returns immediately. Poll /v1/factors/backfill/progress for status.
+    Cold run: ~3-5 minutes for SP500 × 24 months.
+    """
+    from services.factor_backfill import backfill_universe_async
+
+    req = req or BackfillRequest()
+    try:
+        return backfill_universe_async(
+            lookback_months=req.lookback_months,
+            universe=req.universe,
+            max_workers=req.max_workers,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Backfill failed: {exc}")
+
+
+@router.get("/factors/backfill/progress")
+def get_backfill_progress_endpoint() -> dict[str, Any]:
+    """Current backfill job progress (for UI polling)."""
+    from services.factor_backfill import get_backfill_progress
+    return get_backfill_progress()
+
+
 # ── Screener Backtest endpoint ────────────────────────────────────────────
 
 
