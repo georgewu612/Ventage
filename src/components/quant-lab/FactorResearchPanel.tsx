@@ -93,6 +93,9 @@ function StatusHeader({
   status,
   refreshing,
   onRefresh,
+  progress,
+  universe,
+  onUniverseChange,
   zh,
 }: {
   status: {
@@ -103,6 +106,18 @@ function StatusHeader({
   } | null;
   refreshing: boolean;
   onRefresh: (force?: boolean) => void;
+  progress?: {
+    running: boolean;
+    total: number;
+    completed: number;
+    persisted: number;
+    errors: number;
+    last_symbol: string | null;
+    eta_seconds: number | null;
+    elapsed_s: number;
+  } | null;
+  universe: "core50" | "sp500";
+  onUniverseChange: (u: "core50" | "sp500") => void;
   zh: boolean;
 }) {
   const fresh = status?.fresh_rows ?? 0;
@@ -110,72 +125,151 @@ function StatusHeader({
   const factorsPerSym = status?.factors_per_symbol ?? 14;
   const expected = total * factorsPerSym;
   const pctFresh = expected > 0 ? (fresh / expected) * 100 : 0;
-  const isReady = pctFresh >= 80;
+  const isReady = pctFresh >= 80 && !refreshing;
+
+  const fmtETA = (s: number | null) => {
+    if (!s || s <= 0) return "—";
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return m > 0 ? `${m}m ${r}s` : `${r}s`;
+  };
 
   return (
-    <div className="mb-4 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3">
-      <div className="flex items-center gap-3">
-        <Database className="h-4 w-4 text-cyan-400" />
-        <div>
-          <p className="text-xs font-medium text-white">
-            {zh ? "因子缓存状态" : "Factor Cache"}
-          </p>
-          <p className="text-[10px] text-gray-500">
-            {zh
-              ? `${fresh} / ${expected} 条新鲜因子值（${total} 只股 × ${factorsPerSym} 因子）`
-              : `${fresh} / ${expected} fresh values (${total} symbols × ${factorsPerSym} factors)`}
-          </p>
-        </div>
-        {isReady ? (
-          <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-            <CheckCircle2 className="h-3 w-3" />
-            {zh ? "就绪" : "Ready"}
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-            <AlertCircle className="h-3 w-3" />
-            {zh ? "需刷新" : "Needs refresh"}
-          </span>
-        )}
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() => onRefresh(false)}
-          disabled={refreshing}
-          className="flex items-center gap-2 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
-          title={zh ? "只补算缺失的因子" : "Only compute missing factors"}
-        >
-          {refreshing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+    <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Database className="h-4 w-4 text-cyan-400" />
+          <div>
+            <p className="text-xs font-medium text-white">
+              {zh ? "因子缓存状态" : "Factor Cache"}
+            </p>
+            <p className="text-[10px] text-gray-500">
+              {zh
+                ? `${fresh} / ${expected} 条新鲜因子值（${total} 只股 × ${factorsPerSym} 因子）`
+                : `${fresh} / ${expected} fresh values (${total} symbols × ${factorsPerSym} factors)`}
+            </p>
+          </div>
+          {isReady ? (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <CheckCircle2 className="h-3 w-3" />
+              {zh ? "就绪" : "Ready"}
+            </span>
           ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
+            <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+              <AlertCircle className="h-3 w-3" />
+              {zh ? "需刷新" : "Needs refresh"}
+            </span>
           )}
-          {refreshing
-            ? zh
-              ? "计算中..."
-              : "Computing..."
-            : zh
-              ? "刷新缓存"
-              : "Refresh"}
-        </button>
-        <button
-          onClick={() => {
-            if (
-              confirm(
-                zh
-                  ? "强制刷新会重算所有 59 只股 × 14 因子（约 4-6 分钟）。确定？"
-                  : "Force will recompute all 59 × 14 factors (~4-6 min). Continue?",
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Universe selector */}
+          <select
+            value={universe}
+            onChange={(e) =>
+              onUniverseChange(e.target.value as "core50" | "sp500")
+            }
+            disabled={refreshing}
+            className="rounded-md border border-white/10 bg-slate-800 px-2 py-1.5 text-xs text-white disabled:opacity-50"
+            title={zh ? "选择股票池" : "Choose universe"}
+          >
+            <option value="core50">
+              {zh ? "Core 50（59 只大盘股）" : "Core 50 (59 large caps)"}
+            </option>
+            <option value="sp500">
+              {zh ? "S&P 500（~500 只）" : "S&P 500 (~500)"}
+            </option>
+          </select>
+          <button
+            onClick={() => onRefresh(false)}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-medium text-cyan-300 transition-colors hover:bg-cyan-500/30 disabled:opacity-50"
+            title={zh ? "只补算缺失的因子" : "Only compute missing factors"}
+          >
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {refreshing
+              ? zh
+                ? "计算中..."
+                : "Computing..."
+              : zh
+                ? "刷新缓存"
+                : "Refresh"}
+          </button>
+          <button
+            onClick={() => {
+              const size = universe === "sp500" ? "~500" : "59";
+              const eta = universe === "sp500" ? "5-10" : "1-2";
+              if (
+                confirm(
+                  zh
+                    ? `强制刷新会重算所有 ${size} 只股 × 14 因子（约 ${eta} 分钟）。确定？`
+                    : `Force will recompute all ${size} × 14 factors (~${eta} min). Continue?`,
+                )
               )
-            )
-              onRefresh(true);
-          }}
-          disabled={refreshing}
-          className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
-          title={zh ? "强制重算所有因子" : "Force recompute all factors"}
-        >
-          {zh ? "强制" : "Force"}
-        </button>
+                onRefresh(true);
+            }}
+            disabled={refreshing}
+            className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-50"
+            title={zh ? "强制重算所有因子" : "Force recompute all factors"}
+          >
+            {zh ? "强制" : "Force"}
+          </button>
+        </div>
       </div>
+
+      {/* Progress bar (visible during refresh) */}
+      {progress && progress.running && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-baseline justify-between text-[10px]">
+            <span className="text-cyan-300">
+              {zh ? "进行中" : "In progress"}: {progress.completed} /{" "}
+              {progress.total}
+              {progress.last_symbol && (
+                <span className="ml-2 font-mono text-gray-500">
+                  {zh ? "刚完成" : "last"}: {progress.last_symbol}
+                </span>
+              )}
+            </span>
+            <span className="text-gray-500">
+              {zh ? "预计剩余" : "ETA"}: {fmtETA(progress.eta_seconds)} ·{" "}
+              {zh ? "已用" : "elapsed"} {fmtETA(Math.round(progress.elapsed_s))}
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 to-violet-500 transition-all duration-500"
+              style={{
+                width: `${
+                  progress.total > 0
+                    ? (progress.completed / progress.total) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          {progress.errors > 0 && (
+            <p className="mt-1 text-[10px] text-amber-400">
+              ⚠️ {progress.errors}{" "}
+              {zh ? "个 symbol 计算失败" : "symbols failed"}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Last completed run summary */}
+      {progress && !progress.running && progress.completed > 0 && (
+        <p className="mt-2 text-[10px] text-gray-500">
+          {zh ? "上次刷新" : "Last refresh"}: {progress.completed}{" "}
+          {zh ? "只股，用时" : "symbols in"}{" "}
+          {fmtETA(Math.round(progress.elapsed_s))} · {progress.persisted}{" "}
+          {zh ? "成功" : "ok"}
+          {progress.errors > 0 &&
+            `, ${progress.errors} ${zh ? "失败" : "errors"}`}
+        </p>
+      )}
     </div>
   );
 }
@@ -992,6 +1086,22 @@ function CurveChart({
 
 // ── Main ──────────────────────────────────────────────────────────────────
 
+type UniverseName = "core50" | "sp500";
+
+interface RefreshProgress {
+  running: boolean;
+  total: number;
+  completed: number;
+  persisted: number;
+  skipped_cached: number;
+  errors: number;
+  last_symbol: string | null;
+  error_samples: string[];
+  eta_seconds: number | null;
+  elapsed_s: number;
+  universe_name?: string;
+}
+
 export function FactorResearchPanel() {
   const { locale } = useI18n();
   const zh = locale === "zh";
@@ -1001,7 +1111,10 @@ export function FactorResearchPanel() {
     fresh_rows: number;
     total_rows: number;
     default_universe_size: number;
+    factors_per_symbol?: number;
   } | null>(null);
+  const [progress, setProgress] = useState<RefreshProgress | null>(null);
+  const [universe, setUniverse] = useState<UniverseName>("core50");
   const [refreshing, setRefreshing] = useState(false);
 
   const loadStatus = useCallback(async () => {
@@ -1011,9 +1124,32 @@ export function FactorResearchPanel() {
     } catch {}
   }, []);
 
+  const loadProgress = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/research/progress`);
+      if (r.ok) {
+        const p: RefreshProgress = await r.json();
+        setProgress(p);
+        setRefreshing(p.running);
+        if (!p.running) {
+          // refresh ended → reload status to get new fresh_rows count
+          loadStatus();
+        }
+      }
+    } catch {}
+  }, [loadStatus]);
+
   useEffect(() => {
     loadStatus();
-  }, [loadStatus]);
+    loadProgress();
+  }, [loadStatus, loadProgress]);
+
+  // Poll progress every 3s while refresh is running
+  useEffect(() => {
+    if (!refreshing) return;
+    const interval = setInterval(loadProgress, 3000);
+    return () => clearInterval(interval);
+  }, [refreshing, loadProgress]);
 
   const refresh = useCallback(
     async (force: boolean = false) => {
@@ -1022,14 +1158,20 @@ export function FactorResearchPanel() {
         await fetch(`${API_BASE_URL}/v1/factors/research/refresh`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force }),
+          body: JSON.stringify({
+            force,
+            universe,
+            background: true,
+            max_workers: 5,
+          }),
         });
-        await loadStatus();
-      } finally {
+        // Immediately load progress (background started)
+        setTimeout(loadProgress, 500);
+      } catch {
         setRefreshing(false);
       }
     },
-    [loadStatus],
+    [loadProgress, universe],
   );
 
   const subTabs: {
@@ -1056,6 +1198,9 @@ export function FactorResearchPanel() {
         status={status}
         refreshing={refreshing}
         onRefresh={refresh}
+        progress={progress}
+        universe={universe}
+        onUniverseChange={setUniverse}
         zh={zh}
       />
 
