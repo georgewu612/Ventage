@@ -683,36 +683,60 @@ def pit_backtest_screener(
     except Exception as exc:
         raise ValueError(f"Could not fetch benchmark {benchmark}: {exc}")
 
+    # Strip tz from index so naive Timestamp comparisons work cleanly
+    if bench_hist.index.tz is not None:
+        bench_hist.index = bench_hist.index.tz_localize(None)
     bench_close = bench_hist["Close"].astype(float)
 
-    # 3. Loop through snapshot pairs (T, T+1)
-    period_returns: list[dict] = []
-
+    # 3. Pre-compute matches per period (so we know which symbols to fetch)
+    # Then bulk-fetch unique symbol price histories in parallel
+    pre_matches: list[tuple[str, str, list[str]]] = []   # (snap_date, next_date, symbols)
     for i in range(len(all_dates) - 1):
         snap_date = all_dates[i]
         next_snap_date = all_dates[i + 1]
-
-        # Load PIT panel
         panel = get_pit_panel(snap_date)
         if panel.empty:
             continue
-
-        # Apply conditions
         matched = _apply_conditions_to_panel(panel, conditions)
-        if len(matched) < min_holdings:
-            continue
+        if len(matched) >= min_holdings:
+            pre_matches.append((snap_date, next_snap_date, matched))
 
-        # Compute equal-weight return from snap_date to next_snap_date
+    if not pre_matches:
+        raise ValueError("No periods had ≥{min_holdings} matched symbols")
+
+    all_needed_syms = sorted({s for _, _, syms in pre_matches for s in syms})
+
+    # Bulk-fetch price histories with concurrent workers (cached across calls)
+    from concurrent.futures import ThreadPoolExecutor
+    sym_history: dict[str, pd.DataFrame] = {}
+    def _fetch_one(s: str):
+        try:
+            h = get_price_history(s, period=period)
+            if h is not None and not h.empty:
+                if h.index.tz is not None:
+                    h.index = h.index.tz_localize(None)
+                return s, h
+        except Exception:
+            pass
+        return s, None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for s, h in ex.map(_fetch_one, all_needed_syms):
+            if h is not None:
+                sym_history[s] = h
+
+    # 4. Loop through snapshot pairs and compute returns
+    period_returns: list[dict] = []
+    for snap_date, next_snap_date, matched in pre_matches:
         snap_dt = pd.Timestamp(snap_date)
         next_dt = pd.Timestamp(next_snap_date)
 
         rets: list[float] = []
         for sym in matched:
+            hist = sym_history.get(sym)
+            if hist is None:
+                continue
             try:
-                hist = get_price_history(sym, period=period)
-                if hist is None or hist.empty:
-                    continue
-                # Find closest trading day on/after snap_date
                 close = hist["Close"].astype(float)
                 start_prices = close[close.index >= snap_dt]
                 end_prices = close[close.index >= next_dt]
