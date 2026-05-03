@@ -216,16 +216,17 @@ def get_snapshot_status() -> dict[str, Any]:
     """How many monthly snapshots do we have, and what dates?"""
     db = _get_supabase()
     try:
-        # Distinct snapshot_dates (paginate the rows since count of distinct
-        # isn't directly available without a custom view)
-        # Pull all rows of one factor (e.g. value) to get distinct dates
+        # Distinct snapshot_dates (paginate; supabase REST has no DISTINCT).
+        # Use momentum_60d as the probe factor — it's technical (present in
+        # backfilled snapshots) AND in normal snapshots, so this returns ALL
+        # distinct dates regardless of source.
         rows: list[dict] = []
         offset = 0
         while True:
             resp = (
                 db.table("factor_history")
                 .select("snapshot_date")
-                .eq("factor_name", "value")
+                .eq("factor_name", "momentum_60d")
                 .order("snapshot_date", desc=True)
                 .range(offset, offset + 999)
                 .execute()

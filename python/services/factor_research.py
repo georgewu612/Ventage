@@ -637,16 +637,25 @@ def pit_backtest_screener(
 
     db = _get_supabase()
 
-    # 1. Fetch all snapshot dates (sorted asc)
-    resp = (
-        db.table("factor_history")
-        .select("snapshot_date")
-        .eq("factor_name", "value")
-        .order("snapshot_date", desc=False)
-        .range(0, 999)
-        .execute()
-    )
-    rows = resp.data or []
+    # 1. Fetch all snapshot dates (sorted asc).
+    # Use momentum_60d as probe — present in both normal snapshots and
+    # technical-only backfills, so we get the full date list.
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        resp = (
+            db.table("factor_history")
+            .select("snapshot_date")
+            .eq("factor_name", "momentum_60d")
+            .order("snapshot_date", desc=False)
+            .range(offset, offset + 999)
+            .execute()
+        )
+        batch = resp.data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
     all_dates = sorted({r["snapshot_date"] for r in rows})
 
     if len(all_dates) < 2:
