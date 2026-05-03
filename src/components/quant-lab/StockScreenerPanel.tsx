@@ -12,7 +12,7 @@
  * Each result row links to /dashboard/stocks/{symbol}.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Filter,
   Plus,
@@ -20,11 +20,18 @@ import {
   Loader2,
   ExternalLink,
   Sparkles,
+  Download,
+  BookmarkPlus,
+  Bookmark,
+  Save,
+  LineChart,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
 import { API_BASE_URL } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/provider";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 // ── Factor labels (synced with Phase III FACTOR_LABELS) ─────────────────────
 
@@ -197,6 +204,176 @@ export function StockScreenerPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Saved screens (localStorage) ─────────────────────────────────────────
+  interface SavedScreen {
+    name: string;
+    conditions: Condition[];
+    sortBy: string;
+    sortDesc: boolean;
+    limit: number;
+    createdAt: string;
+  }
+  const STORAGE_KEY = "ventage:saved_screens";
+  const [savedScreens, setSavedScreens] = useState<SavedScreen[]>([]);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveName, setSaveName] = useState("");
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setSavedScreens(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const saveCurrentScreen = () => {
+    const name = saveName.trim();
+    if (!name) return;
+    const screen: SavedScreen = {
+      name,
+      conditions,
+      sortBy,
+      sortDesc,
+      limit,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...savedScreens.filter((s) => s.name !== name), screen];
+    setSavedScreens(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+    setShowSaveDialog(false);
+    setSaveName("");
+  };
+
+  const loadSavedScreen = (s: SavedScreen) => {
+    setConditions(s.conditions);
+    setSortBy(s.sortBy);
+    setSortDesc(s.sortDesc);
+    setLimit(s.limit);
+    setActivePreset(null);
+  };
+
+  const deleteSavedScreen = (name: string) => {
+    if (!confirm(zh ? `删除「${name}」？` : `Delete "${name}"?`)) return;
+    const next = savedScreens.filter((s) => s.name !== name);
+    setSavedScreens(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+  };
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+  const exportCSV = () => {
+    if (!result || result.results.length === 0) return;
+    const factorCols = Array.from(
+      new Set(result.results.flatMap((r) => Object.keys(r.factors))),
+    );
+    const headers = ["symbol", "sector", "market_cap", ...factorCols];
+    const rows = result.results.map((r) => [
+      r.symbol,
+      r.sector ?? "",
+      r.market_cap?.toString() ?? "",
+      ...factorCols.map((f) => {
+        const v = r.factors[f];
+        return v == null ? "" : v.toString();
+      }),
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((cell) => {
+            const s = String(cell);
+            return s.includes(",") || s.includes('"')
+              ? `"${s.replace(/"/g, '""')}"`
+              : s;
+          })
+          .join(","),
+      )
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ventage_screener_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Add to Watchlist ─────────────────────────────────────────────────────
+  const [watchlistStatus, setWatchlistStatus] = useState<string | null>(null);
+  const addAllToWatchlist = async () => {
+    if (!result || result.results.length === 0) return;
+    setWatchlistStatus(zh ? "添加中..." : "Adding...");
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setWatchlistStatus(zh ? "请先登录" : "Sign in first");
+        return;
+      }
+      const rows = result.results.map((r) => ({
+        user_id: user.id,
+        symbol: r.symbol,
+      }));
+      // Upsert by (user_id, symbol) to avoid duplicate-key errors
+      const { error } = await supabase
+        .from("watchlists")
+        .upsert(rows, { onConflict: "user_id,symbol", ignoreDuplicates: true });
+      if (error) throw error;
+      setWatchlistStatus(
+        zh
+          ? `✅ 已添加 ${rows.length} 只到自选`
+          : `✅ Added ${rows.length} to watchlist`,
+      );
+      setTimeout(() => setWatchlistStatus(null), 3000);
+    } catch (e) {
+      setWatchlistStatus(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  // ── Backtest ────────────────────────────────────────────────────────────
+  interface BacktestResult {
+    n_symbols: number;
+    n_periods: number;
+    annualized_return_pct: number;
+    annualized_vol_pct: number;
+    sharpe_ratio: number;
+    max_drawdown_pct: number;
+    win_rate_pct: number;
+    alpha_vs_benchmark_annual_pct: number;
+    information_ratio: number;
+    cumulative_curve: { date: string; portfolio: number; benchmark: number }[];
+    warning: string;
+  }
+  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [backtestLookback, setBacktestLookback] = useState(24);
+
+  const runBacktest = async () => {
+    if (!result || result.results.length === 0) return;
+    setBacktestLoading(true);
+    setBacktest(null);
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/screener/backtest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbols: result.results.map((x) => x.symbol),
+          lookback_months: backtestLookback,
+          benchmark: "SPY",
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? `HTTP ${r.status}`);
+      setBacktest(await r.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBacktestLoading(false);
+    }
+  };
+
   const applyPreset = (preset: Preset) => {
     setConditions(preset.conditions);
     setActivePreset(preset.key);
@@ -259,6 +436,42 @@ export function StockScreenerPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Saved screens (localStorage) */}
+      {savedScreens.length > 0 && (
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-cyan-300">
+            <Bookmark className="h-3 w-3" />
+            {zh ? "我的已保存策略" : "My Saved Screens"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {savedScreens.map((s) => (
+              <div
+                key={s.name}
+                className="flex items-center gap-1 rounded-md border border-cyan-500/20 bg-cyan-500/5 pl-2"
+              >
+                <button
+                  onClick={() => loadSavedScreen(s)}
+                  className="text-[11px] text-cyan-300 hover:text-cyan-200"
+                  title={zh ? "加载这个策略" : "Load this screen"}
+                >
+                  {s.name}
+                  <span className="ml-1.5 text-[9px] text-gray-500">
+                    ({s.conditions.length} {zh ? "条件" : "cond"})
+                  </span>
+                </button>
+                <button
+                  onClick={() => deleteSavedScreen(s.name)}
+                  className="rounded-r-md p-1 text-gray-600 hover:bg-red-500/10 hover:text-red-400"
+                  title={zh ? "删除" : "Delete"}
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Preset templates */}
       <div>
         <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-violet-300">
@@ -297,14 +510,59 @@ export function StockScreenerPanel() {
             <Filter className="h-3 w-3" />
             {zh ? "筛选条件" : "Filter Conditions"}
           </p>
-          <button
-            onClick={addCondition}
-            className="flex items-center gap-1 rounded bg-cyan-500/20 px-2 py-1 text-[10px] text-cyan-300 hover:bg-cyan-500/30"
-          >
-            <Plus className="h-3 w-3" />
-            {zh ? "添加" : "Add"}
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => setShowSaveDialog(true)}
+              className="flex items-center gap-1 rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] text-violet-300 hover:bg-violet-500/20"
+              title={
+                zh ? "保存当前条件为我的策略" : "Save current as my strategy"
+              }
+            >
+              <Save className="h-3 w-3" />
+              {zh ? "保存" : "Save"}
+            </button>
+            <button
+              onClick={addCondition}
+              className="flex items-center gap-1 rounded bg-cyan-500/20 px-2 py-1 text-[10px] text-cyan-300 hover:bg-cyan-500/30"
+            >
+              <Plus className="h-3 w-3" />
+              {zh ? "添加" : "Add"}
+            </button>
+          </div>
         </div>
+
+        {/* Save dialog */}
+        {showSaveDialog && (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-violet-500/30 bg-violet-500/5 p-2">
+            <input
+              type="text"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && saveCurrentScreen()}
+              placeholder={
+                zh ? "策略名称（如：我的动量+质量）" : "Strategy name"
+              }
+              className="flex-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
+              autoFocus
+            />
+            <button
+              onClick={saveCurrentScreen}
+              disabled={!saveName.trim()}
+              className="rounded-md bg-violet-500/30 px-3 py-1 text-xs font-medium text-violet-200 hover:bg-violet-500/40 disabled:opacity-50"
+            >
+              {zh ? "保存" : "Save"}
+            </button>
+            <button
+              onClick={() => {
+                setShowSaveDialog(false);
+                setSaveName("");
+              }}
+              className="rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-white/5"
+            >
+              {zh ? "取消" : "Cancel"}
+            </button>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           {conditions.map((c, i) => (
@@ -447,6 +705,61 @@ export function StockScreenerPanel() {
             </span>
           </div>
 
+          {/* Action bar: Export / Watchlist / Backtest */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-300 hover:bg-white/10"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {zh ? "导出 CSV" : "Export CSV"}
+            </button>
+            <button
+              onClick={addAllToWatchlist}
+              className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-300 hover:bg-cyan-500/20"
+            >
+              <BookmarkPlus className="h-3.5 w-3.5" />
+              {zh
+                ? `加入自选（${result.results.length}）`
+                : `Add to Watchlist (${result.results.length})`}
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <input
+                type="number"
+                value={backtestLookback}
+                min={3}
+                max={60}
+                onChange={(e) =>
+                  setBacktestLookback(parseInt(e.target.value) || 24)
+                }
+                className="w-16 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
+                title={zh ? "回看月数" : "Lookback months"}
+              />
+              <button
+                onClick={runBacktest}
+                disabled={backtestLoading}
+                className="flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
+              >
+                {backtestLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LineChart className="h-3.5 w-3.5" />
+                )}
+                {zh ? "回测此组合" : "Backtest This Set"}
+              </button>
+            </div>
+          </div>
+
+          {/* Watchlist status toast */}
+          {watchlistStatus && (
+            <p className="rounded-md bg-cyan-500/10 px-3 py-1.5 text-[11px] text-cyan-300">
+              {watchlistStatus}
+            </p>
+          )}
+
+          {/* Backtest results */}
+          {backtest && <BacktestPanel data={backtest} zh={zh} />}
+
           {/* Per-condition diagnostics */}
           {result.applied_conditions.length > 0 && (
             <details className="text-[10px] text-gray-500">
@@ -550,6 +863,245 @@ export function StockScreenerPanel() {
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Backtest sub-component ──────────────────────────────────────────────────
+
+function BacktestPanel({
+  data,
+  zh,
+}: {
+  data: {
+    n_symbols: number;
+    n_periods: number;
+    annualized_return_pct: number;
+    annualized_vol_pct: number;
+    sharpe_ratio: number;
+    max_drawdown_pct: number;
+    win_rate_pct: number;
+    alpha_vs_benchmark_annual_pct: number;
+    information_ratio: number;
+    cumulative_curve: { date: string; portfolio: number; benchmark: number }[];
+    warning: string;
+  };
+  zh: boolean;
+}) {
+  const curve = data.cumulative_curve;
+  if (!curve || curve.length < 2) return null;
+
+  const w = 600;
+  const h = 200;
+  const pad = 36;
+  const dateY = h - 6;
+  const chartTop = pad - 12;
+  const chartBottom = h - pad - 18;
+
+  const xs = curve.map(
+    (_, i) => pad + (i / (curve.length - 1)) * (w - 2 * pad),
+  );
+  const allValues = curve.flatMap((c) => [c.portfolio, c.benchmark]);
+  const yMin = Math.min(...allValues);
+  const yMax = Math.max(...allValues);
+  const yRange = yMax - yMin || 1;
+  const y = (v: number) =>
+    chartBottom - ((v - yMin) / yRange) * (chartBottom - chartTop);
+
+  const linePath = (key: "portfolio" | "benchmark") =>
+    curve
+      .map(
+        (c, i) =>
+          `${i === 0 ? "M" : "L"} ${xs[i].toFixed(1)} ${y(c[key]).toFixed(1)}`,
+      )
+      .join(" ");
+
+  const tone = (
+    v: number,
+    cmp: ">0" | "<0" | "abs>1" | "abs>0.5",
+  ): "good" | "bad" | "neutral" => {
+    if (cmp === ">0") return v > 0 ? "good" : v < 0 ? "bad" : "neutral";
+    if (cmp === "<0") return v > 0 ? "bad" : "good";
+    if (cmp === "abs>1") return Math.abs(v) > 1 ? "good" : "neutral";
+    return Math.abs(v) > 0.5 ? "good" : "neutral";
+  };
+  const toneCls = {
+    good: "text-emerald-300 bg-emerald-500/10",
+    bad: "text-red-300 bg-red-500/10",
+    neutral: "text-gray-300 bg-white/5",
+  };
+
+  return (
+    <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+      <p className="mb-2 text-xs font-semibold text-violet-300">
+        {zh
+          ? `🔬 假设持有当前 ${data.n_symbols} 只股票（等权重，过去 ${data.n_periods} 个月）`
+          : `🔬 If you'd held this ${data.n_symbols}-stock set (equal-weight, past ${data.n_periods} months)`}
+      </p>
+
+      {/* Honest warning */}
+      <div className="mb-3 flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5">
+        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
+        <p className="text-[10px] text-amber-300">
+          {zh
+            ? "这不是真正的滚动调仓回测——我们没有历史因子快照。这只是「如果当时持有当前这套股票」的事后回顾。Sharpe 数字不能用作未来收益预测。"
+            : data.warning}
+        </p>
+      </div>
+
+      {/* Stats grid */}
+      <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <Stat
+          label={zh ? "年化收益" : "Annual Ret"}
+          value={`${data.annualized_return_pct >= 0 ? "+" : ""}${data.annualized_return_pct.toFixed(1)}%`}
+          tone={tone(data.annualized_return_pct, ">0")}
+        />
+        <Stat
+          label="Sharpe"
+          value={data.sharpe_ratio.toFixed(2)}
+          tone={tone(data.sharpe_ratio, "abs>1")}
+        />
+        <Stat
+          label={zh ? "最大回撤" : "Max DD"}
+          value={`-${data.max_drawdown_pct.toFixed(1)}%`}
+          tone={
+            data.max_drawdown_pct < 15
+              ? "good"
+              : data.max_drawdown_pct < 25
+                ? "neutral"
+                : "bad"
+          }
+        />
+        <Stat
+          label={zh ? "胜率" : "Win Rate"}
+          value={`${data.win_rate_pct.toFixed(0)}%`}
+          tone={
+            data.win_rate_pct >= 55
+              ? "good"
+              : data.win_rate_pct < 45
+                ? "bad"
+                : "neutral"
+          }
+        />
+        <Stat
+          label={zh ? "α vs SPY" : "α vs SPY"}
+          value={`${data.alpha_vs_benchmark_annual_pct >= 0 ? "+" : ""}${data.alpha_vs_benchmark_annual_pct.toFixed(1)}%`}
+          tone={tone(data.alpha_vs_benchmark_annual_pct, ">0")}
+        />
+        <Stat
+          label="IR"
+          value={data.information_ratio.toFixed(2)}
+          tone={tone(data.information_ratio, "abs>0.5")}
+        />
+      </div>
+
+      {/* Chart: portfolio vs benchmark */}
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
+        {/* Baseline 1.0 */}
+        <line
+          x1={pad}
+          y1={y(1)}
+          x2={w - pad}
+          y2={y(1)}
+          stroke="rgba(255,255,255,0.15)"
+          strokeDasharray="3 3"
+        />
+        {/* Benchmark line (SPY) */}
+        <path
+          d={linePath("benchmark")}
+          fill="none"
+          stroke="rgb(107,114,128)"
+          strokeWidth="1.5"
+        />
+        {/* Portfolio line */}
+        <path
+          d={linePath("portfolio")}
+          fill="none"
+          stroke="rgb(167,139,250)"
+          strokeWidth="2"
+        />
+
+        {/* Y-axis labels */}
+        <text
+          x={pad - 4}
+          y={chartTop + 4}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {yMax.toFixed(2)}
+        </text>
+        <text
+          x={pad - 4}
+          y={chartBottom + 4}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {yMin.toFixed(2)}
+        </text>
+        <text
+          x={pad - 4}
+          y={y(1) + 3}
+          textAnchor="end"
+          className="fill-gray-700 text-[9px]"
+        >
+          1.00
+        </text>
+
+        {/* Date labels */}
+        <text
+          x={xs[0]}
+          y={dateY}
+          textAnchor="start"
+          className="fill-gray-600 text-[9px]"
+        >
+          {curve[0].date}
+        </text>
+        {curve.length >= 5 && (
+          <text
+            x={xs[Math.floor(curve.length / 2)]}
+            y={dateY}
+            textAnchor="middle"
+            className="fill-gray-600 text-[9px]"
+          >
+            {curve[Math.floor(curve.length / 2)].date}
+          </text>
+        )}
+        <text
+          x={xs[curve.length - 1]}
+          y={dateY}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {curve[curve.length - 1].date}
+        </text>
+      </svg>
+
+      <div className="mt-2 flex justify-end gap-3 text-[10px]">
+        <span className="text-violet-400">━ {zh ? "组合" : "Portfolio"}</span>
+        <span className="text-gray-500">━ SPY</span>
+      </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "good" | "bad" | "neutral";
+}) {
+  const cls = {
+    good: "text-emerald-300 bg-emerald-500/10",
+    bad: "text-red-300 bg-red-500/10",
+    neutral: "text-gray-300 bg-white/5",
+  }[tone];
+  return (
+    <div className={`rounded-md px-2 py-1.5 text-center ${cls}`}>
+      <p className="text-[9px] opacity-70">{label}</p>
+      <p className="font-mono text-sm font-bold">{value}</p>
     </div>
   );
 }
