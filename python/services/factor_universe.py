@@ -46,7 +46,8 @@ FACTOR_NAMES = [
     "volume_spike_5d", "volume_trend_20d", "rs_vs_spy", "sector_strength",
 ]
 
-# Cluster definitions (used by analysis layer)
+# Cluster definitions — only multi-factor clusters (single-member ones
+# would duplicate their underlying factor in the UI with no info gain).
 CLUSTERS: dict[str, list[str]] = {
     "momentum_cluster": [
         "momentum", "momentum_60d", "momentum_120d", "breakout_20d", "new_high_52w",
@@ -54,22 +55,14 @@ CLUSTERS: dict[str, list[str]] = {
     "volume_cluster": [
         "volume_spike_5d", "volume_trend_20d",
     ],
-    "quality_cluster": [
-        "quality",
-    ],
-    "value_cluster": [
-        "value",
-    ],
     "structure_cluster": [
         "rs_vs_spy", "sector_strength",
     ],
-    "low_vol_cluster": [
-        "low_vol",
-    ],
-    "low_inv_cluster": [
-        "low_inv",
-    ],
 }
+
+# Factors that are constant within sector — sector-neutralization would zero
+# them out, so we exclude them from sector demean.
+SECTOR_CONSTANT_FACTORS = {"sector_strength"}
 
 
 # ── Default universe: S&P 100-ish (large-cap representatives) ────────────────
@@ -241,15 +234,23 @@ def sector_neutralize(panel: pd.DataFrame, factor_cols: list[str], sector_col: s
 
     This removes the sector effect so a "Quality" factor measures
     quality WITHIN sector, not "tech is high quality".
+
+    Skips factors in SECTOR_CONSTANT_FACTORS (e.g. sector_strength,
+    which is identical for all stocks in the same sector — demean would
+    zero it out, destroying the signal).
     """
     if sector_col not in panel.columns:
         return panel
     out = panel.copy()
     for col in factor_cols:
-        if col not in out.columns:
+        if col not in out.columns or col in SECTOR_CONSTANT_FACTORS:
             continue
         sector_means = out.groupby(sector_col)[col].transform("mean")
-        out[col] = out[col] - sector_means
+        demeaned = out[col] - sector_means
+        # Safety: if demeaning destroyed all variance, restore original
+        if demeaned.std() == 0 or pd.isna(demeaned.std()):
+            continue
+        out[col] = demeaned
     return out
 
 

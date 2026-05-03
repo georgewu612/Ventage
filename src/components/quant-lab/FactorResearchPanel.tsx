@@ -51,14 +51,11 @@ const FACTOR_LABELS: Record<string, { zh: string; en: string }> = {
   volume_trend_20d: { zh: "20 日量能趋势", en: "Vol Trend 20d" },
   rs_vs_spy: { zh: "相对 SPY 强度", en: "RS vs SPY" },
   sector_strength: { zh: "行业强度", en: "Sector Strength" },
-  // Clusters (7)
+  // Clusters (3 multi-factor only — single-member clusters removed
+  // since they'd duplicate their underlying factor)
   momentum_cluster: { zh: "动量集群", en: "Momentum Cluster" },
   volume_cluster: { zh: "量能集群", en: "Volume Cluster" },
-  quality_cluster: { zh: "质量集群", en: "Quality Cluster" },
-  value_cluster: { zh: "价值集群", en: "Value Cluster" },
   structure_cluster: { zh: "市场结构集群", en: "Structure Cluster" },
-  low_vol_cluster: { zh: "低波动集群", en: "Low Vol Cluster" },
-  low_inv_cluster: { zh: "低投资集群", en: "Low Inv Cluster" },
 };
 
 // Style + technical raw factors (selectable for sort/backtest)
@@ -81,15 +78,11 @@ const FACTOR_LIST: FactorName[] = [
   "sector_strength",
 ];
 
-// Clusters (selectable for IC analysis)
+// Clusters (selectable for IC analysis) — only multi-factor clusters
 const CLUSTER_LIST: FactorName[] = [
   "momentum_cluster",
   "volume_cluster",
-  "quality_cluster",
-  "value_cluster",
   "structure_cluster",
-  "low_vol_cluster",
-  "low_inv_cluster",
 ];
 
 const ALL_FACTORS = [...FACTOR_LIST, ...CLUSTER_LIST];
