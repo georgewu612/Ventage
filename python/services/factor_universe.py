@@ -36,7 +36,40 @@ logger = logging.getLogger(__name__)
 
 
 CACHE_TTL_HOURS = 24
-FACTOR_NAMES = ["value", "quality", "momentum", "size", "low_vol", "low_inv"]
+
+# Original 6 + Phase III 8 new = 14 raw factors
+FACTOR_NAMES = [
+    # Original 6 (style)
+    "value", "quality", "momentum", "size", "low_vol", "low_inv",
+    # Phase III: technical / structure (8 new)
+    "momentum_60d", "momentum_120d", "breakout_20d", "new_high_52w",
+    "volume_spike_5d", "volume_trend_20d", "rs_vs_spy", "sector_strength",
+]
+
+# Cluster definitions (used by analysis layer)
+CLUSTERS: dict[str, list[str]] = {
+    "momentum_cluster": [
+        "momentum", "momentum_60d", "momentum_120d", "breakout_20d", "new_high_52w",
+    ],
+    "volume_cluster": [
+        "volume_spike_5d", "volume_trend_20d",
+    ],
+    "quality_cluster": [
+        "quality",
+    ],
+    "value_cluster": [
+        "value",
+    ],
+    "structure_cluster": [
+        "rs_vs_spy", "sector_strength",
+    ],
+    "low_vol_cluster": [
+        "low_vol",
+    ],
+    "low_inv_cluster": [
+        "low_inv",
+    ],
+}
 
 
 # ── Default universe: S&P 100-ish (large-cap representatives) ────────────────
@@ -183,14 +216,81 @@ def refresh_universe(
 
 # ── Read path (analysis) ─────────────────────────────────────────────────────
 
+def winsorize(s: pd.Series, sigma: float = 3.0) -> pd.Series:
+    """Clip values to ±sigma standard deviations from the mean."""
+    if s.empty or s.std() == 0:
+        return s
+    mean = s.mean()
+    std = s.std()
+    return s.clip(lower=mean - sigma * std, upper=mean + sigma * std)
+
+
+def sector_neutralize(panel: pd.DataFrame, factor_cols: list[str], sector_col: str = "sector") -> pd.DataFrame:
+    """Subtract sector mean from each factor (within-sector demean).
+
+    This removes the sector effect so a "Quality" factor measures
+    quality WITHIN sector, not "tech is high quality".
+    """
+    if sector_col not in panel.columns:
+        return panel
+    out = panel.copy()
+    for col in factor_cols:
+        if col not in out.columns:
+            continue
+        sector_means = out.groupby(sector_col)[col].transform("mean")
+        out[col] = out[col] - sector_means
+    return out
+
+
+def standardize(panel: pd.DataFrame, factor_cols: list[str]) -> pd.DataFrame:
+    """Cross-sectional z-score: (x - mean) / std per column."""
+    out = panel.copy()
+    for col in factor_cols:
+        if col not in out.columns:
+            continue
+        s = out[col]
+        if s.std() > 0:
+            out[col] = (s - s.mean()) / s.std()
+        else:
+            out[col] = 0
+    return out
+
+
+def compute_clusters(panel: pd.DataFrame) -> pd.DataFrame:
+    """Add cluster columns = mean of constituent factors (after standardization).
+
+    Should be called AFTER winsorize → sector_neutralize → standardize so all
+    factors are on the same z-score scale.
+    """
+    out = panel.copy()
+    for cluster_name, factor_list in CLUSTERS.items():
+        cols = [f for f in factor_list if f in out.columns]
+        if not cols:
+            out[cluster_name] = float("nan")
+            continue
+        out[cluster_name] = out[cols].mean(axis=1, skipna=True)
+    return out
+
+
 def get_universe_panel(
     symbols: list[str] | None = None,
     factor_names: list[str] | None = None,
     *,
     fresh_only: bool = True,
+    transform: str = "raw",
+    include_clusters: bool = False,
     db=None,
 ) -> pd.DataFrame:
     """Read cached factor values into a wide DataFrame.
+
+    Args:
+        transform: 'raw' | 'winsorized' | 'sector_neutral' | 'z_score' | 'full_pipeline'
+            - raw: as-stored values
+            - winsorized: clip ±3σ
+            - sector_neutral: winsorize + within-sector demean
+            - z_score: winsorize + sector_neutral + cross-section z-score
+            - full_pipeline: alias for z_score
+        include_clusters: if True, append cluster columns (require z_score transform)
 
     Returns DataFrame: rows = symbols, columns = factors, plus a 'sector'
     and 'market_cap' meta column.
@@ -240,8 +340,31 @@ def get_universe_panel(
         if f not in result.columns:
             result[f] = float("nan")
 
+    # Apply transformation pipeline
+    if transform != "raw":
+        result = winsorize_panel(result, factors)
+        if transform in ("sector_neutral", "z_score", "full_pipeline"):
+            result = sector_neutralize(result, factors)
+        if transform in ("z_score", "full_pipeline"):
+            result = standardize(result, factors)
+
+    if include_clusters:
+        result = compute_clusters(result)
+
     # Reorder columns
-    return result[factors + ["sector", "market_cap"]]
+    base_cols = factors + ["sector", "market_cap"]
+    cluster_cols = list(CLUSTERS.keys()) if include_clusters else []
+    cols_in_result = base_cols + [c for c in cluster_cols if c in result.columns]
+    return result[cols_in_result]
+
+
+def winsorize_panel(panel: pd.DataFrame, factor_cols: list[str], sigma: float = 3.0) -> pd.DataFrame:
+    """Apply winsorize to multiple columns of a panel."""
+    out = panel.copy()
+    for col in factor_cols:
+        if col in out.columns:
+            out[col] = winsorize(out[col], sigma=sigma)
+    return out
 
 
 # ── Status ────────────────────────────────────────────────────────────────────

@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from services.financials_provider import (
@@ -238,15 +239,149 @@ def _compute_raw_factors(symbol: str) -> dict[str, float]:
         asset_growth = (ta_curr - ta_prev) / ta_prev
         low_inv_raw = -asset_growth
 
+    # ── Phase III: Extended factors (technical/structure) ────────────────────
+
+    # 7. Momentum 60d (~3-month return, no skip)
+    mom_60d = float("nan")
+    if not hist.empty and len(hist) >= 60:
+        try:
+            mom_60d = (float(hist["Close"].iloc[-1]) / float(hist["Close"].iloc[-60])) - 1
+        except (IndexError, ValueError, ZeroDivisionError):
+            pass
+
+    # 8. Momentum 120d (~6-month return)
+    mom_120d = float("nan")
+    if not hist.empty and len(hist) >= 120:
+        try:
+            mom_120d = (float(hist["Close"].iloc[-1]) / float(hist["Close"].iloc[-120])) - 1
+        except (IndexError, ValueError, ZeroDivisionError):
+            pass
+
+    # 9. Breakout 20d: distance from prior 20-day high (positive = above breakout)
+    breakout_20d = float("nan")
+    if not hist.empty and len(hist) >= 21:
+        try:
+            prior_20d_high = float(hist["High"].iloc[-21:-1].max())
+            close_now = float(hist["Close"].iloc[-1])
+            if prior_20d_high > 0:
+                breakout_20d = (close_now / prior_20d_high) - 1
+        except (IndexError, ValueError, KeyError):
+            pass
+
+    # 10. New 52-week high proximity (1.0 = at high, 0 = at low)
+    new_high_52w = float("nan")
+    if not hist.empty and len(hist) >= 252:
+        try:
+            window = hist["High"].iloc[-252:]
+            high_52w = float(window.max())
+            low_52w = float(hist["Low"].iloc[-252:].min())
+            close_now = float(hist["Close"].iloc[-1])
+            if high_52w > low_52w:
+                new_high_52w = (close_now - low_52w) / (high_52w - low_52w)
+        except (IndexError, ValueError, KeyError):
+            pass
+
+    # 11. Volume spike 5d: avg(vol last 5d) / avg(vol prior 20d)
+    volume_spike_5d = float("nan")
+    if not hist.empty and "Volume" in hist.columns and len(hist) >= 25:
+        try:
+            recent_5 = float(hist["Volume"].iloc[-5:].mean())
+            base_20 = float(hist["Volume"].iloc[-25:-5].mean())
+            if base_20 > 0:
+                volume_spike_5d = recent_5 / base_20
+        except (IndexError, ValueError, KeyError):
+            pass
+
+    # 12. Volume trend 20d: linear regression slope of log-volume over 20d (normalized)
+    volume_trend_20d = float("nan")
+    if not hist.empty and "Volume" in hist.columns and len(hist) >= 20:
+        try:
+            v = hist["Volume"].iloc[-20:].astype(float)
+            v = v[v > 0]
+            if len(v) >= 10:
+                logv = np.log(v.values)
+                x = np.arange(len(logv))
+                slope = np.polyfit(x, logv, 1)[0]
+                volume_trend_20d = float(slope)   # natural log per day
+        except (ValueError, KeyError, np.linalg.LinAlgError):
+            pass
+
+    # 13. Relative strength vs SPY: stock 60d ret - SPY 60d ret
+    rs_vs_spy = float("nan")
+    if not hist.empty and len(hist) >= 60 and not math.isnan(mom_60d):
+        try:
+            spy_hist = get_price_history("SPY", period="6mo")
+            if not spy_hist.empty and len(spy_hist) >= 60:
+                spy_60d = (
+                    float(spy_hist["Close"].iloc[-1]) / float(spy_hist["Close"].iloc[-60])
+                ) - 1
+                rs_vs_spy = mom_60d - spy_60d
+        except (FinancialsError, IndexError, ValueError, ZeroDivisionError):
+            pass
+
+    # 14. Sector strength: sector ETF 60d return vs SPY (cached via SECTOR_ETF map)
+    sector_strength = float("nan")
+    sector_etf = SECTOR_ETF_MAP.get(sector or "", None)
+    if sector_etf and sector_etf != "SPY":
+        try:
+            etf_hist = get_price_history(sector_etf, period="6mo")
+            spy_hist = get_price_history("SPY", period="6mo")
+            if (
+                not etf_hist.empty and len(etf_hist) >= 60 and
+                not spy_hist.empty and len(spy_hist) >= 60
+            ):
+                etf_60d = (
+                    float(etf_hist["Close"].iloc[-1]) / float(etf_hist["Close"].iloc[-60])
+                ) - 1
+                spy_60d = (
+                    float(spy_hist["Close"].iloc[-1]) / float(spy_hist["Close"].iloc[-60])
+                ) - 1
+                sector_strength = etf_60d - spy_60d
+        except (FinancialsError, IndexError, ValueError, ZeroDivisionError):
+            pass
+
     return {
+        # Original 6
         "value": value_raw,
         "quality": quality_raw,
         "momentum": momentum_raw,
         "size": size_raw,
         "low_vol": low_vol_raw,
         "low_inv": low_inv_raw,
+        # Phase III: technical/structure (8 new)
+        "momentum_60d": mom_60d,
+        "momentum_120d": mom_120d,
+        "breakout_20d": breakout_20d,
+        "new_high_52w": new_high_52w,
+        "volume_spike_5d": volume_spike_5d,
+        "volume_trend_20d": volume_trend_20d,
+        "rs_vs_spy": rs_vs_spy,
+        "sector_strength": sector_strength,
         "_sector": sector,
     }
+
+
+# ── Sector → SPDR sector ETF map (for sector_strength) ─────────────────────
+
+SECTOR_ETF_MAP: dict[str, str] = {
+    "Technology": "XLK",
+    "Information Technology": "XLK",
+    "Communication Services": "XLC",
+    "Consumer Cyclical": "XLY",
+    "Consumer Discretionary": "XLY",
+    "Consumer Defensive": "XLP",
+    "Consumer Staples": "XLP",
+    "Healthcare": "XLV",
+    "Health Care": "XLV",
+    "Financial Services": "XLF",
+    "Financials": "XLF",
+    "Industrials": "XLI",
+    "Energy": "XLE",
+    "Basic Materials": "XLB",
+    "Materials": "XLB",
+    "Real Estate": "XLRE",
+    "Utilities": "XLU",
+}
 
 
 # ── Peer universe caching + percentile ───────────────────────────────────────

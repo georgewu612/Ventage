@@ -161,6 +161,68 @@ def fama_macbeth(req: FMRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"FM failed: {exc} | {' | '.join(tb)}"[:500])
 
 
+# ── IC Analysis endpoints (Phase III) ─────────────────────────────────────
+
+
+class ICRequest(BaseModel):
+    factor_name: str
+    horizon_days: int = Field(default=20, ge=5, le=120)
+    lookback_months: int = Field(default=24, ge=6, le=60)
+    sector_neutral: bool = True
+
+
+@router.post("/factors/research/ic")
+def compute_ic(req: ICRequest) -> dict[str, Any]:
+    """Compute Information Coefficient (IC) time series for one factor.
+
+    IC_t = Spearman(factor_at_t, return_t→t+horizon).
+    Reports IC mean, std, IR, hit rate, t-stat, decay across longer horizons.
+
+    Significance threshold: |t| ≥ 2.0 → factor predicts forward returns.
+    """
+    from services.ic_analysis import compute_ic as _compute
+
+    try:
+        result = _compute(
+            req.factor_name,
+            horizon_days=req.horizon_days,
+            lookback_months=req.lookback_months,
+            sector_neutral=req.sector_neutral,
+        )
+        return result.to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]
+        raise HTTPException(status_code=500, detail=f"IC failed: {exc} | {' | '.join(tb)}"[:500])
+
+
+@router.get("/factors/research/ic/all")
+def compute_all_ic(
+    horizon_days: int = Query(default=20, ge=5, le=120),
+    lookback_months: int = Query(default=24, ge=6, le=60),
+    sector_neutral: bool = Query(default=True),
+    include_clusters: bool = Query(default=True),
+) -> dict[str, Any]:
+    """Run IC analysis for ALL factors (and clusters). Used by factor health banner.
+
+    Returns a summary dict ranked by |IC IR|. Long-running endpoint
+    (~30 seconds for 14 factors + 7 clusters).
+    """
+    from services.ic_analysis import compute_all_factors_ic
+
+    try:
+        return compute_all_factors_ic(
+            horizon_days=horizon_days,
+            lookback_months=lookback_months,
+            sector_neutral=sector_neutral,
+            include_clusters=include_clusters,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"IC batch failed: {exc}")
+
+
 @router.post("/factors/research/backtest")
 def long_short_backtest(req: BacktestRequest) -> dict[str, Any]:
     """Long-short factor portfolio backtest.
