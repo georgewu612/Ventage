@@ -23,7 +23,9 @@ Public API:
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -215,6 +217,198 @@ def refresh_universe(
         "errors": errors,
         "total": len(syms),
         "duration_s": round(duration, 1),
+    }
+
+
+# ── Background + concurrent refresh (Phase IV: SP500 scale) ─────────────────
+
+_refresh_state: dict[str, Any] = {
+    "running": False,
+    "started_at": None,
+    "universe_name": None,
+    "total": 0,
+    "completed": 0,
+    "persisted": 0,
+    "skipped_cached": 0,
+    "errors": 0,
+    "error_samples": [],
+    "last_symbol": None,
+    "duration_s": 0,
+}
+_refresh_lock = threading.Lock()
+
+
+def get_refresh_progress() -> dict[str, Any]:
+    """Snapshot of current background refresh status."""
+    with _refresh_lock:
+        snapshot = dict(_refresh_state)
+    # Compute ETA
+    if snapshot["running"] and snapshot["completed"] > 0 and snapshot["started_at"]:
+        elapsed = time.time() - snapshot["started_at"]
+        rate = snapshot["completed"] / elapsed   # symbols/sec
+        remaining = snapshot["total"] - snapshot["completed"]
+        eta_seconds = int(remaining / rate) if rate > 0 else None
+        snapshot["eta_seconds"] = eta_seconds
+        snapshot["elapsed_s"] = round(elapsed, 1)
+    else:
+        snapshot["eta_seconds"] = None
+        snapshot["elapsed_s"] = round(snapshot.get("duration_s", 0), 1)
+    return snapshot
+
+
+def _compute_one(sym: str, fresh_set: set[str], force: bool, expires_iso: str) -> dict[str, Any]:
+    """Compute factors for one symbol and persist. Returns status dict."""
+    if sym in fresh_set and not force:
+        return {"symbol": sym, "status": "skipped"}
+
+    db = _get_supabase()   # each thread gets its own client (supabase-py is thread-safe enough for this)
+
+    try:
+        raw = _compute_raw_factors(sym)
+        sector = raw.pop("_sector", None)
+        from services.financials_provider import get_company_info
+        try:
+            info = get_company_info(sym)
+            market_cap = info.get("marketCap")
+        except FinancialsError:
+            market_cap = None
+
+        rows = []
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for fname in FACTOR_NAMES:
+            v = raw.get(fname)
+            if v is None or (isinstance(v, float) and (v != v)):
+                continue
+            rows.append({
+                "symbol": sym,
+                "factor_name": fname,
+                "factor_value": float(v),
+                "computed_at": now_iso,
+                "expires_at": expires_iso,
+                "sector": sector,
+                "market_cap": float(market_cap) if market_cap else None,
+            })
+
+        if not rows:
+            return {"symbol": sym, "status": "no_data"}
+
+        db.table("factor_universe").upsert(rows).execute()
+        return {"symbol": sym, "status": "persisted"}
+
+    except Exception as exc:
+        return {"symbol": sym, "status": "error", "error": str(exc)[:120]}
+
+
+def refresh_universe_async(
+    symbols: list[str] | None = None,
+    *,
+    universe_name: str = "core50",
+    force: bool = False,
+    max_workers: int = 5,
+) -> dict[str, Any]:
+    """Kick off a background refresh, return immediately.
+
+    The actual work runs in a daemon thread with `max_workers` concurrent
+    yfinance fetches. Poll get_refresh_progress() for status.
+
+    Returns:
+        {started: bool, total: int, message: str}
+    """
+    syms = [s.upper() for s in (symbols or DEFAULT_UNIVERSE)]
+
+    with _refresh_lock:
+        if _refresh_state["running"]:
+            return {
+                "started": False,
+                "message": "Refresh already in progress",
+                "total": _refresh_state["total"],
+                "completed": _refresh_state["completed"],
+            }
+        # Initialize state
+        _refresh_state.update({
+            "running": True,
+            "started_at": time.time(),
+            "universe_name": universe_name,
+            "total": len(syms),
+            "completed": 0,
+            "persisted": 0,
+            "skipped_cached": 0,
+            "errors": 0,
+            "error_samples": [],
+            "last_symbol": None,
+            "duration_s": 0,
+        })
+
+    def _worker():
+        try:
+            # Probe cache once for fresh symbols
+            db = _get_supabase()
+            fresh_set: set[str] = set()
+            if not force:
+                try:
+                    now_iso = datetime.now(timezone.utc).isoformat()
+                    resp = (
+                        db.table("factor_universe")
+                        .select("symbol,factor_name")
+                        .gt("expires_at", now_iso)
+                        .in_("symbol", syms)
+                        .execute()
+                    )
+                    sym_factors: dict[str, set[str]] = {}
+                    for r in (resp.data or []):
+                        sym_factors.setdefault(r["symbol"], set()).add(r["factor_name"])
+                    required = set(FACTOR_NAMES)
+                    fresh_set = {
+                        s for s, fnames in sym_factors.items()
+                        if required.issubset(fnames)
+                    }
+                except Exception as exc:
+                    logger.warning("Cache probe failed: %s", exc)
+
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=CACHE_TTL_HOURS)
+            expires_iso = expires_at.isoformat()
+
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                futures = {
+                    ex.submit(_compute_one, sym, fresh_set, force, expires_iso): sym
+                    for sym in syms
+                }
+                for fut in as_completed(futures):
+                    sym = futures[fut]
+                    try:
+                        result = fut.result()
+                    except Exception as exc:
+                        result = {"symbol": sym, "status": "error", "error": str(exc)[:120]}
+                    with _refresh_lock:
+                        _refresh_state["completed"] += 1
+                        _refresh_state["last_symbol"] = sym
+                        status = result.get("status")
+                        if status == "persisted":
+                            _refresh_state["persisted"] += 1
+                        elif status == "skipped":
+                            _refresh_state["skipped_cached"] += 1
+                        else:
+                            _refresh_state["errors"] += 1
+                            if len(_refresh_state["error_samples"]) < 10 and result.get("error"):
+                                _refresh_state["error_samples"].append(
+                                    f"{sym}: {result['error']}"
+                                )
+
+        finally:
+            with _refresh_lock:
+                _refresh_state["running"] = False
+                _refresh_state["duration_s"] = round(
+                    time.time() - _refresh_state["started_at"], 1
+                ) if _refresh_state["started_at"] else 0
+
+    t = threading.Thread(target=_worker, daemon=True, name="factor-refresh")
+    t.start()
+
+    return {
+        "started": True,
+        "total": len(syms),
+        "universe_name": universe_name,
+        "message": f"Refreshing {len(syms)} symbols in background ({max_workers} workers)",
     }
 
 

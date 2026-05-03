@@ -26,3 +26,8 @@ vectorbt>=0.26.0
 
 # Factor research (Newey-West, Spearman corr, normal p-values)
 scipy>=1.11.0
+
+# Wikipedia SP500 list scraping (pd.read_html backend)
+lxml>=4.9.0
+beautifulsoup4>=4.12.0
+html5lib>=1.1

@@ -24,6 +24,9 @@ router = APIRouter()
 class RefreshRequest(BaseModel):
     symbols: list[str] | None = None
     force: bool = False
+    universe: str = "core50"   # 'core50' (59 large-cap) | 'sp500' (~500)
+    max_workers: int = 5
+    background: bool = True    # if True, returns immediately + use /progress to poll
 
 
 class SortRequest(BaseModel):
@@ -52,17 +55,60 @@ class BacktestRequest(BaseModel):
 
 @router.post("/factors/research/refresh")
 def refresh_universe(req: RefreshRequest | None = None) -> dict[str, Any]:
-    """Recompute factor values for the universe and persist to factor_universe.
+    """Refresh factor values for a universe.
 
-    Cold run: 3-5 min for 50 symbols. Use force=true to bypass cache.
+    Modes:
+        background=True (default): kick off async refresh, return immediately.
+            Poll GET /factors/research/progress for status.
+            5 concurrent workers; cold S&P 500 ≈ 5-10 min.
+        background=False: synchronous (legacy), blocks until done.
+            Only safe for small universes (<60 symbols) due to API timeout.
+
+    Universe options:
+        'core50' — 59 hand-picked large caps across 11 sectors (default)
+        'sp500'  — ~500 S&P 500 components from Wikipedia (or fallback list)
     """
-    from services.factor_universe import refresh_universe as _refresh
+    from services.factor_universe import (
+        refresh_universe as _refresh_sync,
+        refresh_universe_async as _refresh_async,
+    )
+    from services.universe_provider import get_universe
 
     req = req or RefreshRequest()
+
+    # Resolve universe to symbol list
+    symbols = req.symbols
+    if symbols is None:
+        try:
+            symbols = get_universe(req.universe)   # type: ignore[arg-type]
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     try:
-        return _refresh(symbols=req.symbols, force=req.force)
+        if req.background:
+            return _refresh_async(
+                symbols=symbols,
+                universe_name=req.universe,
+                force=req.force,
+                max_workers=req.max_workers,
+            )
+        else:
+            return _refresh_sync(symbols=symbols, force=req.force)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Refresh failed: {exc}")
+
+
+@router.get("/factors/research/progress")
+def get_refresh_progress() -> dict[str, Any]:
+    """Snapshot of current refresh progress (for UI polling).
+
+    Returns:
+        running (bool), total, completed, persisted, skipped_cached, errors,
+        last_symbol, error_samples, eta_seconds, elapsed_s
+    """
+    from services.factor_universe import get_refresh_progress as _progress
+
+    return _progress()
 
 
 @router.get("/factors/research/status")
