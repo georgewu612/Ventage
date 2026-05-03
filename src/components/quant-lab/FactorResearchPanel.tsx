@@ -1415,14 +1415,19 @@ function ICDetailPanel({ factor, zh }: { factor: ICFactor; zh: boolean }) {
   if (series.length < 2) return null;
 
   const w = 600;
-  const h = 160;
-  const pad = 30;
+  const h = 180; // taller to give dates their own strip
+  const pad = 36; // slightly larger so y-axis labels have room on the left
+  const dateY = h - 6; // bottom strip for dates
+  const chartBottom = h - pad - 18; // reserve 18px for date labels
+  const chartTop = pad - 12;
   const xs = series.map(
     (_, i) => pad + (i / (series.length - 1)) * (w - 2 * pad),
   );
   const ics = series.map((s) => s.ic);
   const yMax = Math.max(...ics.map(Math.abs), 0.1);
-  const y = (v: number) => h / 2 - (v / yMax) * (h / 2 - pad);
+  const midY = (chartTop + chartBottom) / 2;
+  const halfH = (chartBottom - chartTop) / 2;
+  const y = (v: number) => midY - (v / yMax) * halfH;
 
   const linePath = series
     .map(
@@ -1472,11 +1477,12 @@ function ICDetailPanel({ factor, zh }: { factor: ICFactor; zh: boolean }) {
 
       {/* IC time series chart */}
       <svg width="100%" viewBox={`0 0 ${w} ${h}`} className="text-gray-500">
+        {/* Zero line (mid of chart area) */}
         <line
           x1={pad}
-          y1={h / 2}
+          y1={midY}
           x2={w - pad}
-          y2={h / 2}
+          y2={midY}
           stroke="rgba(255,255,255,0.2)"
           strokeDasharray="3 3"
         />
@@ -1485,7 +1491,7 @@ function ICDetailPanel({ factor, zh }: { factor: ICFactor; zh: boolean }) {
           <line
             key={i}
             x1={xs[i]}
-            y1={h / 2}
+            y1={midY}
             x2={xs[i]}
             y2={y(s.ic)}
             stroke={s.ic >= 0 ? "rgb(16,185,129)" : "rgb(239,68,68)"}
@@ -1499,23 +1505,45 @@ function ICDetailPanel({ factor, zh }: { factor: ICFactor; zh: boolean }) {
           stroke="rgb(34,211,238)"
           strokeWidth="1.5"
         />
-        <text x={pad} y={pad - 5} className="fill-gray-600 text-[9px]">
+        {/* Y-axis labels (left of chart, outside the plot area) */}
+        <text
+          x={pad - 4}
+          y={chartTop + 4}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
           +{yMax.toFixed(2)}
         </text>
-        <text x={pad} y={h - 5} className="fill-gray-600 text-[9px]">
+        <text
+          x={pad - 4}
+          y={chartBottom + 4}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
           -{yMax.toFixed(2)}
         </text>
+        {/* X-axis date labels (bottom strip) */}
         <text
           x={xs[0]}
-          y={h - 5}
-          textAnchor="middle"
+          y={dateY}
+          textAnchor="start"
           className="fill-gray-600 text-[9px]"
         >
           {series[0].date}
         </text>
+        {series.length >= 5 && (
+          <text
+            x={xs[Math.floor(series.length / 2)]}
+            y={dateY}
+            textAnchor="middle"
+            className="fill-gray-600 text-[9px]"
+          >
+            {series[Math.floor(series.length / 2)].date}
+          </text>
+        )}
         <text
           x={xs[series.length - 1]}
-          y={h - 5}
+          y={dateY}
           textAnchor="end"
           className="fill-gray-600 text-[9px]"
         >
