@@ -194,7 +194,7 @@ def compute_ic(
         raise ValueError(f"Only {len(price_panels)} symbols have price history")
 
     # Build aligned price DataFrame
-    prices = pd.DataFrame(price_panels).sort_index().fillna(method="ffill")
+    prices = pd.DataFrame(price_panels).sort_index().ffill()
 
     # Resample to month-end snapshots
     monthly_close = prices.resample("ME").last().tail(lookback_months + 1)
