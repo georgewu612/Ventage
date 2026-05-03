@@ -511,19 +511,36 @@ def get_universe_panel(
 
     factors = factor_names or FACTOR_NAMES
 
-    # Pull rows. NOTE: supabase-py defaults to range(0, 999) so without
-    # an explicit limit we silently truncate at 1000 rows ≈ 71 symbols.
-    # Set a generous limit (50k) to handle full S&P 500 × 14 factors = 7000.
-    query = db.table("factor_universe").select(
-        "symbol,factor_name,factor_value,sector,market_cap,expires_at"
-    ).in_("factor_name", factors).limit(50000)
-    if symbols:
-        query = query.in_("symbol", [s.upper() for s in symbols])
-    if fresh_only:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        query = query.gt("expires_at", now_iso)
+    # Supabase REST has a hard server-side cap of 1000 rows per request,
+    # so we paginate manually using .range(start, end) to fetch everything.
+    # SP500 × 14 factors = ~7000 rows → 7 round-trips.
+    BATCH = 1000
 
-    resp = query.execute()
+    def _build_query(start: int, end: int):
+        q = db.table("factor_universe").select(
+            "symbol,factor_name,factor_value,sector,market_cap,expires_at"
+        ).in_("factor_name", factors)
+        if symbols:
+            q = q.in_("symbol", [s.upper() for s in symbols])
+        if fresh_only:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            q = q.gt("expires_at", now_iso)
+        return q.range(start, end)
+
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        resp = _build_query(offset, offset + BATCH - 1).execute()
+        batch = resp.data or []
+        rows.extend(batch)
+        if len(batch) < BATCH:
+            break
+        offset += BATCH
+
+    # Wrap result for downstream code that expected `resp.data`
+    class _Resp:
+        def __init__(self, data): self.data = data
+    resp = _Resp(rows)
     rows = resp.data or []
     if not rows:
         return pd.DataFrame(columns=factors + ["sector", "market_cap"])
