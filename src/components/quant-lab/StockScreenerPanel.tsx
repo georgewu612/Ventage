@@ -1021,31 +1021,46 @@ function BacktestPanel({
           strokeWidth="2"
         />
 
-        {/* Y-axis labels */}
-        <text
-          x={pad - 4}
-          y={chartTop + 4}
-          textAnchor="end"
-          className="fill-gray-600 text-[9px]"
-        >
-          {yMax.toFixed(2)}
-        </text>
-        <text
-          x={pad - 4}
-          y={chartBottom + 4}
-          textAnchor="end"
-          className="fill-gray-600 text-[9px]"
-        >
-          {yMin.toFixed(2)}
-        </text>
-        <text
-          x={pad - 4}
-          y={y(1) + 3}
-          textAnchor="end"
-          className="fill-gray-700 text-[9px]"
-        >
-          1.00
-        </text>
+        {/* Y-axis labels with anti-overlap: skip 1.00 when too close to yMin/yMax */}
+        {(() => {
+          const yMaxPos = chartTop + 4;
+          const yMinPos = chartBottom + 4;
+          const yOnePos = y(1) + 3;
+          // Hide 1.00 label if within 12px of either edge label
+          const showOne =
+            Math.abs(yOnePos - yMaxPos) > 12 &&
+            Math.abs(yOnePos - yMinPos) > 12;
+          return (
+            <>
+              <text
+                x={pad - 4}
+                y={yMaxPos}
+                textAnchor="end"
+                className="fill-gray-600 text-[9px]"
+              >
+                {yMax.toFixed(2)}
+              </text>
+              <text
+                x={pad - 4}
+                y={yMinPos}
+                textAnchor="end"
+                className="fill-gray-600 text-[9px]"
+              >
+                {yMin.toFixed(2)}
+              </text>
+              {showOne && (
+                <text
+                  x={pad - 4}
+                  y={yOnePos}
+                  textAnchor="end"
+                  className="fill-gray-700 text-[9px]"
+                >
+                  1.00
+                </text>
+              )}
+            </>
+          );
+        })()}
 
         {/* Date labels */}
         <text
