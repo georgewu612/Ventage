@@ -374,6 +374,65 @@ export function StockScreenerPanel() {
     }
   };
 
+  // ── PIT (true point-in-time) backtest ─────────────────────────────────
+  interface PITBacktestResult {
+    n_snapshots_used: number;
+    snapshot_dates: string[];
+    period_returns: {
+      date: string;
+      n_matched: number;
+      return_pct: number;
+      benchmark_pct: number;
+      sample_symbols: string[];
+    }[];
+    annualized_return_pct: number;
+    annualized_vol_pct: number;
+    sharpe_ratio: number;
+    max_drawdown_pct: number;
+    win_rate_pct: number;
+    cumulative_curve: { date: string; portfolio: number; benchmark: number }[];
+    benchmark_annualized_pct: number;
+    alpha_annual_pct: number;
+    information_ratio: number;
+    avg_holdings: number;
+    interpretation: string;
+    warnings: string[];
+  }
+  const [pitBacktest, setPitBacktest] = useState<PITBacktestResult | null>(
+    null,
+  );
+  const [pitLoading, setPitLoading] = useState(false);
+  const [pitError, setPitError] = useState<string | null>(null);
+
+  const runPitBacktest = async () => {
+    setPitLoading(true);
+    setPitBacktest(null);
+    setPitError(null);
+    try {
+      const r = await fetch(
+        `${API_BASE_URL}/v1/factors/screener/backtest/pit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conditions,
+            benchmark: "SPY",
+            min_holdings: 5,
+          }),
+        },
+      );
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.detail ?? `HTTP ${r.status}`);
+      }
+      setPitBacktest(await r.json());
+    } catch (e) {
+      setPitError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPitLoading(false);
+    }
+  };
+
   const applyPreset = (preset: Preset) => {
     setConditions(preset.conditions);
     setActivePreset(preset.key);
@@ -739,13 +798,35 @@ export function StockScreenerPanel() {
                 onClick={runBacktest}
                 disabled={backtestLoading}
                 className="flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
+                title={
+                  zh
+                    ? "假设持有当前组合 N 月（有 look-ahead bias）"
+                    : "Held-current backtest (has look-ahead bias)"
+                }
               >
                 {backtestLoading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <LineChart className="h-3.5 w-3.5" />
                 )}
-                {zh ? "回测此组合" : "Backtest This Set"}
+                {zh ? "假设回测" : "Naive Backtest"}
+              </button>
+              <button
+                onClick={runPitBacktest}
+                disabled={pitLoading}
+                className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+                title={
+                  zh
+                    ? "真实点-在-时刻回测（无 look-ahead bias，需 ≥2 份月度快照）"
+                    : "True point-in-time backtest (no look-ahead bias, needs ≥2 monthly snapshots)"
+                }
+              >
+                {pitLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <span className="text-base">⭐</span>
+                )}
+                {zh ? "PIT 真回测" : "PIT Backtest"}
               </button>
             </div>
           </div>
@@ -757,8 +838,26 @@ export function StockScreenerPanel() {
             </p>
           )}
 
-          {/* Backtest results */}
+          {/* PIT backtest error (often: "need ≥2 snapshots") */}
+          {pitError && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <p className="text-[11px] font-semibold text-amber-300">
+                {zh ? "⚠️ PIT 回测无法运行" : "⚠️ PIT backtest unavailable"}
+              </p>
+              <p className="mt-0.5 text-[10px] text-amber-200">{pitError}</p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                {zh
+                  ? "解决方法：去状态条点「立即拍照」积累更多月度快照。每月 1 号自动拍。"
+                  : "Fix: trigger 'Snapshot Now' in the status bar to accumulate more monthly snapshots. Auto-runs on the 1st of each month."}
+              </p>
+            </div>
+          )}
+
+          {/* Naive backtest results */}
           {backtest && <BacktestPanel data={backtest} zh={zh} />}
+
+          {/* PIT backtest results */}
+          {pitBacktest && <PITBacktestResultPanel data={pitBacktest} zh={zh} />}
 
           {/* Per-condition diagnostics */}
           {result.applied_conditions.length > 0 && (
@@ -1117,6 +1216,346 @@ function Stat({
     <div className={`rounded-md px-2 py-1.5 text-center ${cls}`}>
       <p className="text-[9px] opacity-70">{label}</p>
       <p className="font-mono text-sm font-bold">{value}</p>
+    </div>
+  );
+}
+
+// ── PIT (Point-In-Time) Backtest Panel — TRUE OOS, no look-ahead bias ──
+
+function PITBacktestResultPanel({
+  data,
+  zh,
+}: {
+  data: {
+    n_snapshots_used: number;
+    snapshot_dates: string[];
+    period_returns: {
+      date: string;
+      n_matched: number;
+      return_pct: number;
+      benchmark_pct: number;
+      sample_symbols: string[];
+    }[];
+    annualized_return_pct: number;
+    annualized_vol_pct: number;
+    sharpe_ratio: number;
+    max_drawdown_pct: number;
+    win_rate_pct: number;
+    cumulative_curve: { date: string; portfolio: number; benchmark: number }[];
+    benchmark_annualized_pct: number;
+    alpha_annual_pct: number;
+    information_ratio: number;
+    avg_holdings: number;
+    interpretation: string;
+    warnings: string[];
+  };
+  zh: boolean;
+}) {
+  const curve = data.cumulative_curve;
+  const robust = data.n_snapshots_used >= 6;
+
+  const tone = (
+    v: number,
+    cmp: ">0" | "abs>1" | "abs>0.5",
+  ): "good" | "bad" | "neutral" => {
+    if (cmp === ">0") return v > 0 ? "good" : v < 0 ? "bad" : "neutral";
+    if (cmp === "abs>1") return Math.abs(v) > 1 ? "good" : "neutral";
+    return Math.abs(v) > 0.5 ? "good" : "neutral";
+  };
+
+  return (
+    <div
+      className={`rounded-lg border p-3 ${
+        robust
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-amber-500/30 bg-amber-500/5"
+      }`}
+    >
+      <div className="mb-2 flex items-baseline justify-between">
+        <p
+          className={`text-xs font-semibold ${
+            robust ? "text-emerald-300" : "text-amber-300"
+          }`}
+        >
+          ⭐ {zh ? "PIT 真回测" : "PIT Backtest (true OOS)"} —{" "}
+          {data.n_snapshots_used} {zh ? "份月度快照" : "monthly snapshots"}
+          {!robust && (
+            <span className="ml-2 text-[10px] font-normal">
+              ({zh ? "需 ≥6 份才稳健" : "needs ≥6 for robust"})
+            </span>
+          )}
+        </p>
+        <span className="text-[10px] text-gray-500">
+          {data.snapshot_dates[0]} →{" "}
+          {data.snapshot_dates[data.snapshot_dates.length - 1]}
+        </span>
+      </div>
+
+      <div className="mb-3 rounded-md bg-emerald-500/10 px-2 py-1.5">
+        <p className="text-[10px] text-emerald-200">
+          ✅{" "}
+          {zh
+            ? "每个月用当时的因子值重新筛选 → 持有 1 月 → 再次筛选。无 look-ahead bias。"
+            : "Re-screens at each historical month-end using factor values known THEN, holds 1 month, repeats. No look-ahead bias."}
+        </p>
+      </div>
+
+      {/* Stats grid */}
+      <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        <Stat
+          label={zh ? "年化收益" : "Annual Ret"}
+          value={`${data.annualized_return_pct >= 0 ? "+" : ""}${data.annualized_return_pct.toFixed(1)}%`}
+          tone={tone(data.annualized_return_pct, ">0")}
+        />
+        <Stat
+          label="Sharpe"
+          value={data.sharpe_ratio.toFixed(2)}
+          tone={tone(data.sharpe_ratio, "abs>1")}
+        />
+        <Stat
+          label={zh ? "最大回撤" : "Max DD"}
+          value={`-${data.max_drawdown_pct.toFixed(1)}%`}
+          tone={
+            data.max_drawdown_pct < 15
+              ? "good"
+              : data.max_drawdown_pct < 25
+                ? "neutral"
+                : "bad"
+          }
+        />
+        <Stat
+          label={zh ? "胜率" : "Win Rate"}
+          value={`${data.win_rate_pct.toFixed(0)}%`}
+          tone={
+            data.win_rate_pct >= 55
+              ? "good"
+              : data.win_rate_pct < 45
+                ? "bad"
+                : "neutral"
+          }
+        />
+        <Stat
+          label={zh ? "α vs SPY" : "α vs SPY"}
+          value={`${data.alpha_annual_pct >= 0 ? "+" : ""}${data.alpha_annual_pct.toFixed(1)}%`}
+          tone={tone(data.alpha_annual_pct, ">0")}
+        />
+        <Stat
+          label="IR"
+          value={data.information_ratio.toFixed(2)}
+          tone={tone(data.information_ratio, "abs>0.5")}
+        />
+      </div>
+
+      {/* Equity curve */}
+      {curve.length >= 2 && <PITCurveChart curve={curve} zh={zh} />}
+
+      {/* Per-period table */}
+      <details className="mt-3 text-[10px]">
+        <summary className="cursor-pointer text-gray-400">
+          {zh ? "📅 各月详情" : "📅 Monthly details"} (
+          {data.period_returns.length})
+        </summary>
+        <div className="mt-2 overflow-x-auto rounded-md border border-white/10">
+          <table className="w-full text-[10px]">
+            <thead className="bg-white/5 text-gray-400">
+              <tr>
+                <th className="px-2 py-1.5 text-left">
+                  {zh ? "日期" : "Date"}
+                </th>
+                <th className="px-2 py-1.5 text-right">{zh ? "持仓" : "N"}</th>
+                <th className="px-2 py-1.5 text-right">
+                  {zh ? "收益" : "Return"}
+                </th>
+                <th className="px-2 py-1.5 text-right">SPY</th>
+                <th className="px-2 py-1.5 text-right">α</th>
+                <th className="px-2 py-1.5 text-left">
+                  {zh ? "样本持仓" : "Sample"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.period_returns.map((p, i) => {
+                const alpha = p.return_pct - p.benchmark_pct;
+                return (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="px-2 py-1 text-gray-400">{p.date}</td>
+                    <td className="px-2 py-1 text-right text-white">
+                      {p.n_matched}
+                    </td>
+                    <td
+                      className={`px-2 py-1 text-right font-mono ${
+                        p.return_pct >= 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {p.return_pct >= 0 ? "+" : ""}
+                      {p.return_pct.toFixed(2)}%
+                    </td>
+                    <td className="px-2 py-1 text-right font-mono text-gray-400">
+                      {p.benchmark_pct >= 0 ? "+" : ""}
+                      {p.benchmark_pct.toFixed(2)}%
+                    </td>
+                    <td
+                      className={`px-2 py-1 text-right font-mono ${
+                        alpha >= 0 ? "text-emerald-400" : "text-red-400"
+                      }`}
+                    >
+                      {alpha >= 0 ? "+" : ""}
+                      {alpha.toFixed(2)}%
+                    </td>
+                    <td className="px-2 py-1 font-mono text-cyan-300">
+                      {p.sample_symbols.slice(0, 4).join(", ")}
+                      {p.sample_symbols.length >= 4 && "..."}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      {/* Warnings */}
+      {data.warnings.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {data.warnings.map((w, i) => (
+            <p key={i} className="text-[10px] text-amber-300">
+              {w}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <p className="mt-2 text-[11px] text-emerald-200">
+        💡 {data.interpretation}
+      </p>
+    </div>
+  );
+}
+
+function PITCurveChart({
+  curve,
+  zh,
+}: {
+  curve: { date: string; portfolio: number; benchmark: number }[];
+  zh: boolean;
+}) {
+  const w = 600;
+  const h = 180;
+  const pad = 36;
+  const dateY = h - 6;
+  const chartTop = pad - 12;
+  const chartBottom = h - pad - 18;
+
+  const xs = curve.map(
+    (_, i) => pad + (i / Math.max(curve.length - 1, 1)) * (w - 2 * pad),
+  );
+  const allValues = curve.flatMap((c) => [c.portfolio, c.benchmark]);
+  const yMin = Math.min(...allValues);
+  const yMax = Math.max(...allValues);
+  const yRange = yMax - yMin || 1;
+  const y = (v: number) =>
+    chartBottom - ((v - yMin) / yRange) * (chartBottom - chartTop);
+
+  const linePath = (key: "portfolio" | "benchmark") =>
+    curve
+      .map(
+        (c, i) =>
+          `${i === 0 ? "M" : "L"} ${xs[i].toFixed(1)} ${y(c[key]).toFixed(1)}`,
+      )
+      .join(" ");
+
+  const yMaxPos = chartTop + 4;
+  const yMinPos = chartBottom + 4;
+  const yOnePos = y(1) + 3;
+  const showOne =
+    Math.abs(yOnePos - yMaxPos) > 12 && Math.abs(yOnePos - yMinPos) > 12;
+
+  return (
+    <div className="rounded-md border border-white/10 bg-black/20 p-2">
+      <p className="mb-1 text-[10px] font-semibold text-gray-400">
+        {zh ? "权益曲线（PIT 重组合）" : "PIT Equity Curve"}
+      </p>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
+        <line
+          x1={pad}
+          y1={y(1)}
+          x2={w - pad}
+          y2={y(1)}
+          stroke="rgba(255,255,255,0.15)"
+          strokeDasharray="3 3"
+        />
+        <path
+          d={linePath("benchmark")}
+          fill="none"
+          stroke="rgb(107,114,128)"
+          strokeWidth="1.5"
+        />
+        <path
+          d={linePath("portfolio")}
+          fill="none"
+          stroke="rgb(52,211,153)"
+          strokeWidth="2"
+        />
+
+        <text
+          x={pad - 4}
+          y={yMaxPos}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {yMax.toFixed(2)}
+        </text>
+        <text
+          x={pad - 4}
+          y={yMinPos}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {yMin.toFixed(2)}
+        </text>
+        {showOne && (
+          <text
+            x={pad - 4}
+            y={yOnePos}
+            textAnchor="end"
+            className="fill-gray-700 text-[9px]"
+          >
+            1.00
+          </text>
+        )}
+        <text
+          x={xs[0]}
+          y={dateY}
+          textAnchor="start"
+          className="fill-gray-600 text-[9px]"
+        >
+          {curve[0].date}
+        </text>
+        {curve.length >= 5 && (
+          <text
+            x={xs[Math.floor(curve.length / 2)]}
+            y={dateY}
+            textAnchor="middle"
+            className="fill-gray-600 text-[9px]"
+          >
+            {curve[Math.floor(curve.length / 2)].date}
+          </text>
+        )}
+        <text
+          x={xs[curve.length - 1]}
+          y={dateY}
+          textAnchor="end"
+          className="fill-gray-600 text-[9px]"
+        >
+          {curve[curve.length - 1].date}
+        </text>
+      </svg>
+      <div className="flex justify-end gap-3 text-[10px]">
+        <span className="text-emerald-400">
+          ━ {zh ? "PIT 组合" : "PIT Portfolio"}
+        </span>
+        <span className="text-gray-500">━ SPY</span>
+      </div>
     </div>
   );
 }

@@ -525,3 +525,283 @@ def long_short_backtest(
         win_rate=win_rate,
         cumulative_curve=curve,
     )
+
+
+# ── True Point-In-Time backtest (Phase V.2) ─────────────────────────────
+
+@dataclass
+class PITBacktestResult:
+    """Result of true PIT backtest using historical snapshots."""
+    n_snapshots_used: int
+    snapshot_dates: list[str]
+    period_returns: list[dict[str, Any]]    # [{date, n_matched, return, symbols}, ...]
+    annualized_return: float
+    annualized_vol: float
+    sharpe_ratio: float
+    max_drawdown: float
+    win_rate: float
+    cumulative_curve: list[dict[str, Any]]   # [{date, portfolio, benchmark}]
+    benchmark_annualized: float
+    alpha_annual: float
+    information_ratio: float
+    avg_holdings: float
+    interpretation: str
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "n_snapshots_used": self.n_snapshots_used,
+            "snapshot_dates": self.snapshot_dates,
+            "period_returns": [
+                {
+                    "date": p["date"],
+                    "n_matched": p["n_matched"],
+                    "return_pct": round(p["return"] * 100, 3),
+                    "benchmark_pct": round(p.get("benchmark", 0) * 100, 3),
+                    "sample_symbols": p.get("symbols", [])[:6],
+                }
+                for p in self.period_returns
+            ],
+            "annualized_return_pct": round(self.annualized_return * 100, 2),
+            "annualized_vol_pct": round(self.annualized_vol * 100, 2),
+            "sharpe_ratio": round(self.sharpe_ratio, 2),
+            "max_drawdown_pct": round(self.max_drawdown * 100, 2),
+            "win_rate_pct": round(self.win_rate * 100, 1),
+            "cumulative_curve": self.cumulative_curve,
+            "benchmark_annualized_pct": round(self.benchmark_annualized * 100, 2),
+            "alpha_annual_pct": round(self.alpha_annual * 100, 2),
+            "information_ratio": round(self.information_ratio, 2),
+            "avg_holdings": round(self.avg_holdings, 1),
+            "interpretation": self.interpretation,
+            "warnings": self.warnings,
+        }
+
+
+def _apply_conditions_to_panel(panel: pd.DataFrame, conditions: list[dict]) -> list[str]:
+    """Apply screener conditions to a panel DataFrame, return matching symbols."""
+    df = panel.copy()
+    for cond in conditions:
+        factor = cond.get("factor")
+        op = cond.get("op")
+        value = cond.get("value")
+        if factor not in df.columns:
+            continue
+        col = df[factor]
+        if op == ">=":
+            df = df[col >= value]
+        elif op == ">":
+            df = df[col > value]
+        elif op == "<=":
+            df = df[col <= value]
+        elif op == "<":
+            df = df[col < value]
+        elif op == "==":
+            df = df[col == value]
+        elif op == "!=":
+            df = df[col != value]
+    return df.index.tolist()
+
+
+def pit_backtest_screener(
+    conditions: list[dict],
+    *,
+    benchmark: str = "SPY",
+    min_holdings: int = 5,
+) -> PITBacktestResult:
+    """True point-in-time backtest of a screener strategy.
+
+    For each historical snapshot date:
+        1. Load that month's factor panel
+        2. Apply screener conditions
+        3. Take next month's return (snapshot_date → next_snapshot_date)
+        4. Equal-weight average across matched symbols
+
+    This eliminates look-ahead bias because at time T we only use factor
+    values that were known at time T (from factor_history table).
+
+    Requires ≥2 snapshots to produce any result. Becomes meaningful at ≥6.
+
+    Args:
+        conditions: list of {factor, op, value} dicts
+        benchmark: ticker for alpha calculation (default SPY)
+        min_holdings: skip period if fewer than N symbols match
+
+    Returns:
+        PITBacktestResult with full diagnostics
+    """
+    import math
+    from datetime import datetime, timedelta
+    from services.factor_snapshot import get_pit_panel
+    from services.factor_universe import _get_supabase
+    from services.financials_provider import get_price_history
+
+    db = _get_supabase()
+
+    # 1. Fetch all snapshot dates (sorted asc)
+    resp = (
+        db.table("factor_history")
+        .select("snapshot_date")
+        .eq("factor_name", "value")
+        .order("snapshot_date", desc=False)
+        .range(0, 999)
+        .execute()
+    )
+    rows = resp.data or []
+    all_dates = sorted({r["snapshot_date"] for r in rows})
+
+    if len(all_dates) < 2:
+        raise ValueError(
+            f"Need ≥2 monthly snapshots for PIT backtest, have {len(all_dates)}. "
+            f"Trigger snapshots monthly via /v1/factors/snapshot/run; meaningful "
+            f"results require ≥6."
+        )
+
+    warnings: list[str] = []
+    if len(all_dates) < 6:
+        warnings.append(
+            f"⚠️ 仅 {len(all_dates)} 份快照（建议 ≥6 才稳健）。"
+            f"统计势能不足，结果仅供参考。"
+        )
+
+    # 2. Fetch benchmark price history (covers entire span + buffer)
+    span_days = (
+        datetime.fromisoformat(all_dates[-1]).date()
+        - datetime.fromisoformat(all_dates[0]).date()
+    ).days
+    period = f"{max(span_days // 30 + 3, 3)}mo"
+    try:
+        bench_hist = get_price_history(benchmark, period=period)
+    except Exception as exc:
+        raise ValueError(f"Could not fetch benchmark {benchmark}: {exc}")
+
+    bench_close = bench_hist["Close"].astype(float)
+
+    # 3. Loop through snapshot pairs (T, T+1)
+    period_returns: list[dict] = []
+
+    for i in range(len(all_dates) - 1):
+        snap_date = all_dates[i]
+        next_snap_date = all_dates[i + 1]
+
+        # Load PIT panel
+        panel = get_pit_panel(snap_date)
+        if panel.empty:
+            continue
+
+        # Apply conditions
+        matched = _apply_conditions_to_panel(panel, conditions)
+        if len(matched) < min_holdings:
+            continue
+
+        # Compute equal-weight return from snap_date to next_snap_date
+        snap_dt = pd.Timestamp(snap_date)
+        next_dt = pd.Timestamp(next_snap_date)
+
+        rets: list[float] = []
+        for sym in matched:
+            try:
+                hist = get_price_history(sym, period=period)
+                if hist is None or hist.empty:
+                    continue
+                # Find closest trading day on/after snap_date
+                close = hist["Close"].astype(float)
+                start_prices = close[close.index >= snap_dt]
+                end_prices = close[close.index >= next_dt]
+                if start_prices.empty or end_prices.empty:
+                    continue
+                p0 = float(start_prices.iloc[0])
+                p1 = float(end_prices.iloc[0])
+                if p0 > 0:
+                    rets.append((p1 / p0) - 1)
+            except Exception:
+                continue
+
+        if len(rets) < min_holdings:
+            continue
+
+        port_ret = float(np.mean(rets))
+
+        # Benchmark return same period
+        b_start = bench_close[bench_close.index >= snap_dt]
+        b_end = bench_close[bench_close.index >= next_dt]
+        if not b_start.empty and not b_end.empty:
+            bench_period_ret = float(b_end.iloc[0] / b_start.iloc[0] - 1)
+        else:
+            bench_period_ret = 0.0
+
+        period_returns.append({
+            "date": snap_date,
+            "n_matched": len(matched),
+            "return": port_ret,
+            "benchmark": bench_period_ret,
+            "symbols": matched,
+        })
+
+    if not period_returns:
+        raise ValueError(
+            "No periods produced returns. Try loosening conditions or wait for more snapshots."
+        )
+
+    # 4. Aggregate stats
+    port_rets = np.array([p["return"] for p in period_returns])
+    bench_rets = np.array([p["benchmark"] for p in period_returns])
+    n = len(port_rets)
+    avg_n_matched = float(np.mean([p["n_matched"] for p in period_returns]))
+
+    mean_m = float(np.mean(port_rets))
+    std_m = float(np.std(port_rets, ddof=1)) if n > 1 else 0.0
+    annualized_return = mean_m * 12
+    annualized_vol = std_m * math.sqrt(12)
+    sharpe = annualized_return / annualized_vol if annualized_vol > 0 else 0.0
+    win_rate = float((port_rets > 0).mean())
+
+    bench_mean = float(np.mean(bench_rets))
+    bench_annualized = bench_mean * 12
+    alpha_annual = annualized_return - bench_annualized
+    excess = port_rets - bench_rets
+    excess_vol = float(np.std(excess, ddof=1)) * math.sqrt(12) if n > 1 else 0.0
+    info_ratio = alpha_annual / excess_vol if excess_vol > 0 else 0.0
+
+    # 5. Cumulative curve
+    cum_port = np.cumprod(1 + port_rets)
+    cum_bench = np.cumprod(1 + bench_rets)
+    peak = np.maximum.accumulate(cum_port)
+    drawdown = (cum_port - peak) / peak
+    max_dd = float(-drawdown.min()) if len(drawdown) > 0 else 0.0
+
+    cumulative_curve = []
+    for i, p in enumerate(period_returns):
+        cumulative_curve.append({
+            "date": p["date"],
+            "portfolio": round(float(cum_port[i]), 4),
+            "benchmark": round(float(cum_bench[i]), 4),
+        })
+
+    # 6. Interpretation
+    if abs(sharpe) >= 1.0 and alpha_annual > 0:
+        interp = (
+            f"真实 OOS Sharpe {sharpe:.2f}（年化 {annualized_return*100:.1f}%, "
+            f"α {alpha_annual*100:+.1f}%）。{n} 期数据，{'统计势能足' if n >= 6 else '样本太小'}"
+        )
+    elif sharpe < 0:
+        interp = f"真实 OOS Sharpe {sharpe:.2f}，策略未跑赢风险。该筛选条件在样本期内表现不佳"
+    else:
+        interp = f"真实 OOS Sharpe {sharpe:.2f}，{n} 期。{'结果模糊' if n < 6 else '边际策略'}"
+
+    return PITBacktestResult(
+        n_snapshots_used=len(all_dates),
+        snapshot_dates=all_dates,
+        period_returns=period_returns,
+        annualized_return=annualized_return,
+        annualized_vol=annualized_vol,
+        sharpe_ratio=sharpe,
+        max_drawdown=max_dd,
+        win_rate=win_rate,
+        cumulative_curve=cumulative_curve,
+        benchmark_annualized=bench_annualized,
+        alpha_annual=alpha_annual,
+        information_ratio=info_ratio,
+        avg_holdings=avg_n_matched,
+        interpretation=interp,
+        warnings=warnings,
+    )

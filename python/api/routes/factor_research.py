@@ -515,6 +515,53 @@ def screener_backtest(req: ScreenerBacktestRequest) -> dict[str, Any]:
     }
 
 
+# ── True PIT Backtest (Phase V.2) ────────────────────────────────────────
+
+
+class PITBacktestRequest(BaseModel):
+    conditions: list[ScreenerCondition]
+    benchmark: str = "SPY"
+    min_holdings: int = Field(default=5, ge=1, le=50)
+
+
+@router.post("/factors/screener/backtest/pit")
+def pit_backtest(req: PITBacktestRequest) -> dict[str, Any]:
+    """True point-in-time backtest using accumulated factor_history snapshots.
+
+    Eliminates look-ahead bias by re-screening at each historical month-end
+    using the factor values that were known at that time, holding for one
+    month, then re-screening at the next snapshot.
+
+    Requirements:
+      - ≥2 monthly snapshots in factor_history (returns 400 otherwise)
+      - ≥6 snapshots for statistically meaningful results
+
+    Returns same shape as regular /backtest plus:
+      - n_snapshots_used + snapshot_dates list
+      - period_returns: per-month details (matches, return, sample symbols)
+      - alpha + IR vs benchmark
+      - warnings if sample is too small
+    """
+    from services.factor_research import pit_backtest_screener
+
+    try:
+        result = pit_backtest_screener(
+            [c.dict() for c in req.conditions],
+            benchmark=req.benchmark,
+            min_holdings=req.min_holdings,
+        )
+        return result.to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]
+        raise HTTPException(
+            status_code=500,
+            detail=f"PIT backtest failed: {exc} | {' | '.join(tb)}"[:500],
+        )
+
+
 # ── IC Analysis endpoints (Phase III) ─────────────────────────────────────
 
 
