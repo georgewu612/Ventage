@@ -698,6 +698,69 @@ async def run_signal_outcome_update(db) -> dict:
     return result
 
 
+async def run_factor_snapshot(db) -> dict:
+    """Snapshot SP500 factor values to factor_history for OOS backtest.
+
+    Runs monthly on the 1st (UTC). After 6 months of accumulated snapshots,
+    point-in-time backtest becomes meaningful. Synchronous wrapper around
+    the async snapshot service — waits for completion before returning.
+    """
+    from datetime import datetime, timezone
+    from services.factor_snapshot import snapshot_now_async, get_snapshot_progress
+
+    start = time.perf_counter()
+    snapshot_date = datetime.now(timezone.utc).date()
+    logger.info("factor_snapshot_start", snapshot_date=snapshot_date.isoformat())
+
+    try:
+        kickoff = snapshot_now_async(snapshot_date=snapshot_date, max_workers=5)
+        if not kickoff.get("started"):
+            logger.warning("factor_snapshot_skipped", reason=kickoff.get("message"))
+            return {"status": "skipped", **kickoff}
+
+        # Poll progress until done (max 30 min)
+        max_wait_s = 30 * 60
+        poll_interval = 10
+        elapsed = 0
+        while elapsed < max_wait_s:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+            prog = get_snapshot_progress()
+            if not prog.get("running"):
+                break
+
+        final = get_snapshot_progress()
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        result = {
+            "status": "ok" if not final.get("running") else "timeout",
+            "snapshot_date": snapshot_date.isoformat(),
+            "persisted": final.get("persisted", 0),
+            "errors": final.get("errors", 0),
+            "duration_s": final.get("duration_s", elapsed),
+        }
+        _write_job_run(
+            db,
+            job_name="factor_snapshot",
+            status="success" if result["status"] == "ok" else "error",
+            loaded=result["persisted"],
+            duration_ms=duration_ms,
+            error_message=None if result["status"] == "ok" else "Polling timed out",
+        )
+        logger.info("factor_snapshot_done", **result)
+        return result
+    except Exception as exc:
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        logger.error("factor_snapshot_error", error=str(exc))
+        _write_job_run(
+            db,
+            job_name="factor_snapshot",
+            status="error",
+            error_message=str(exc),
+            duration_ms=duration_ms,
+        )
+        return {"status": "error", "error": str(exc)}
+
+
 def start_scheduler():
     """Start the APScheduler with configured intervals."""
     db = _create_supabase_client()
@@ -939,6 +1002,21 @@ def start_scheduler():
         args=[db],
         id="signal_outcome_update",
         name="Signal Outcome Update (Trading System v2)",
+        max_instances=1,
+    )
+
+    # Phase V — monthly factor snapshot for OOS backtest
+    # Runs 1st of each month at 22:00 UTC (~17:00 ET, after market close)
+    scheduler.add_job(
+        run_factor_snapshot,
+        "cron",
+        day=1,
+        hour=22,
+        minute=0,
+        timezone="UTC",
+        args=[db],
+        id="factor_snapshot",
+        name="Factor Snapshot (Monthly PIT)",
         max_instances=1,
     )
 

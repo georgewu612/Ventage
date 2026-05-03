@@ -282,6 +282,148 @@ function StatusHeader({
             `, ${progress.errors} ${zh ? "失败" : "errors"}`}
         </p>
       )}
+
+      {/* Snapshot history status (Phase V — for OOS backtest) */}
+      <SnapshotStatusBar zh={zh} />
+    </div>
+  );
+}
+
+// ── Snapshot Status Bar ────────────────────────────────────────────────────
+
+function SnapshotStatusBar({ zh }: { zh: boolean }) {
+  const [status, setStatus] = useState<{
+    n_snapshots: number;
+    latest_snapshot: string | null;
+    ready_for_pit_backtest: boolean;
+    needs_n_more_for_robust: number;
+  } | null>(null);
+  const [snapping, setSnapping] = useState(false);
+  const [snapProgress, setSnapProgress] = useState<{
+    running: boolean;
+    completed: number;
+    total: number;
+    eta_seconds: number | null;
+  } | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/snapshot/status`);
+      if (r.ok) setStatus(await r.json());
+    } catch {}
+  }, []);
+
+  const loadProgress = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/v1/factors/snapshot/progress`);
+      if (r.ok) {
+        const p = await r.json();
+        setSnapProgress(p);
+        setSnapping(p.running);
+        if (!p.running) loadStatus();
+      }
+    } catch {}
+  }, [loadStatus]);
+
+  useEffect(() => {
+    loadStatus();
+    loadProgress();
+  }, [loadStatus, loadProgress]);
+
+  useEffect(() => {
+    if (!snapping) return;
+    const interval = setInterval(loadProgress, 5000);
+    return () => clearInterval(interval);
+  }, [snapping, loadProgress]);
+
+  const startSnapshot = async () => {
+    if (
+      !confirm(
+        zh
+          ? "立即拍快照（约 1-2 分钟）。会保存当前所有因子值用于未来真实回测。"
+          : "Snapshot now (~1-2 min). Saves current factor values for future PIT backtest.",
+      )
+    )
+      return;
+    setSnapping(true);
+    try {
+      await fetch(`${API_BASE_URL}/v1/factors/snapshot/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setTimeout(loadProgress, 500);
+    } catch {
+      setSnapping(false);
+    }
+  };
+
+  if (!status) return null;
+
+  const n = status.n_snapshots;
+  let badge = (
+    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+      {zh ? "待积累" : "Accumulating"}
+    </span>
+  );
+  if (status.ready_for_pit_backtest) {
+    badge = (
+      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+        {zh ? "可做 OOS 回测" : "PIT Ready"}
+      </span>
+    );
+  } else if (n === 0) {
+    badge = (
+      <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+        {zh ? "未启动" : "Not Started"}
+      </span>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex items-center justify-between rounded-md border border-violet-500/20 bg-violet-500/5 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-medium text-violet-300">
+          📸 {zh ? "PIT 因子历史" : "PIT Factor History"}:
+        </span>
+        <span className="font-mono text-[11px] text-white">
+          {n} {zh ? "份快照" : "snapshots"}
+        </span>
+        {badge}
+        {status.latest_snapshot && (
+          <span className="text-[10px] text-gray-500">
+            {zh ? "最近" : "latest"}: {status.latest_snapshot}
+          </span>
+        )}
+        {!status.ready_for_pit_backtest &&
+          status.needs_n_more_for_robust > 0 && (
+            <span className="text-[10px] text-gray-500">
+              ({zh ? "再" : "need"} {status.needs_n_more_for_robust}{" "}
+              {zh ? "份达到稳健" : "more for robust"})
+            </span>
+          )}
+      </div>
+      <div className="flex items-center gap-2">
+        {snapProgress?.running && snapProgress.total > 0 && (
+          <span className="text-[10px] text-violet-300">
+            {snapProgress.completed} / {snapProgress.total}
+          </span>
+        )}
+        <button
+          onClick={startSnapshot}
+          disabled={snapping}
+          className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-medium text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
+          title={zh ? "立即拍一份月度快照" : "Snapshot now"}
+        >
+          {snapping
+            ? zh
+              ? "拍照中..."
+              : "Snapshotting..."
+            : zh
+              ? "立即拍照"
+              : "Snapshot Now"}
+        </button>
+      </div>
     </div>
   );
 }

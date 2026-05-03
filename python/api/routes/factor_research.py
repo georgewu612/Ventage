@@ -335,6 +335,62 @@ def screen_stocks(req: ScreenerRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Screener failed: {exc} | {' | '.join(tb)}"[:500])
 
 
+# ── Factor Snapshot endpoints (Phase V — point-in-time data accumulation) ──
+
+
+class SnapshotRequest(BaseModel):
+    snapshot_date: str | None = None    # ISO date string; defaults to today UTC
+    universe: list[str] | None = None    # defaults to current SP500
+    max_workers: int = 5
+
+
+@router.post("/factors/snapshot/run")
+def run_snapshot(req: SnapshotRequest | None = None) -> dict[str, Any]:
+    """Kick off a background snapshot of current factor values.
+
+    Saves to factor_history table with the given snapshot_date (defaults today).
+    Used to accumulate point-in-time data for true OOS backtesting.
+
+    Run this monthly (1st of month). After ~6 monthly snapshots, true PIT
+    backtest becomes meaningful.
+
+    Returns immediately. Poll /v1/factors/snapshot/progress for status.
+    """
+    from datetime import date as _date
+    from services.factor_snapshot import snapshot_now_async
+
+    req = req or SnapshotRequest()
+    snap_date = None
+    if req.snapshot_date:
+        try:
+            snap_date = _date.fromisoformat(req.snapshot_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid snapshot_date (use YYYY-MM-DD)")
+
+    try:
+        return snapshot_now_async(
+            snapshot_date=snap_date,
+            universe=req.universe,
+            max_workers=req.max_workers,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Snapshot failed: {exc}")
+
+
+@router.get("/factors/snapshot/progress")
+def get_snapshot_progress_endpoint() -> dict[str, Any]:
+    """Snapshot job progress (for UI polling)."""
+    from services.factor_snapshot import get_snapshot_progress
+    return get_snapshot_progress()
+
+
+@router.get("/factors/snapshot/status")
+def get_snapshot_status_endpoint() -> dict[str, Any]:
+    """How many monthly snapshots do we have? Latest date? Ready for PIT backtest?"""
+    from services.factor_snapshot import get_snapshot_status
+    return get_snapshot_status()
+
+
 # ── Screener Backtest endpoint ────────────────────────────────────────────
 
 
