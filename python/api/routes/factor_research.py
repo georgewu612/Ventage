@@ -335,6 +335,130 @@ def screen_stocks(req: ScreenerRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Screener failed: {exc} | {' | '.join(tb)}"[:500])
 
 
+# ── Screener Backtest endpoint ────────────────────────────────────────────
+
+
+class ScreenerBacktestRequest(BaseModel):
+    symbols: list[str]                       # the screened-out symbols
+    lookback_months: int = Field(default=24, ge=3, le=60)
+    benchmark: str = "SPY"                   # for alpha calculation
+
+
+@router.post("/factors/screener/backtest")
+def screener_backtest(req: ScreenerBacktestRequest) -> dict[str, Any]:
+    """Backtest holding the screened set equal-weight for the past N months.
+
+    IMPORTANT — methodological honesty:
+    This is a 'held this CURRENT set for past N months' backtest, NOT a
+    point-in-time monthly re-screen. We don't have historical factor
+    snapshots, so we can't truly rebalance based on past factor values.
+
+    What this DOES tell you:
+        - Would the current screened set have done well historically?
+        - How does it compare to SPY?
+        - What's the Sharpe / max drawdown if you'd bought-and-held this set?
+
+    What this DOESN'T tell you:
+        - True monthly rebalancing performance (membership would change)
+        - Out-of-sample alpha (we know the current results)
+
+    Use this to sanity-check that your screen condition produces a set
+    that would have performed well in recent past — but DO NOT take the
+    Sharpe number as a forward-looking estimate.
+    """
+    import math
+    import numpy as np
+    import pandas as pd
+    from services.financials_provider import get_price_history
+
+    if not req.symbols:
+        raise HTTPException(status_code=400, detail="No symbols provided")
+
+    period = f"{max(req.lookback_months + 3, 12)}mo"
+
+    # Pull monthly returns for each symbol + benchmark
+    rets_map: dict[str, pd.Series] = {}
+    failed: list[str] = []
+    for sym in req.symbols + [req.benchmark]:
+        try:
+            hist = get_price_history(sym, period=period)
+            if hist is None or hist.empty:
+                failed.append(sym)
+                continue
+            monthly = hist["Close"].resample("ME").last().pct_change().dropna()
+            if not monthly.empty:
+                rets_map[sym] = monthly.tail(req.lookback_months)
+        except Exception:
+            failed.append(sym)
+
+    bench_ret = rets_map.pop(req.benchmark, None)
+    if bench_ret is None:
+        raise HTTPException(status_code=502, detail=f"Benchmark {req.benchmark} not available")
+
+    if not rets_map:
+        raise HTTPException(status_code=400, detail="No symbol returns available")
+
+    # Equal-weight portfolio: mean of available returns each period
+    rets_df = pd.DataFrame(rets_map)
+    portfolio_ret = rets_df.mean(axis=1, skipna=True).dropna()
+    bench_ret = bench_ret.reindex(portfolio_ret.index).fillna(0)
+
+    n = len(portfolio_ret)
+    if n < 3:
+        raise HTTPException(status_code=400, detail=f"Only {n} months of return data — need ≥3")
+
+    # Stats
+    mean_m = float(portfolio_ret.mean())
+    std_m = float(portfolio_ret.std())
+    annualized_return = mean_m * 12
+    annualized_vol = std_m * math.sqrt(12)
+    sharpe = annualized_return / annualized_vol if annualized_vol > 0 else 0.0
+    win_rate = float((portfolio_ret > 0).mean())
+
+    # Cumulative
+    cum_port = (1 + portfolio_ret).cumprod()
+    cum_bench = (1 + bench_ret).cumprod()
+    peak = cum_port.expanding().max()
+    drawdown = (cum_port - peak) / peak
+    max_dd = float(-drawdown.min()) if not drawdown.empty else 0.0
+
+    # Alpha vs benchmark
+    excess = portfolio_ret - bench_ret
+    alpha_annual = float(excess.mean()) * 12
+    excess_vol = float(excess.std()) * math.sqrt(12)
+    info_ratio = alpha_annual / excess_vol if excess_vol > 0 else 0.0
+
+    # Build curve points
+    curve = []
+    for date in cum_port.index:
+        curve.append({
+            "date": date.strftime("%Y-%m"),
+            "portfolio": float(round(cum_port.loc[date], 4)),
+            "benchmark": float(round(cum_bench.loc[date], 4)),
+        })
+
+    return {
+        "n_symbols": len(rets_map),
+        "n_failed": len(failed),
+        "failed_symbols": failed[:10],
+        "n_periods": n,
+        "lookback_months": req.lookback_months,
+        "benchmark": req.benchmark,
+        "annualized_return_pct": round(annualized_return * 100, 2),
+        "annualized_vol_pct": round(annualized_vol * 100, 2),
+        "sharpe_ratio": round(sharpe, 2),
+        "max_drawdown_pct": round(max_dd * 100, 2),
+        "win_rate_pct": round(win_rate * 100, 1),
+        "alpha_vs_benchmark_annual_pct": round(alpha_annual * 100, 2),
+        "information_ratio": round(info_ratio, 2),
+        "cumulative_curve": curve,
+        "warning": (
+            "Held current set for past N months (not a true point-in-time re-screen). "
+            "DO NOT extrapolate Sharpe to forward returns."
+        ),
+    }
+
+
 # ── IC Analysis endpoints (Phase III) ─────────────────────────────────────
 
 
