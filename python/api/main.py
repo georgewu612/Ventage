@@ -20,6 +20,7 @@ from api.routes.risk import router as risk_router
 from api.routes.valuation import router as valuation_router
 from api.routes.strategies import router as strategies_router
 from api.routes.system import router as system_router
+from api.routes.patterns import router as patterns_router
 from api.routes.technical import router as technical_router
 from config.settings import get_settings
 
@@ -72,3 +73,4 @@ app.include_router(risk_router, prefix="/v1", tags=["risk"])
 app.include_router(valuation_router, prefix="/v1", tags=["valuation"])
 app.include_router(quality_router, prefix="/v1", tags=["quality"])
 app.include_router(factor_research_router, prefix="/v1", tags=["factor-research"])
+app.include_router(patterns_router, prefix="/v1", tags=["patterns"])

@@ -702,7 +702,7 @@ def pit_backtest_screener(
             pre_matches.append((snap_date, next_snap_date, matched))
 
     if not pre_matches:
-        raise ValueError("No periods had ≥{min_holdings} matched symbols")
+        raise ValueError(f"No periods had ≥{min_holdings} matched symbols")
 
     all_needed_syms = sorted({s for _, _, syms in pre_matches for s in syms})
 

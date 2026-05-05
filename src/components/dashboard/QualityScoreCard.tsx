@@ -103,11 +103,11 @@ function CheckRow({ check, isZh }: { check: CheckItem; isZh: boolean }) {
       ) : (
         <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
       )}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-[11px] font-medium text-white">
           {isZh ? check.name_zh : check.name}
         </p>
-        <p className="text-[10px] text-gray-500 truncate">{check.note}</p>
+        <p className="truncate text-[10px] text-gray-500">{check.note}</p>
         {check.value != null && (
           <p className="mt-0.5 font-mono text-[10px] text-gray-400">
             {isZh ? "当期" : "Curr"}: {formatValue(check.value)}
@@ -144,7 +144,10 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
         let msg = `HTTP ${res.status}`;
         try {
           const body = await res.json();
-          msg = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
+          msg =
+            typeof body?.detail === "string"
+              ? body.detail
+              : JSON.stringify(body);
         } catch {
           msg = await res.text();
         }
@@ -274,7 +277,9 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4 text-emerald-400" />
           <span className="text-sm font-semibold text-white">
-            {isZh ? "财务质量评分（Piotroski F-Score）" : "Quality Score (F-Score)"}
+            {isZh
+              ? "财务质量评分（Piotroski F-Score）"
+              : "Quality Score (F-Score)"}
           </span>
         </div>
         <span className="text-[10px] text-gray-500">
@@ -286,7 +291,9 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
       <div className={`mb-3 rounded-xl border-2 p-4 ${cfg.border} ${cfg.bg}`}>
         <div className="flex items-center justify-between">
           <div>
-            <p className={`mb-0.5 flex items-center gap-1 text-xs font-medium ${cfg.color}`}>
+            <p
+              className={`mb-0.5 flex items-center gap-1 text-xs font-medium ${cfg.color}`}
+            >
               <RatingIcon className="h-3 w-3" />
               {cfg.label}
             </p>
@@ -299,18 +306,14 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
             </p>
           </div>
           <div className="text-right text-[10px] text-gray-400">
-            <p className="mb-1">
-              {isZh ? "评级阈值" : "Thresholds"}
-            </p>
+            <p className="mb-1">{isZh ? "评级阈值" : "Thresholds"}</p>
             <p className="text-emerald-400">
               {isZh ? "8-9 高质量" : "8-9 High"}
             </p>
             <p className="text-amber-400">
               {isZh ? "5-7 中性" : "5-7 Neutral"}
             </p>
-            <p className="text-red-400">
-              {isZh ? "0-4 低质量" : "0-4 Low"}
-            </p>
+            <p className="text-red-400">{isZh ? "0-4 低质量" : "0-4 Low"}</p>
           </div>
         </div>
       </div>
@@ -373,7 +376,7 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
       {showDetails && (
         <div className="mt-3 space-y-3">
           <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-400">
+            <p className="mb-1.5 text-[10px] font-semibold text-gray-400 uppercase">
               {isZh ? "盈利能力" : "Profitability"} (4)
             </p>
             <div className="space-y-1.5">
@@ -383,7 +386,7 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
             </div>
           </div>
           <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-400">
+            <p className="mb-1.5 text-[10px] font-semibold text-gray-400 uppercase">
               {isZh ? "杠杆 / 流动性" : "Leverage / Liquidity"} (3)
             </p>
             <div className="space-y-1.5">
@@ -393,7 +396,7 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
             </div>
           </div>
           <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase text-gray-400">
+            <p className="mb-1.5 text-[10px] font-semibold text-gray-400 uppercase">
               {isZh ? "运营效率" : "Operating Efficiency"} (2)
             </p>
             <div className="space-y-1.5">
@@ -403,10 +406,10 @@ export function QualityScoreCard({ symbol }: { symbol: string }) {
             </div>
           </div>
           <p className="text-[9px] text-gray-600">
-            {isZh
-              ? "* F-Score 检验"
-              : "* F-Score checks "}
-            <strong>{isZh ? "同比改善方向" : "year-over-year improvement"}</strong>
+            {isZh ? "* F-Score 检验" : "* F-Score checks "}
+            <strong>
+              {isZh ? "同比改善方向" : "year-over-year improvement"}
+            </strong>
             {isZh
               ? "，不是绝对水平。高速增长公司的指标暂时下降不一定坏"
               : ", not absolute level. Growth companies may temporarily score lower"}

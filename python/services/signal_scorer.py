@@ -163,6 +163,15 @@ def _score_pattern(candidate: SignalCandidate) -> float:
         first_bonus = 1.5 if is_first else 0.5
         return round(min(8, sqz_score + macd_bonus + first_bonus), 1)
 
+    if name == "cai_sen_patterns":
+        # Phase H: 60% pattern_quality (0-100) + 25% time_symmetry (0-100)
+        # + 15% volume_confirmation (bool). Re-mapped to 0-8 scale.
+        pq = float(raw.get("pattern_quality") or 0)
+        ts = float(raw.get("time_symmetry") or 0)
+        vc = bool(raw.get("volume_confirmed") or False)
+        score = (pq * 0.60 + ts * 0.25 + (15.0 if vc else 0.0)) / 100.0 * 8.0
+        return round(min(8, score), 1)
+
     return 4.0  # default mid-score
 
 

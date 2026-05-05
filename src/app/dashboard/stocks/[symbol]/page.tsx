@@ -23,6 +23,7 @@ import { FactorProfileCard } from "@/components/dashboard/FactorProfileCard";
 import { QualityScoreCard } from "@/components/dashboard/QualityScoreCard";
 import { HistoricalAnalogCard } from "@/components/dashboard/HistoricalAnalogCard";
 import { MonitoringTriggersCard } from "@/components/dashboard/MonitoringTriggersCard";
+import PatternRecognitionCard from "@/components/dashboard/PatternRecognitionCard";
 import { SymbolRegimeCard } from "@/components/dashboard/SymbolRegimeCard";
 import { VMScoreCard } from "@/components/dashboard/VMScoreCard";
 import { VolumeAnalysisCard } from "@/components/dashboard/VolumeAnalysisCard";
@@ -892,6 +893,9 @@ function StockWorkbenchInner() {
               onRefresh={fetchDesk}
               locale={locale}
             />
+
+            {/* Pattern Recognition (Cai Sen 12-pattern engine) */}
+            <PatternRecognitionCard symbol={symbol} />
 
             {/* ── Trading System v2 — 3 引擎演示 ───────────────────────── */}
             <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-500/5 p-1">

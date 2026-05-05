@@ -82,7 +82,10 @@ export function DCFCard({ symbol }: { symbol: string }) {
         let msg = `HTTP ${res.status}`;
         try {
           const body = await res.json();
-          msg = typeof body?.detail === "string" ? body.detail : JSON.stringify(body);
+          msg =
+            typeof body?.detail === "string"
+              ? body.detail
+              : JSON.stringify(body);
         } catch {
           msg = await res.text();
         }
@@ -189,9 +192,7 @@ export function DCFCard({ symbol }: { symbol: string }) {
       </div>
 
       {/* Main result */}
-      <div
-        className={`mb-3 rounded-xl border-2 p-4 ${cfg.border} ${cfg.bg}`}
-      >
+      <div className={`mb-3 rounded-xl border-2 p-4 ${cfg.border} ${cfg.bg}`}>
         <div className="flex items-center justify-between">
           <div>
             <p className={`mb-0.5 text-xs font-medium ${cfg.color}`}>

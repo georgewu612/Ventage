@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Target,
   X,
   Zap,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { FeatureGate } from "@/components/ui/FeatureGate";
 import { useI18n } from "@/lib/i18n/provider";
 import { useTheme } from "@/lib/theme/provider";
 import { FactorResearchPanel } from "@/components/quant-lab/FactorResearchPanel";
+import PatternBacktestPanel from "@/components/quant-lab/PatternBacktestPanel";
 
 // ── Strategy template description i18n (frontend-side, since DB has only EN) ──
 const TEMPLATE_DESC_ZH: Record<string, string> = {
@@ -340,7 +342,8 @@ type QuantTab =
   | "factors"
   | "history"
   | "optimization"
-  | "robustness";
+  | "robustness"
+  | "patterns";
 
 const TABS: {
   key: QuantTab;
@@ -362,6 +365,12 @@ const TABS: {
     zhLabel: "稳健性评估",
     enLabel: "Robustness",
     icon: Shield,
+  },
+  {
+    key: "patterns",
+    zhLabel: "形态回测",
+    enLabel: "Patterns",
+    icon: Target,
   },
 ];
 
@@ -1249,6 +1258,9 @@ export default function QuantLabPage() {
               </div>
             </section>
           )}
+
+          {/* ── Tab 6: Pattern Backtest (Cai Sen) ── */}
+          {activeTab === "patterns" && <PatternBacktestPanel />}
         </div>
       </div>
 

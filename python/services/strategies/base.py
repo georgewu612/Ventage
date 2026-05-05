@@ -30,6 +30,7 @@ StrategyName = Literal[
     "wyckoff_liquidity_sweep",
     "ema_squeeze_launch",
     "bollinger_extreme_reversion",
+    "cai_sen_patterns",
 ]
 
 Direction = Literal["long", "short"]

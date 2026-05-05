@@ -25,11 +25,13 @@ from __future__ import annotations
 import structlog
 import pandas as pd
 
+from services.pattern_detection import detect_best_pattern_for_direction
 from services.regime_classifier import classify
 from services.strategies.base import SignalCandidate, StrategyBase
 from services.strategies.bollinger_extreme_reversion import (
     BollingerExtremeReversionStrategy,
 )
+from services.strategies.cai_sen_patterns import CaiSenPatternStrategy
 from services.strategies.ema_squeeze_launch import EmaSqueezeLaunchStrategy
 from services.strategies.trend_pullback_breakout import TrendPullbackBreakoutStrategy
 from services.strategies.wyckoff_liquidity_sweep import WyckoffLiquiditySweepStrategy
@@ -45,6 +47,7 @@ _STRATEGIES: list[StrategyBase] = [
     WyckoffLiquiditySweepStrategy(),
     EmaSqueezeLaunchStrategy(),
     BollingerExtremeReversionStrategy(),
+    CaiSenPatternStrategy(),  # Phase H — 蔡森 12 形态识别（含等幅满足计算）
 ]
 
 
@@ -84,6 +87,10 @@ def scan_symbol(
         try:
             cand = strategy.detect(symbol, ohlcv, regime)
             if cand is not None:
+                # Phase H-4: enrich non-cai_sen candidates with measured-move
+                # targets when a high-quality chart pattern matches direction.
+                if strategy.name != "cai_sen_patterns":
+                    _enrich_with_measured_move(cand, ohlcv)
                 candidates.append(cand)
         except Exception as exc:
             logger.warning(
@@ -93,6 +100,37 @@ def scan_symbol(
                 error=str(exc),
             )
     return candidates
+
+
+def _enrich_with_measured_move(
+    cand: SignalCandidate, ohlcv: pd.DataFrame, *, min_quality: float = 65.0
+) -> None:
+    """Phase H-4: if a high-quality Cai-Sen pattern matches this candidate's
+    direction, override target_1/target_2 with the measured-move projection
+    and tag the source. Mutates `cand` in place.
+
+    No-op if no qualifying pattern is found.
+    """
+    try:
+        pat = detect_best_pattern_for_direction(
+            ohlcv, cand.direction, min_quality=min_quality
+        )
+    except Exception:  # noqa: BLE001 — defensive
+        return
+    if pat is None:
+        return
+    cand.target_1 = round(float(pat.target_1), 2)
+    cand.target_2 = round(float(pat.target_2), 2) if pat.target_2 is not None else None
+    if pat.pattern_name_en not in cand.pattern_tags:
+        cand.pattern_tags.append(pat.pattern_name_en)
+    cand.pattern_tags.append("measured_move")
+    cand.raw_features = {
+        **(cand.raw_features or {}),
+        "measured_move_source": pat.pattern_name_en,
+        "measured_move_pattern_name": pat.pattern_name,
+        "measured_move_pct": pat.measured_move_pct,
+        "measured_move_quality": pat.pattern_quality_score,
+    }
 
 
 def scan_universe(

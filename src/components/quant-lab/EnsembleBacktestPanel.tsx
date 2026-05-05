@@ -93,14 +93,14 @@ const PRESETS: StrategyDef[] = [
     ],
   },
   {
-    // True defensive: STRICT low-vol + no recent move + below-avg volume
+    // True defensive: low-vol + flat-ish momentum (loosened to ensure matches)
     name: "True Defensive",
     conditions: [
-      { factor: "low_vol", op: ">=", value: 0 },
-      { factor: "momentum_60d", op: ">=", value: -0.05 },
-      { factor: "momentum_60d", op: "<=", value: 0.05 },
-      { factor: "new_high_52w", op: ">=", value: 0.4 },
-      { factor: "new_high_52w", op: "<=", value: 0.7 },
+      { factor: "low_vol", op: ">=", value: -0.1 },
+      { factor: "momentum_60d", op: ">=", value: -0.08 },
+      { factor: "momentum_60d", op: "<=", value: 0.08 },
+      { factor: "new_high_52w", op: ">=", value: 0.3 },
+      { factor: "new_high_52w", op: "<=", value: 0.75 },
     ],
   },
   {
@@ -108,9 +108,8 @@ const PRESETS: StrategyDef[] = [
     name: "Early Breakout",
     conditions: [
       { factor: "breakout_20d", op: ">=", value: 0 },
-      { factor: "new_high_52w", op: "<=", value: 0.7 },
-      { factor: "volume_spike_5d", op: ">=", value: 1.3 },
-      { factor: "momentum_60d", op: ">=", value: 0 },
+      { factor: "new_high_52w", op: "<=", value: 0.75 },
+      { factor: "volume_spike_5d", op: ">=", value: 1.2 },
     ],
   },
 ];

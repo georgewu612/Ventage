@@ -78,7 +78,8 @@ function StageRow({
         <span
           className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${textColor} bg-white/5`}
         >
-          {isZh ? "减" : "-"}{stage.reduce_pct.toFixed(0)}%
+          {isZh ? "减" : "-"}
+          {stage.reduce_pct.toFixed(0)}%
         </span>
       </div>
       <p className={`mb-0.5 font-mono text-xs font-semibold ${textColor}`}>
@@ -156,11 +157,16 @@ export function ExitPlanCard({ signalId, signal }: ExitPlanCardProps) {
       } else {
         // Build a synthetic plan from signal fields (no server call needed)
         const s = signal!;
-        const risk = Math.abs(s.entry_price - s.stop_price) || s.entry_price * 0.02;
+        const risk =
+          Math.abs(s.entry_price - s.stop_price) || s.entry_price * 0.02;
         const isLong = s.direction === "long";
         const r1 = isLong ? s.entry_price + risk : s.entry_price - risk;
-        const t1 = s.target_1 ?? (isLong ? s.entry_price + 1.5 * risk : s.entry_price - 1.5 * risk);
-        const t2 = s.target_2 ?? (isLong ? s.entry_price + 2.0 * risk : s.entry_price - 2.0 * risk);
+        const t1 =
+          s.target_1 ??
+          (isLong ? s.entry_price + 1.5 * risk : s.entry_price - 1.5 * risk);
+        const t2 =
+          s.target_2 ??
+          (isLong ? s.entry_price + 2.0 * risk : s.entry_price - 2.0 * risk);
         const t1r = Math.abs(t1 - s.entry_price) / risk;
         const t2r = Math.abs(t2 - s.entry_price) / risk;
 
@@ -253,7 +259,7 @@ export function ExitPlanCard({ signalId, signal }: ExitPlanCardProps) {
       </button>
 
       {open && (
-        <div className="border-t border-white/10 px-3 pb-3 pt-2.5 space-y-3">
+        <div className="space-y-3 border-t border-white/10 px-3 pt-2.5 pb-3">
           {loading && (
             <p className="text-center text-[11px] text-gray-500">
               {isZh ? "加载中…" : "Loading…"}
@@ -336,10 +342,13 @@ export function ExitPlanCard({ signalId, signal }: ExitPlanCardProps) {
                   {plan.stages.map((s) => (
                     <div key={s.level} className="flex-1">
                       <p className="font-mono text-xs font-bold text-white">
-                        {s.trigger_r != null ? `${s.trigger_r.toFixed(1)}R` : "—"}
+                        {s.trigger_r != null
+                          ? `${s.trigger_r.toFixed(1)}R`
+                          : "—"}
                       </p>
                       <p className="text-[9px] text-gray-500">
-                        T{s.level} ({isZh ? "减" : "-"}{s.reduce_pct.toFixed(0)}%)
+                        T{s.level} ({isZh ? "减" : "-"}
+                        {s.reduce_pct.toFixed(0)}%)
                       </p>
                     </div>
                   ))}
