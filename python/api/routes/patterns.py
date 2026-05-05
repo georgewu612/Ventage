@@ -193,18 +193,20 @@ def _backtest_single_symbol(
             m: PatternMatch | None = detector(window)
         except Exception:  # noqa: BLE001
             continue
-        if m is None or m.status == "broken":
+        # Only test FORMING patterns. Confirmed patterns have already broken
+        # neckline at some past bar — entering at the historical neckline now
+        # is unrealistic (price has moved). Forming = neckline not yet broken;
+        # we walk forward and trigger entry on actual breakout bar.
+        if m is None or m.status != "forming":
             continue
-        # De-duplicate: skip if we just had a signal in last 21 bars
         sig_date = df.index[i]
         if last_signal_date is not None and (sig_date - last_signal_date).days < 30:
             continue
         last_signal_date = sig_date
 
-        entry = m.entry_price
+        neckline = m.neckline_price
         target_1 = m.target_1
         target_2 = m.target_2 if m.target_2 is not None else None
-        stop = m.stop_price
         invalidation = m.invalidation_price
 
         # Walk forward up to 60 bars to determine outcome
@@ -212,17 +214,43 @@ def _backtest_single_symbol(
         if forward.empty:
             continue
 
+        # Stage 1: wait for actual breakout bar
+        entry: float | None = None
+        entry_bar_idx: int | None = None
+        for j in range(len(forward)):
+            bar = forward.iloc[j]
+            close_j = float(bar["Close"])
+            if m.direction == "long" and close_j > neckline:
+                entry = close_j
+                entry_bar_idx = j
+                break
+            if m.direction == "short" and close_j < neckline:
+                entry = close_j
+                entry_bar_idx = j
+                break
+
+        if entry is None or entry_bar_idx is None:
+            # Pattern never triggered within 60 bars
+            continue
+
+        # Stage 2: stop and invalidation derived from ACTUAL fill price
+        if m.direction == "long":
+            stop = entry * (1.0 - stop_pct)
+        else:
+            stop = entry * (1.0 + stop_pct)
+
         outcome = "open"
         exit_price: float = entry
         exit_idx: int = -1
         bars_held = 0
 
-        for j in range(len(forward)):
+        # Walk forward from bar AFTER entry
+        for j in range(entry_bar_idx + 1, len(forward)):
             bar = forward.iloc[j]
             high = float(bar["High"])
             low = float(bar["Low"])
             close = float(bar["Close"])
-            bars_held = j + 1
+            bars_held = j - entry_bar_idx
 
             if m.direction == "long":
                 if low <= stop:
