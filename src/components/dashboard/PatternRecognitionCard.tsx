@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronRight,
   Loader2,
   Target,
   TrendingDown,
@@ -14,6 +16,7 @@ import {
   PatternMatch,
   usePatternRecognition,
 } from "@/lib/hooks/usePatternRecognition";
+import PatternChartModal from "./PatternChartModal";
 
 interface Props {
   symbol: string;
@@ -94,10 +97,12 @@ function PatternRow({
   m,
   lastClose,
   isZh,
+  onClick,
 }: {
   m: PatternMatch;
   lastClose: number | null;
   isZh: boolean;
+  onClick: () => void;
 }) {
   const labels = PATTERN_LABELS[m.pattern_name_en] ?? {
     zh: m.pattern_name,
@@ -117,7 +122,11 @@ function PatternRow({
   const status = statusBadge(m.status, isZh);
 
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-800/40 p-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group block w-full rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-left transition hover:border-cyan-500/50 hover:bg-slate-800/70"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Icon className={`h-5 w-5 ${dirCls}`} />
@@ -130,10 +139,13 @@ function PatternRow({
             {status.label}
           </span>
         </div>
-        <div
-          className={`text-sm font-semibold ${qualityTone(m.pattern_quality_score)}`}
-        >
-          {m.pattern_quality_score.toFixed(0)}/100
+        <div className="flex items-center gap-2">
+          <div
+            className={`text-sm font-semibold ${qualityTone(m.pattern_quality_score)}`}
+          >
+            {m.pattern_quality_score.toFixed(0)}/100
+          </div>
+          <ChevronRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-cyan-400" />
         </div>
       </div>
 
@@ -233,7 +245,13 @@ function PatternRow({
           ({isZh ? "颈线返回站稳" : "neckline retest fails"})
         </span>
       </div>
-    </div>
+
+      <div className="mt-2 text-[10px] text-slate-500 group-hover:text-cyan-400">
+        {isZh
+          ? "👆 点击查看 K 线图与形态标注"
+          : "👆 Click to view chart with pattern annotations"}
+      </div>
+    </button>
   );
 }
 
@@ -243,6 +261,9 @@ export default function PatternRecognitionCard({ symbol }: Props) {
   const { locale } = useI18n();
   const isZh = locale === "zh";
   const { data, loading, error } = usePatternRecognition(symbol, 120);
+  const [selectedPattern, setSelectedPattern] = useState<PatternMatch | null>(
+    null,
+  );
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 backdrop-blur">
@@ -306,11 +327,20 @@ export default function PatternRecognitionCard({ symbol }: Props) {
                   m={m}
                   lastClose={data.last_close}
                   isZh={isZh}
+                  onClick={() => setSelectedPattern(m)}
                 />
               ))}
             </div>
           )}
         </>
+      )}
+
+      {selectedPattern && (
+        <PatternChartModal
+          symbol={symbol}
+          pattern={selectedPattern}
+          onClose={() => setSelectedPattern(null)}
+        />
       )}
     </div>
   );
