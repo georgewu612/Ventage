@@ -76,11 +76,251 @@ function isoToTime(iso: string): Time {
   return Math.floor(new Date(iso).getTime() / 1000) as Time;
 }
 
+// ── Role labels (bilingual) ────────────────────────────────────────────────
+
+const ROLE_LABELS: Record<string, { zh: string; en: string }> = {
+  left_low: { zh: "左底", en: "Left Low" },
+  right_low: { zh: "右底", en: "Right Low" },
+  right_low_failed_breakdown: {
+    zh: "右底（破底翻）",
+    en: "Right Low (Failed Brk)",
+  },
+  left_high: { zh: "左顶", en: "Left High" },
+  right_high: { zh: "右顶", en: "Right High" },
+  neckline: { zh: "颈线", en: "Neckline" },
+  neckline_left: { zh: "颈线左", en: "Neckline L" },
+  neckline_right: { zh: "颈线右", en: "Neckline R" },
+  head: { zh: "头部", en: "Head" },
+  left_shoulder: { zh: "左肩", en: "Left Shoulder" },
+  right_shoulder: { zh: "右肩", en: "Right Shoulder" },
+  upper_edge: { zh: "上沿", en: "Upper Edge" },
+  lower_edge: { zh: "下沿", en: "Lower Edge" },
+  breakdown_low: { zh: "跌破低点", en: "Breakdown Low" },
+  breakout_high: { zh: "突破高点", en: "Breakout High" },
+  recovery: { zh: "恢复", en: "Recovery" },
+  failure: { zh: "失败点", en: "Failure" },
+  pole_start: { zh: "旗杆起", en: "Pole Start" },
+  pole_end: { zh: "旗杆终", en: "Pole End" },
+  flag_end: { zh: "旗形终", en: "Flag End" },
+  first_high: { zh: "首高点", en: "First High" },
+  first_low: { zh: "首低点", en: "First Low" },
+  last_high: { zh: "末高点", en: "Last High" },
+  last_low: { zh: "末低点", en: "Last Low" },
+};
+
+function roleLabel(role: string, isZh: boolean): string {
+  const meta = ROLE_LABELS[role];
+  if (meta) return isZh ? meta.zh : meta.en;
+  return role;
+}
+
+// ── Pattern shape lines: connect pivot points to draw the actual shape ─────
+
+interface ShapeLine {
+  points: { time: Time; value: number }[];
+  color: string;
+  width: 1 | 2 | 3 | 4;
+  style?: 0 | 1 | 2 | 3 | 4; // solid / dotted / dashed / large-dashed / sparse
+  title: string;
+}
+
+function buildPatternShapeLines(
+  pattern: PatternMatch,
+  isZh: boolean,
+): ShapeLine[] {
+  const pp = [...pattern.pivot_points].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+  const findPivot = (...roles: string[]) =>
+    pp.find((p) => roles.includes(p.role));
+  const lines: ShapeLine[] = [];
+
+  const SHAPE_COLOR = "rgba(34, 211, 238, 0.95)"; // cyan
+  const SUPPORT_COLOR = "rgba(16, 185, 129, 0.7)"; // emerald
+  const RESIST_COLOR = "rgba(239, 68, 68, 0.7)"; // red
+  const POLE_COLOR = "rgba(167, 139, 250, 0.95)"; // violet
+
+  switch (pattern.pattern_name_en) {
+    case "w_bottom":
+    case "w_bottom_with_failed_breakdown": {
+      // W shape: left_low → middle_high (neckline) → right_low
+      const ll = findPivot("left_low");
+      const nl = findPivot("neckline");
+      const rl = findPivot("right_low", "right_low_failed_breakdown");
+      if (ll && nl && rl) {
+        lines.push({
+          points: [
+            { time: isoToTime(ll.date), value: ll.price },
+            { time: isoToTime(nl.date), value: nl.price },
+            { time: isoToTime(rl.date), value: rl.price },
+          ],
+          color: SHAPE_COLOR,
+          width: 2,
+          title: isZh ? "W 底形态" : "W-Bottom Shape",
+        });
+      }
+      break;
+    }
+    case "m_top": {
+      // M shape: left_high → middle_low (neckline) → right_high
+      const lh = findPivot("left_high");
+      const nl = findPivot("neckline");
+      const rh = findPivot("right_high");
+      if (lh && nl && rh) {
+        lines.push({
+          points: [
+            { time: isoToTime(lh.date), value: lh.price },
+            { time: isoToTime(nl.date), value: nl.price },
+            { time: isoToTime(rh.date), value: rh.price },
+          ],
+          color: SHAPE_COLOR,
+          width: 2,
+          title: isZh ? "M 头形态" : "M-Top Shape",
+        });
+      }
+      break;
+    }
+    case "head_shoulders_bottom":
+    case "head_shoulders_top":
+    case "failed_breakout_hs_top": {
+      // Pattern: ls → nl_l → head → nl_r → rs (zigzag through 5 points)
+      const ls = findPivot("left_shoulder");
+      const nll = findPivot("neckline_left");
+      const head = findPivot("head");
+      const nlr = findPivot("neckline_right");
+      const rs = findPivot("right_shoulder");
+      if (ls && nll && head && nlr && rs) {
+        lines.push({
+          points: [
+            { time: isoToTime(ls.date), value: ls.price },
+            { time: isoToTime(nll.date), value: nll.price },
+            { time: isoToTime(head.date), value: head.price },
+            { time: isoToTime(nlr.date), value: nlr.price },
+            { time: isoToTime(rs.date), value: rs.price },
+          ],
+          color: SHAPE_COLOR,
+          width: 2,
+          title: isZh ? "头肩形态" : "H&S Shape",
+        });
+        // Sloped neckline (extends across nl_l → nl_r)
+        lines.push({
+          points: [
+            { time: isoToTime(nll.date), value: nll.price },
+            { time: isoToTime(nlr.date), value: nlr.price },
+          ],
+          color: "rgba(103, 232, 249, 0.95)",
+          width: 2,
+          style: 0, // solid
+          title: isZh ? "颈线" : "Neckline",
+        });
+      }
+      break;
+    }
+    case "failed_breakdown":
+    case "failed_breakout": {
+      // Consolidation rectangle + breakdown/breakout marker
+      const isBreakdown = pattern.pattern_name_en === "failed_breakdown";
+      const edge = findPivot(isBreakdown ? "upper_edge" : "lower_edge");
+      const failPoint = findPivot(
+        isBreakdown ? "breakdown_low" : "breakout_high",
+      );
+      const recovery = findPivot(isBreakdown ? "recovery" : "failure");
+      if (edge && failPoint && recovery) {
+        // The "neckline" line is the consolidation edge (already drawn as price line)
+        // Draw zigzag connecting: edge → fail point → recovery (the failure path)
+        lines.push({
+          points: [
+            { time: isoToTime(edge.date), value: edge.price },
+            { time: isoToTime(failPoint.date), value: failPoint.price },
+            { time: isoToTime(recovery.date), value: recovery.price },
+          ],
+          color: isBreakdown ? SUPPORT_COLOR : RESIST_COLOR,
+          width: 2,
+          style: 2, // dashed
+          title: isZh
+            ? isBreakdown
+              ? "破底翻路径"
+              : "假突破路径"
+            : isBreakdown
+              ? "Failed Breakdown Path"
+              : "Failed Breakout Path",
+        });
+      }
+      break;
+    }
+    case "falling_flag":
+    case "rising_flag": {
+      // Pole + flag boundary
+      const ps = findPivot("pole_start");
+      const pe = findPivot("pole_end");
+      const fe = findPivot("flag_end");
+      if (ps && pe) {
+        lines.push({
+          points: [
+            { time: isoToTime(ps.date), value: ps.price },
+            { time: isoToTime(pe.date), value: pe.price },
+          ],
+          color: POLE_COLOR,
+          width: 3,
+          title: isZh ? "旗杆" : "Pole",
+        });
+      }
+      if (pe && fe) {
+        lines.push({
+          points: [
+            { time: isoToTime(pe.date), value: pe.price },
+            { time: isoToTime(fe.date), value: fe.price },
+          ],
+          color: SHAPE_COLOR,
+          width: 2,
+          style: 2,
+          title: isZh ? "旗形整理" : "Flag",
+        });
+      }
+      break;
+    }
+    case "converging_triangle_bottom":
+    case "converging_triangle_top": {
+      // Upper trendline (declining) + lower trendline (rising)
+      const fh = findPivot("first_high");
+      const lh = findPivot("last_high");
+      const fl = findPivot("first_low");
+      const ll = findPivot("last_low");
+      if (fh && lh) {
+        lines.push({
+          points: [
+            { time: isoToTime(fh.date), value: fh.price },
+            { time: isoToTime(lh.date), value: lh.price },
+          ],
+          color: RESIST_COLOR,
+          width: 2,
+          title: isZh ? "上轨（阻力）" : "Upper Trendline",
+        });
+      }
+      if (fl && ll) {
+        lines.push({
+          points: [
+            { time: isoToTime(fl.date), value: fl.price },
+            { time: isoToTime(ll.date), value: ll.price },
+          ],
+          color: SUPPORT_COLOR,
+          width: 2,
+          title: isZh ? "下轨（支撑）" : "Lower Trendline",
+        });
+      }
+      break;
+    }
+  }
+
+  return lines;
+}
+
 // ── Inner chart (with annotations) ─────────────────────────────────────────
 
 function PatternChart({
   candles,
   pattern,
+  isZh,
   height = 460,
 }: {
   candles: {
@@ -92,6 +332,7 @@ function PatternChart({
     volume: number;
   }[];
   pattern: PatternMatch;
+  isZh: boolean;
   height?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -184,35 +425,35 @@ function PatternChart({
       })) as any,
     );
 
-    // ── Pattern price lines (entry / stop / T1 / T2 / neckline / invalidation) ──
-    const isLong = pattern.direction === "long";
+    // ── Pattern price lines ──
+    const L = (zh: string, en: string) => (isZh ? zh : en);
     candleSeries.createPriceLine({
       price: pattern.neckline_price,
       color: "rgba(103, 232, 249, 0.95)",
       lineWidth: 2,
       lineStyle: 0, // solid
-      title: `Neckline ${priceFmt(pattern.neckline_price)}`,
+      title: `${L("颈线", "Neckline")} ${priceFmt(pattern.neckline_price)}`,
     });
     candleSeries.createPriceLine({
       price: pattern.entry_price,
       color: "rgba(34, 211, 238, 0.85)",
       lineWidth: 2,
       lineStyle: 2, // dashed
-      title: `Entry ${priceFmt(pattern.entry_price)}`,
+      title: `${L("入场", "Entry")} ${priceFmt(pattern.entry_price)}`,
     });
     candleSeries.createPriceLine({
       price: pattern.stop_price,
       color: "rgba(239, 68, 68, 0.9)",
       lineWidth: 2,
       lineStyle: 2,
-      title: `Stop ${priceFmt(pattern.stop_price)}`,
+      title: `${L("止损", "Stop")} ${priceFmt(pattern.stop_price)}`,
     });
     candleSeries.createPriceLine({
       price: pattern.target_1,
       color: "rgba(16, 185, 129, 0.95)",
       lineWidth: 2,
       lineStyle: 0,
-      title: `T1 ${priceFmt(pattern.target_1)} (${pctFmt(pattern.measured_move_pct)})`,
+      title: `${L("目标1", "T1")} ${priceFmt(pattern.target_1)} (${pctFmt(pattern.measured_move_pct)})`,
     });
     if (pattern.target_2 != null) {
       candleSeries.createPriceLine({
@@ -220,7 +461,7 @@ function PatternChart({
         color: "rgba(52, 211, 153, 0.7)",
         lineWidth: 2,
         lineStyle: 2,
-        title: `T2 ${priceFmt(pattern.target_2)}`,
+        title: `${L("目标2", "T2")} ${priceFmt(pattern.target_2)}`,
       });
     }
     candleSeries.createPriceLine({
@@ -228,8 +469,53 @@ function PatternChart({
       color: "rgba(245, 158, 11, 0.7)",
       lineWidth: 1,
       lineStyle: 3, // dotted
-      title: `Invalidation ${priceFmt(pattern.invalidation_price)}`,
+      title: `${L("失效", "Invalidation")} ${priceFmt(pattern.invalidation_price)}`,
     });
+
+    // ── Shape lines (connect pivots to draw the actual pattern) ──
+    const shapeLines = buildPatternShapeLines(pattern, isZh);
+    for (const sl of shapeLines) {
+      const lineSeries = chart.addSeries(LineSeries, {
+        color: sl.color,
+        lineWidth: sl.width,
+        lineStyle: sl.style ?? 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lineSeries.setData(sl.points as any);
+    }
+
+    // ── Measured-move projection: vertical drop/rise + horizontal target ──
+    // Show the equal-projection from breakout point to target_1
+    const sortedPivots = [...pattern.pivot_points].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+    const lastPivot = sortedPivots[sortedPivots.length - 1];
+    if (lastPivot) {
+      const t0 = isoToTime(lastPivot.date);
+      // Rough horizontal end: 30 bars beyond breakout
+      const lastCandleTime = candles[candles.length - 1]?.time ?? Number(t0);
+      const projectionEnd = (Number(lastCandleTime) +
+        30 * 24 * 60 * 60) as Time;
+      const target1Series = chart.addSeries(LineSeries, {
+        color: "rgba(16, 185, 129, 0.6)",
+        lineWidth: 1,
+        lineStyle: 1, // dotted (vertical effect via style)
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      target1Series.setData([
+        { time: t0, value: pattern.entry_price },
+        { time: t0, value: pattern.target_1 },
+        { time: projectionEnd, value: pattern.target_1 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ] as any);
+    }
 
     // ── Pivot point markers ──
     const markers: SeriesMarker<Time>[] = pattern.pivot_points.map((p) => {
@@ -237,12 +523,18 @@ function PatternChart({
       const isLowRole =
         role.includes("low") ||
         role.includes("breakdown") ||
-        role === "support";
+        role === "support" ||
+        role === "lower_edge" ||
+        role === "first_low" ||
+        role === "last_low";
       const isHighRole =
         role.includes("high") ||
         role === "head" ||
         role.includes("top") ||
-        role === "neckline_break";
+        role === "neckline_break" ||
+        role === "upper_edge" ||
+        role === "first_high" ||
+        role === "last_high";
       let position: "aboveBar" | "belowBar" | "inBar" = "inBar";
       let color = "#94a3b8";
       let shape: "circle" | "arrowUp" | "arrowDown" | "square" = "circle";
@@ -255,7 +547,12 @@ function PatternChart({
         position = "aboveBar";
         color = "#ef4444";
         shape = "arrowDown";
-      } else if (role === "neckline" || role.includes("neckline")) {
+      } else if (
+        role === "neckline" ||
+        role.includes("neckline") ||
+        role === "recovery" ||
+        role === "failure"
+      ) {
         position = "aboveBar";
         color = "#67e8f9";
         shape = "circle";
@@ -265,8 +562,8 @@ function PatternChart({
         position,
         color,
         shape,
-        text: role,
-        size: 1,
+        text: roleLabel(role, isZh),
+        size: 2,
       };
     });
     if (markers.length > 0) {
@@ -291,7 +588,7 @@ function PatternChart({
         chartRef.current = null;
       }
     };
-  }, [candles, pattern, height]);
+  }, [candles, pattern, isZh, height]);
 
   return <div ref={containerRef} style={{ height }} />;
 }
@@ -401,7 +698,11 @@ export default function PatternChartModal({ symbol, pattern, onClose }: Props) {
               </div>
             )}
             {!loading && !error && data && data.candles.length > 0 && (
-              <PatternChart candles={data.candles} pattern={pattern} />
+              <PatternChart
+                candles={data.candles}
+                pattern={pattern}
+                isZh={isZh}
+              />
             )}
           </div>
 
@@ -514,7 +815,9 @@ export default function PatternChartModal({ symbol, pattern, onClose }: Props) {
                     key={i}
                     className="flex items-center justify-between text-slate-300"
                   >
-                    <span className="font-mono text-slate-400">{p.role}</span>
+                    <span className="font-mono text-slate-400">
+                      {roleLabel(p.role, isZh)}
+                    </span>
                     <span className="font-mono">
                       {p.date.slice(0, 10)} · {priceFmt(p.price)}
                     </span>
@@ -541,12 +844,30 @@ export default function PatternChartModal({ symbol, pattern, onClose }: Props) {
           />
           <Legend color="rgb(34, 211, 238)" label={isZh ? "入场" : "Entry"} />
           <Legend color="rgb(239, 68, 68)" label={isZh ? "止损" : "Stop"} />
-          <Legend color="rgb(16, 185, 129)" label="Target 1" solid />
-          <Legend color="rgb(52, 211, 153)" label="Target 2" />
+          <Legend
+            color="rgb(16, 185, 129)"
+            label={isZh ? "目标1" : "Target 1"}
+            solid
+          />
+          <Legend
+            color="rgb(52, 211, 153)"
+            label={isZh ? "目标2" : "Target 2"}
+          />
           <Legend
             color="rgb(245, 158, 11)"
             label={isZh ? "失效" : "Invalidates"}
             dotted
+          />
+          <span className="ml-2 text-slate-500">|</span>
+          <Legend
+            color="rgb(34, 211, 238)"
+            label={isZh ? "形态轮廓" : "Pattern Shape"}
+            solid
+          />
+          <Legend
+            color="rgb(167, 139, 250)"
+            label={isZh ? "旗杆" : "Pole"}
+            solid
           />
         </div>
       </div>
