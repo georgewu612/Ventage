@@ -164,6 +164,51 @@ const PRESETS: Preset[] = [
     ],
     sortBy: "rs_vs_spy",
   },
+  // ── 3 ORTHOGONAL strategies (designed to LOW-correlate with momentum) ──
+  {
+    key: "reversal",
+    zhName: "🔄 短期反转",
+    enName: "🔄 Short-Term Reversal",
+    zhDesc: "跌惨但不烂的股票 — 反弹概率高。与动量策略反相关，组合用作多元化。",
+    enDesc:
+      "Stocks that fell hard but aren't garbage — bounce candidates. Negatively correlated with momentum, ideal for diversification.",
+    conditions: [
+      { factor: "momentum_60d", op: "<=", value: -0.05 },
+      { factor: "new_high_52w", op: "<=", value: 0.4 },
+      { factor: "rs_vs_spy", op: "<=", value: 0 },
+    ],
+    sortBy: "new_high_52w",
+  },
+  {
+    key: "defensive",
+    zhName: "🛡️ 真正防守",
+    enName: "🛡️ True Defensive",
+    zhDesc: "低波动 + 中性区间 + 无放量 — 稳定无聊但跌得少。震荡市抗跌。",
+    enDesc:
+      "Low vol + mid-range + no volume — boring but stable. Defensive in choppy markets.",
+    conditions: [
+      { factor: "low_vol", op: ">=", value: -0.25 },
+      { factor: "new_high_52w", op: ">=", value: 0.4 },
+      { factor: "new_high_52w", op: "<=", value: 0.7 },
+      { factor: "volume_trend_20d", op: "<=", value: 0 },
+    ],
+    sortBy: "low_vol",
+  },
+  {
+    key: "early_breakout",
+    zhName: "📈 早期突破",
+    enName: "📈 Early Breakout",
+    zhDesc:
+      "刚突破 20 日高点 + 还没冲到 52w 高位 + 量能起来。比三重确认早 30 天入场。",
+    enDesc:
+      "Just broke 20d high, not yet at 52w high, volume confirming. Catches uptrend ~30d before Triple Confirmation.",
+    conditions: [
+      { factor: "breakout_20d", op: ">=", value: 0 },
+      { factor: "new_high_52w", op: "<=", value: 0.8 },
+      { factor: "volume_spike_5d", op: ">=", value: 1.2 },
+    ],
+    sortBy: "breakout_20d",
+  },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────

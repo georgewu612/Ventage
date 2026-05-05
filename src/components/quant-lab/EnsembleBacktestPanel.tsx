@@ -103,6 +103,35 @@ const PRESETS: StrategyDef[] = [
       { factor: "volume_spike_5d", op: "<=", value: 1.3 },
     ],
   },
+  // ── 3 ORTHOGONAL strategies (designed to LOW-correlate with momentum) ──
+  {
+    // Mean reversion: stocks that fell hard but aren't garbage
+    name: "Short-Term Reversal",
+    conditions: [
+      { factor: "momentum_60d", op: "<=", value: -0.05 },
+      { factor: "new_high_52w", op: "<=", value: 0.4 },
+      { factor: "rs_vs_spy", op: "<=", value: 0 },
+    ],
+  },
+  {
+    // Defensive: low vol, mid-range, no momentum spike — stable boring stocks
+    name: "True Defensive",
+    conditions: [
+      { factor: "low_vol", op: ">=", value: -0.25 },
+      { factor: "new_high_52w", op: ">=", value: 0.4 },
+      { factor: "new_high_52w", op: "<=", value: 0.7 },
+      { factor: "volume_trend_20d", op: "<=", value: 0 },
+    ],
+  },
+  {
+    // Early breakout: just broke out but momentum hasn't yet caught up
+    name: "Early Breakout",
+    conditions: [
+      { factor: "breakout_20d", op: ">=", value: 0 },
+      { factor: "new_high_52w", op: "<=", value: 0.8 },
+      { factor: "volume_spike_5d", op: ">=", value: 1.2 },
+    ],
+  },
 ];
 
 const PRESET_LABELS: Record<string, { zh: string; en: string }> = {
@@ -110,15 +139,20 @@ const PRESET_LABELS: Record<string, { zh: string; en: string }> = {
   "Pure Momentum": { zh: "🚀 纯动量", en: "🚀 Pure Momentum" },
   "Quality + Trend": { zh: "🛡️ 质量+趋势", en: "🛡️ Quality + Trend" },
   "Avoid Tops": { zh: "🎯 避免顶部", en: "🎯 Avoid Tops" },
+  "Short-Term Reversal": { zh: "🔄 短期反转", en: "🔄 Short-Term Reversal" },
+  "True Defensive": { zh: "🛡️ 真正防守", en: "🛡️ True Defensive" },
+  "Early Breakout": { zh: "📈 早期突破", en: "📈 Early Breakout" },
 };
 
-// Strategy line colors (consistent across charts)
+// Strategy line colors (7 distinct hues for our 7 presets)
 const STRATEGY_COLORS = [
   "rgb(34, 211, 238)", // cyan
   "rgb(167, 139, 250)", // violet
   "rgb(251, 191, 36)", // amber
   "rgb(248, 113, 113)", // red
   "rgb(94, 234, 212)", // teal
+  "rgb(244, 114, 182)", // pink
+  "rgb(132, 204, 22)", // lime
 ];
 const ENSEMBLE_COLOR = "rgb(52, 211, 153)"; // emerald
 const BENCHMARK_COLOR = "rgb(107, 114, 128)"; // gray
