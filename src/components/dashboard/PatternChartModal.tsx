@@ -350,27 +350,27 @@ function PatternChart({
       width: containerRef.current.clientWidth,
       height,
       layout: {
-        background: { color: "transparent" },
-        textColor: "#94a3b8",
+        background: { color: "#ffffff" },
+        textColor: "#334155",
         fontSize: 12,
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.04)" },
-        horzLines: { color: "rgba(255,255,255,0.04)" },
+        vertLines: { color: "rgba(15, 23, 42, 0.06)" },
+        horzLines: { color: "rgba(15, 23, 42, 0.06)" },
       },
       crosshair: {
         vertLine: {
-          color: "rgba(103,232,249,0.3)",
-          labelBackgroundColor: "#1e293b",
+          color: "rgba(8, 145, 178, 0.4)",
+          labelBackgroundColor: "#0f172a",
         },
         horzLine: {
-          color: "rgba(103,232,249,0.3)",
-          labelBackgroundColor: "#1e293b",
+          color: "rgba(8, 145, 178, 0.4)",
+          labelBackgroundColor: "#0f172a",
         },
       },
-      rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
+      rightPriceScale: { borderColor: "rgba(15, 23, 42, 0.15)" },
       timeScale: {
-        borderColor: "rgba(255,255,255,0.1)",
+        borderColor: "rgba(15, 23, 42, 0.15)",
         timeVisible: false,
       },
     });
@@ -406,7 +406,7 @@ function PatternChart({
 
     // Volume histogram
     const volSeries = chart.addSeries(HistogramSeries, {
-      color: "rgba(100,116,139,0.4)",
+      color: "rgba(100,116,139,0.6)",
       priceFormat: { type: "volume" },
       priceScaleId: "vol",
       priceLineVisible: false,
@@ -421,7 +421,7 @@ function PatternChart({
         time: c.time,
         value: c.volume,
         color:
-          c.close >= c.open ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)",
+          c.close >= c.open ? "rgba(16,185,129,0.55)" : "rgba(239,68,68,0.55)",
       })) as any,
     );
 
@@ -682,7 +682,7 @@ export default function PatternChartModal({ symbol, pattern, onClose }: Props) {
         {/* Chart + side panel */}
         <div className="grid grid-cols-1 gap-4 p-6 lg:grid-cols-[2fr_1fr]">
           {/* Chart */}
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+          <div className="rounded-xl border border-slate-700 bg-white p-3 shadow-inner">
             {loading && (
               <div className="flex h-[460px] items-center justify-center gap-2 text-slate-400">
                 <Loader2 className="h-4 w-4 animate-spin" />
