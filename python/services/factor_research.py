@@ -935,7 +935,8 @@ def pit_backtest_ensemble(
     strategies: list[dict],            # [{name, conditions}, ...]
     *,
     benchmark: str = "SPY",
-    min_holdings: int = 5,
+    min_holdings: int = 3,
+    min_strategies_per_period: int = 2,
 ) -> EnsembleResult:
     """Run PIT backtest for each strategy + equal-weight ensemble.
 
@@ -975,7 +976,7 @@ def pit_backtest_ensemble(
             f"Need ≥2 successful strategies for ensemble. Failures: {failed}"
         )
 
-    # 2. Build period-aligned return matrix
+    # 2. Build period map (UNION of all dates, per-strategy missing values stay missing)
     # period_map[date][strat_name] = return_dec
     period_map: dict[str, dict[str, float]] = {}
     bench_per_date: dict[str, float] = {}
@@ -988,58 +989,82 @@ def pit_backtest_ensemble(
             bench_per_date[d] = p.get("benchmark", 0.0)
 
     n_strats = len(raw_results)
+    names = [n for n, _ in raw_results]
+
+    # Union dates where ≥min_strategies_per_period strategies have data
+    threshold = min(min_strategies_per_period, n_strats)
+    union_dates = sorted(d for d, v in period_map.items() if len(v) >= threshold)
     common_dates = sorted(d for d, v in period_map.items() if len(v) == n_strats)
 
-    if len(common_dates) < 3:
+    if len(union_dates) < 3:
         raise ValueError(
-            f"Only {len(common_dates)} common periods across all strategies — need ≥3"
+            f"Only {len(union_dates)} periods have ≥{threshold} strategies — need ≥3"
         )
 
-    # 3. Build per-strategy aligned vectors + ensemble
+    # 3. Per-strategy vectors on THEIR OWN active dates
+    strat_dates: dict[str, list[str]] = {n: [] for n in names}
     strat_vecs: dict[str, np.ndarray] = {}
-    bench_vec = np.array([bench_per_date[d] for d in common_dates])
-    for name, _ in raw_results:
-        strat_vecs[name] = np.array([period_map[d][name] for d in common_dates])
+    for n in names:
+        dates_n = sorted(d for d in period_map if n in period_map[d])
+        strat_dates[n] = dates_n
+        strat_vecs[n] = np.array([period_map[d][n] for d in dates_n])
 
-    ensemble_returns = np.mean(np.column_stack(list(strat_vecs.values())), axis=1)
+    # Ensemble: equal-weight across strategies present per date (over union_dates)
+    bench_vec = np.array([bench_per_date[d] for d in union_dates])
+    ensemble_returns = np.array([
+        float(np.mean([period_map[d][n] for n in names if n in period_map[d]]))
+        for d in union_dates
+    ])
+    # Per-period strategy count (for diagnostics)
+    n_active_per_period = [
+        sum(1 for n in names if n in period_map[d]) for d in union_dates
+    ]
 
-    # 4. Correlation matrix
+    # 4. Correlation matrix on PAIRWISE JOINT observations
     corr_matrix: dict[str, dict[str, float]] = {}
     pairwise_corrs: list[float] = []
-    names = [n for n, _ in raw_results]
     for i, ni in enumerate(names):
         corr_matrix[ni] = {}
         for j, nj in enumerate(names):
             if i == j:
                 corr_matrix[ni][nj] = 1.0
-            else:
-                if np.std(strat_vecs[ni]) > 0 and np.std(strat_vecs[nj]) > 0:
-                    rho = float(np.corrcoef(strat_vecs[ni], strat_vecs[nj])[0, 1])
-                else:
-                    rho = 0.0
-                corr_matrix[ni][nj] = rho
+                continue
+            joint_dates = [d for d in period_map if ni in period_map[d] and nj in period_map[d]]
+            if len(joint_dates) < 2:
+                corr_matrix[ni][nj] = 0.0
                 if i < j:
-                    pairwise_corrs.append(rho)
+                    pairwise_corrs.append(0.0)
+                continue
+            vi = np.array([period_map[d][ni] for d in joint_dates])
+            vj = np.array([period_map[d][nj] for d in joint_dates])
+            if np.std(vi) > 0 and np.std(vj) > 0:
+                rho = float(np.corrcoef(vi, vj)[0, 1])
+            else:
+                rho = 0.0
+            corr_matrix[ni][nj] = rho
+            if i < j:
+                pairwise_corrs.append(rho)
     avg_corr = float(np.mean(pairwise_corrs)) if pairwise_corrs else 0.0
 
-    # 5. Per-strategy stats (computed on common periods for fair comparison)
+    # 5. Per-strategy stats — EACH on its OWN active dates (full sample)
     per_strategy: list[StrategyResult] = []
     for name, r in raw_results:
         vec = strat_vecs[name]
-        mean_m = float(np.mean(vec))
+        dates_n = strat_dates[name]
+        bench_n = np.array([bench_per_date[d] for d in dates_n])
+        mean_m = float(np.mean(vec)) if len(vec) > 0 else 0.0
         std_m = float(np.std(vec, ddof=1)) if len(vec) > 1 else 0.0
         ann_ret = mean_m * 12
         ann_vol = std_m * math.sqrt(12)
         sharpe = ann_ret / ann_vol if ann_vol > 0 else 0.0
-        win_rate = float((vec > 0).mean())
-        bench_mean = float(np.mean(bench_vec))
+        win_rate = float((vec > 0).mean()) if len(vec) > 0 else 0.0
+        bench_mean = float(np.mean(bench_n)) if len(bench_n) > 0 else 0.0
         alpha_ann = (mean_m - bench_mean) * 12
-        excess = vec - bench_vec
+        excess = vec - bench_n
         excess_vol = float(np.std(excess, ddof=1)) * math.sqrt(12) if len(vec) > 1 else 0.0
         ir = alpha_ann / excess_vol if excess_vol > 0 else 0.0
 
-        # Drawdown on aligned series
-        cum = np.cumprod(1 + vec)
+        cum = np.cumprod(1 + vec) if len(vec) > 0 else np.array([1.0])
         peak = np.maximum.accumulate(cum)
         dd = (cum - peak) / peak
         max_dd = float(-dd.min()) if len(dd) > 0 else 0.0
@@ -1057,11 +1082,11 @@ def pit_backtest_ensemble(
             period_returns=[
                 {"date": d, "return": float(period_map[d][name]),
                  "benchmark": float(bench_per_date[d])}
-                for d in common_dates
+                for d in dates_n
             ],
         ))
 
-    # 6. Ensemble metrics
+    # 6. Ensemble metrics (on union_dates)
     e_mean = float(np.mean(ensemble_returns))
     e_std = float(np.std(ensemble_returns, ddof=1)) if len(ensemble_returns) > 1 else 0.0
     e_ann_ret = e_mean * 12
@@ -1109,22 +1134,27 @@ def pit_backtest_ensemble(
             f"建议剔除低 IR 策略后再组合（当前相关性 {avg_corr:.2f}）。"
         )
 
-    # 9. Cumulative curves (per strategy + ensemble + benchmark)
+    # 9. Cumulative curves — each on its OWN active dates
     cumulative_curves: dict[str, list[dict]] = {}
     for name in names:
-        cum = np.cumprod(1 + strat_vecs[name])
+        vec = strat_vecs[name]
+        dates_n = strat_dates[name]
+        if len(vec) == 0:
+            cumulative_curves[name] = []
+            continue
+        cum = np.cumprod(1 + vec)
         cumulative_curves[name] = [
-            {"date": common_dates[i], "value": float(round(cum[i], 4))}
-            for i in range(len(common_dates))
+            {"date": dates_n[i], "value": float(round(cum[i], 4))}
+            for i in range(len(dates_n))
         ]
     cumulative_curves["ensemble"] = [
-        {"date": common_dates[i], "value": float(round(e_cum[i], 4))}
-        for i in range(len(common_dates))
+        {"date": union_dates[i], "value": float(round(e_cum[i], 4))}
+        for i in range(len(union_dates))
     ]
     bench_cum = np.cumprod(1 + bench_vec)
     cumulative_curves["benchmark"] = [
-        {"date": common_dates[i], "value": float(round(bench_cum[i], 4))}
-        for i in range(len(common_dates))
+        {"date": union_dates[i], "value": float(round(bench_cum[i], 4))}
+        for i in range(len(union_dates))
     ]
 
     warnings: list[str] = []
@@ -1132,9 +1162,17 @@ def pit_backtest_ensemble(
         warnings.append(
             f"⚠️ 以下策略未通过 PIT 回测：{', '.join(f'{n} ({e})' for n, e in failed)}"
         )
-    if len(common_dates) < 12:
+    if len(union_dates) < 12:
         warnings.append(
-            f"⚠️ 仅 {len(common_dates)} 个共同期，统计势能有限。"
+            f"⚠️ 仅 {len(union_dates)} 个并集期（≥{threshold} 策略同时有数据），"
+            f"统计势能有限。"
+        )
+    min_active = min(n_active_per_period) if n_active_per_period else 0
+    max_active = max(n_active_per_period) if n_active_per_period else 0
+    if min_active < n_strats:
+        warnings.append(
+            f"ℹ️ 各期参与策略数：{min_active}-{max_active}（共 {n_strats} 策略）。"
+            f"等权组合按当期活跃策略数动态调整 — 部分策略无满足条件的标的。"
         )
     if avg_corr > 0.7:
         warnings.append(
@@ -1145,8 +1183,8 @@ def pit_backtest_ensemble(
     return EnsembleResult(
         n_strategies=n_strats,
         strategy_names=names,
-        n_common_periods=len(common_dates),
-        common_dates=common_dates,
+        n_common_periods=len(union_dates),
+        common_dates=union_dates,
         per_strategy=per_strategy,
         correlation_matrix=corr_matrix,
         avg_pairwise_correlation=avg_corr,

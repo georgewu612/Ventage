@@ -570,7 +570,8 @@ class StrategyDef(BaseModel):
 class EnsembleBacktestRequest(BaseModel):
     strategies: list[StrategyDef]
     benchmark: str = "SPY"
-    min_holdings: int = Field(default=5, ge=1, le=50)
+    min_holdings: int = Field(default=3, ge=1, le=50)
+    min_strategies_per_period: int = Field(default=2, ge=1, le=20)
 
 
 @router.post("/factors/screener/backtest/ensemble")
@@ -592,6 +593,7 @@ def ensemble_backtest(req: EnsembleBacktestRequest) -> dict[str, Any]:
             [s.dict() for s in req.strategies],
             benchmark=req.benchmark,
             min_holdings=req.min_holdings,
+            min_strategies_per_period=req.min_strategies_per_period,
         )
         return result.to_dict()
     except ValueError as exc:
@@ -611,7 +613,7 @@ def ensemble_backtest(req: EnsembleBacktestRequest) -> dict[str, Any]:
 class PITBacktestRequest(BaseModel):
     conditions: list[ScreenerCondition]
     benchmark: str = "SPY"
-    min_holdings: int = Field(default=5, ge=1, le=50)
+    min_holdings: int = Field(default=3, ge=1, le=50)
 
 
 @router.post("/factors/screener/backtest/pit")

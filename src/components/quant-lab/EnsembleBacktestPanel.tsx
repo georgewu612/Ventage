@@ -240,7 +240,8 @@ export function EnsembleBacktestPanel() {
           body: JSON.stringify({
             strategies,
             benchmark: "SPY",
-            min_holdings: 5,
+            min_holdings: 3,
+            min_strategies_per_period: 2,
           }),
         },
       );
