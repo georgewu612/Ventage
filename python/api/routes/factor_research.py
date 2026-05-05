@@ -559,6 +559,52 @@ def screener_backtest(req: ScreenerBacktestRequest) -> dict[str, Any]:
     }
 
 
+# ── Multi-Strategy Ensemble PIT Backtest ─────────────────────────────────
+
+
+class StrategyDef(BaseModel):
+    name: str
+    conditions: list[ScreenerCondition]
+
+
+class EnsembleBacktestRequest(BaseModel):
+    strategies: list[StrategyDef]
+    benchmark: str = "SPY"
+    min_holdings: int = Field(default=5, ge=1, le=50)
+
+
+@router.post("/factors/screener/backtest/ensemble")
+def ensemble_backtest(req: EnsembleBacktestRequest) -> dict[str, Any]:
+    """Run PIT backtest for multiple strategies + equal-weight ensemble.
+
+    Reports per-strategy stats, correlation matrix, ensemble metrics,
+    and Sharpe uplift vs best single strategy. Diversification grade
+    is based on average pairwise correlation:
+      <0.3 excellent / <0.5 good / <0.7 marginal / ≥0.7 redundant
+
+    Requires ≥2 strategies that successfully complete PIT backtest.
+    Each strategy needs ≥3 common periods (after intersecting dates).
+    """
+    from services.factor_research import pit_backtest_ensemble
+
+    try:
+        result = pit_backtest_ensemble(
+            [s.dict() for s in req.strategies],
+            benchmark=req.benchmark,
+            min_holdings=req.min_holdings,
+        )
+        return result.to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        import traceback
+        tb = traceback.format_exc().splitlines()[-3:]
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ensemble backtest failed: {exc} | {' | '.join(tb)}"[:500],
+        )
+
+
 # ── True PIT Backtest (Phase V.2) ────────────────────────────────────────
 
 

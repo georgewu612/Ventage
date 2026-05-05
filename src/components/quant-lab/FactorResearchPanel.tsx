@@ -25,11 +25,13 @@ import {
   Database,
   Activity,
   Filter,
+  Layers,
 } from "lucide-react";
 
 import { API_BASE_URL } from "@/lib/config";
 import { useI18n } from "@/lib/i18n/provider";
 import { StockScreenerPanel } from "@/components/quant-lab/StockScreenerPanel";
+import { EnsembleBacktestPanel } from "@/components/quant-lab/EnsembleBacktestPanel";
 
 type SubTab =
   | "universe"
@@ -37,7 +39,8 @@ type SubTab =
   | "fama_macbeth"
   | "backtest"
   | "ic"
-  | "screener";
+  | "screener"
+  | "ensemble";
 
 // Phase III: 14 raw factors + 7 clusters
 type FactorName = string; // wide string for forward-compat with new factors
@@ -1426,6 +1429,7 @@ export function FactorResearchPanel() {
     { key: "backtest", zh: "多空回测", en: "Backtest", icon: LineChart },
     { key: "ic", zh: "IC 分析", en: "IC Analysis", icon: Activity },
     { key: "screener", zh: "选股器", en: "Screener", icon: Filter },
+    { key: "ensemble", zh: "组合策略", en: "Ensemble", icon: Layers },
   ];
 
   return (
@@ -1468,6 +1472,7 @@ export function FactorResearchPanel() {
       {subTab === "backtest" && <BacktestPanel zh={zh} />}
       {subTab === "ic" && <ICAnalysisPanel zh={zh} />}
       {subTab === "screener" && <StockScreenerPanel />}
+      {subTab === "ensemble" && <EnsembleBacktestPanel />}
     </section>
   );
 }

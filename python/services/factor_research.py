@@ -838,3 +838,329 @@ def pit_backtest_screener(
         interpretation=interp,
         warnings=warnings,
     )
+
+
+# ── Multi-Strategy Ensemble PIT Backtest ────────────────────────────────
+
+
+@dataclass
+class StrategyResult:
+    """Per-strategy slice of an ensemble backtest."""
+    name: str
+    n_periods: int
+    annualized_return: float
+    sharpe_ratio: float
+    max_drawdown: float
+    win_rate: float
+    alpha_annual: float
+    information_ratio: float
+    avg_holdings: float
+    period_returns: list[dict]   # [{date, return, benchmark}]
+
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "n_periods": self.n_periods,
+            "annualized_return_pct": round(self.annualized_return * 100, 2),
+            "sharpe_ratio": round(self.sharpe_ratio, 2),
+            "max_drawdown_pct": round(self.max_drawdown * 100, 2),
+            "win_rate_pct": round(self.win_rate * 100, 1),
+            "alpha_annual_pct": round(self.alpha_annual * 100, 2),
+            "information_ratio": round(self.information_ratio, 2),
+            "avg_holdings": round(self.avg_holdings, 1),
+        }
+
+
+@dataclass
+class EnsembleResult:
+    """Full result of running multiple strategies as a portfolio."""
+    n_strategies: int
+    strategy_names: list[str]
+    n_common_periods: int
+    common_dates: list[str]
+    per_strategy: list[StrategyResult]
+    correlation_matrix: dict[str, dict[str, float]]
+    avg_pairwise_correlation: float
+
+    # Ensemble (equal-weight) metrics
+    ensemble_annualized_return: float
+    ensemble_annualized_vol: float
+    ensemble_sharpe: float
+    ensemble_max_drawdown: float
+    ensemble_win_rate: float
+    ensemble_alpha_annual: float
+    ensemble_information_ratio: float
+
+    # Comparison
+    best_single_sharpe: float
+    sharpe_uplift: float            # ensemble - best_single
+    diversification_grade: str      # 'excellent' / 'good' / 'marginal' / 'redundant'
+    interpretation: str
+
+    # Curves
+    cumulative_curves: dict[str, list[dict]]   # {name: [{date, value}], 'ensemble': [...], 'benchmark': [...]}
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "n_strategies": self.n_strategies,
+            "strategy_names": self.strategy_names,
+            "n_common_periods": self.n_common_periods,
+            "common_dates": self.common_dates,
+            "per_strategy": [s.to_dict() for s in self.per_strategy],
+            "correlation_matrix": {
+                k: {k2: round(v2, 3) for k2, v2 in v.items()}
+                for k, v in self.correlation_matrix.items()
+            },
+            "avg_pairwise_correlation": round(self.avg_pairwise_correlation, 3),
+            "ensemble": {
+                "annualized_return_pct": round(self.ensemble_annualized_return * 100, 2),
+                "annualized_vol_pct": round(self.ensemble_annualized_vol * 100, 2),
+                "sharpe_ratio": round(self.ensemble_sharpe, 2),
+                "max_drawdown_pct": round(self.ensemble_max_drawdown * 100, 2),
+                "win_rate_pct": round(self.ensemble_win_rate * 100, 1),
+                "alpha_annual_pct": round(self.ensemble_alpha_annual * 100, 2),
+                "information_ratio": round(self.ensemble_information_ratio, 2),
+            },
+            "best_single_sharpe": round(self.best_single_sharpe, 2),
+            "sharpe_uplift": round(self.sharpe_uplift, 2),
+            "diversification_grade": self.diversification_grade,
+            "interpretation": self.interpretation,
+            "cumulative_curves": self.cumulative_curves,
+            "warnings": self.warnings,
+        }
+
+
+def pit_backtest_ensemble(
+    strategies: list[dict],            # [{name, conditions}, ...]
+    *,
+    benchmark: str = "SPY",
+    min_holdings: int = 5,
+) -> EnsembleResult:
+    """Run PIT backtest for each strategy + equal-weight ensemble.
+
+    Steps:
+        1. Run pit_backtest_screener for each strategy independently
+        2. Align periods (only use months where ALL strategies have a return)
+        3. Equal-weight ensemble = mean of strategy returns each period
+        4. Compute correlation matrix
+        5. Diversification grade based on avg pairwise correlation
+
+    Returns full EnsembleResult with per-strategy stats, correlations,
+    ensemble metrics, comparison vs best single, equity curves.
+    """
+    import math
+    import numpy as np
+
+    if not strategies:
+        raise ValueError("No strategies provided")
+
+    # 1. Run each strategy
+    raw_results: list[tuple[str, PITBacktestResult]] = []
+    failed: list[tuple[str, str]] = []
+    for strat in strategies:
+        name = strat.get("name") or f"strategy_{len(raw_results)+1}"
+        conditions = strat.get("conditions") or []
+        try:
+            r = pit_backtest_screener(
+                conditions, benchmark=benchmark, min_holdings=min_holdings
+            )
+            raw_results.append((name, r))
+        except ValueError as exc:
+            failed.append((name, str(exc)[:120]))
+            continue
+
+    if len(raw_results) < 2:
+        raise ValueError(
+            f"Need ≥2 successful strategies for ensemble. Failures: {failed}"
+        )
+
+    # 2. Build period-aligned return matrix
+    # period_map[date][strat_name] = return_dec
+    period_map: dict[str, dict[str, float]] = {}
+    bench_per_date: dict[str, float] = {}
+    for name, r in raw_results:
+        for p in r.period_returns:
+            d = p["date"]
+            if d not in period_map:
+                period_map[d] = {}
+            period_map[d][name] = p["return"]
+            bench_per_date[d] = p.get("benchmark", 0.0)
+
+    n_strats = len(raw_results)
+    common_dates = sorted(d for d, v in period_map.items() if len(v) == n_strats)
+
+    if len(common_dates) < 3:
+        raise ValueError(
+            f"Only {len(common_dates)} common periods across all strategies — need ≥3"
+        )
+
+    # 3. Build per-strategy aligned vectors + ensemble
+    strat_vecs: dict[str, np.ndarray] = {}
+    bench_vec = np.array([bench_per_date[d] for d in common_dates])
+    for name, _ in raw_results:
+        strat_vecs[name] = np.array([period_map[d][name] for d in common_dates])
+
+    ensemble_returns = np.mean(np.column_stack(list(strat_vecs.values())), axis=1)
+
+    # 4. Correlation matrix
+    corr_matrix: dict[str, dict[str, float]] = {}
+    pairwise_corrs: list[float] = []
+    names = [n for n, _ in raw_results]
+    for i, ni in enumerate(names):
+        corr_matrix[ni] = {}
+        for j, nj in enumerate(names):
+            if i == j:
+                corr_matrix[ni][nj] = 1.0
+            else:
+                if np.std(strat_vecs[ni]) > 0 and np.std(strat_vecs[nj]) > 0:
+                    rho = float(np.corrcoef(strat_vecs[ni], strat_vecs[nj])[0, 1])
+                else:
+                    rho = 0.0
+                corr_matrix[ni][nj] = rho
+                if i < j:
+                    pairwise_corrs.append(rho)
+    avg_corr = float(np.mean(pairwise_corrs)) if pairwise_corrs else 0.0
+
+    # 5. Per-strategy stats (computed on common periods for fair comparison)
+    per_strategy: list[StrategyResult] = []
+    for name, r in raw_results:
+        vec = strat_vecs[name]
+        mean_m = float(np.mean(vec))
+        std_m = float(np.std(vec, ddof=1)) if len(vec) > 1 else 0.0
+        ann_ret = mean_m * 12
+        ann_vol = std_m * math.sqrt(12)
+        sharpe = ann_ret / ann_vol if ann_vol > 0 else 0.0
+        win_rate = float((vec > 0).mean())
+        bench_mean = float(np.mean(bench_vec))
+        alpha_ann = (mean_m - bench_mean) * 12
+        excess = vec - bench_vec
+        excess_vol = float(np.std(excess, ddof=1)) * math.sqrt(12) if len(vec) > 1 else 0.0
+        ir = alpha_ann / excess_vol if excess_vol > 0 else 0.0
+
+        # Drawdown on aligned series
+        cum = np.cumprod(1 + vec)
+        peak = np.maximum.accumulate(cum)
+        dd = (cum - peak) / peak
+        max_dd = float(-dd.min()) if len(dd) > 0 else 0.0
+
+        per_strategy.append(StrategyResult(
+            name=name,
+            n_periods=len(vec),
+            annualized_return=ann_ret,
+            sharpe_ratio=sharpe,
+            max_drawdown=max_dd,
+            win_rate=win_rate,
+            alpha_annual=alpha_ann,
+            information_ratio=ir,
+            avg_holdings=r.avg_holdings,
+            period_returns=[
+                {"date": d, "return": float(period_map[d][name]),
+                 "benchmark": float(bench_per_date[d])}
+                for d in common_dates
+            ],
+        ))
+
+    # 6. Ensemble metrics
+    e_mean = float(np.mean(ensemble_returns))
+    e_std = float(np.std(ensemble_returns, ddof=1)) if len(ensemble_returns) > 1 else 0.0
+    e_ann_ret = e_mean * 12
+    e_ann_vol = e_std * math.sqrt(12)
+    e_sharpe = e_ann_ret / e_ann_vol if e_ann_vol > 0 else 0.0
+    e_win = float((ensemble_returns > 0).mean())
+    e_alpha = (e_mean - float(np.mean(bench_vec))) * 12
+    e_excess = ensemble_returns - bench_vec
+    e_excess_vol = float(np.std(e_excess, ddof=1)) * math.sqrt(12) if len(e_excess) > 1 else 0.0
+    e_ir = e_alpha / e_excess_vol if e_excess_vol > 0 else 0.0
+
+    e_cum = np.cumprod(1 + ensemble_returns)
+    e_peak = np.maximum.accumulate(e_cum)
+    e_dd = (e_cum - e_peak) / e_peak
+    e_max_dd = float(-e_dd.min()) if len(e_dd) > 0 else 0.0
+
+    # 7. Comparison
+    best_single = max(s.sharpe_ratio for s in per_strategy)
+    sharpe_uplift = e_sharpe - best_single
+
+    # Diversification grade
+    if avg_corr < 0.3:
+        diversification = "excellent"
+    elif avg_corr < 0.5:
+        diversification = "good"
+    elif avg_corr < 0.7:
+        diversification = "marginal"
+    else:
+        diversification = "redundant"
+
+    # 8. Interpretation
+    if sharpe_uplift > 0.2:
+        interp = (
+            f"组合 Sharpe {e_sharpe:.2f} vs 最强单策略 {best_single:.2f}（+{sharpe_uplift:.2f}）。"
+            f"等权组合显著提升风险调整后收益 — 多元化奏效。"
+        )
+    elif sharpe_uplift > 0:
+        interp = (
+            f"组合 Sharpe {e_sharpe:.2f} vs 最强单策略 {best_single:.2f}（+{sharpe_uplift:.2f}）。"
+            f"温和提升 — 策略相关性 {avg_corr:.2f} 偏高，多元化效果有限。"
+        )
+    else:
+        interp = (
+            f"组合 Sharpe {e_sharpe:.2f} 略低于最强单策略 {best_single:.2f}。"
+            f"建议剔除低 IR 策略后再组合（当前相关性 {avg_corr:.2f}）。"
+        )
+
+    # 9. Cumulative curves (per strategy + ensemble + benchmark)
+    cumulative_curves: dict[str, list[dict]] = {}
+    for name in names:
+        cum = np.cumprod(1 + strat_vecs[name])
+        cumulative_curves[name] = [
+            {"date": common_dates[i], "value": float(round(cum[i], 4))}
+            for i in range(len(common_dates))
+        ]
+    cumulative_curves["ensemble"] = [
+        {"date": common_dates[i], "value": float(round(e_cum[i], 4))}
+        for i in range(len(common_dates))
+    ]
+    bench_cum = np.cumprod(1 + bench_vec)
+    cumulative_curves["benchmark"] = [
+        {"date": common_dates[i], "value": float(round(bench_cum[i], 4))}
+        for i in range(len(common_dates))
+    ]
+
+    warnings: list[str] = []
+    if failed:
+        warnings.append(
+            f"⚠️ 以下策略未通过 PIT 回测：{', '.join(f'{n} ({e})' for n, e in failed)}"
+        )
+    if len(common_dates) < 12:
+        warnings.append(
+            f"⚠️ 仅 {len(common_dates)} 个共同期，统计势能有限。"
+        )
+    if avg_corr > 0.7:
+        warnings.append(
+            f"⚠️ 平均相关性 {avg_corr:.2f} 过高，策略实际是同一种因子的变种。"
+            f"考虑替换为更不相关的策略。"
+        )
+
+    return EnsembleResult(
+        n_strategies=n_strats,
+        strategy_names=names,
+        n_common_periods=len(common_dates),
+        common_dates=common_dates,
+        per_strategy=per_strategy,
+        correlation_matrix=corr_matrix,
+        avg_pairwise_correlation=avg_corr,
+        ensemble_annualized_return=e_ann_ret,
+        ensemble_annualized_vol=e_ann_vol,
+        ensemble_sharpe=e_sharpe,
+        ensemble_max_drawdown=e_max_dd,
+        ensemble_win_rate=e_win,
+        ensemble_alpha_annual=e_alpha,
+        ensemble_information_ratio=e_ir,
+        best_single_sharpe=best_single,
+        sharpe_uplift=sharpe_uplift,
+        diversification_grade=diversification,
+        interpretation=interp,
+        cumulative_curves=cumulative_curves,
+        warnings=warnings,
+    )
