@@ -68,26 +68,14 @@ interface EnsembleResult {
   warnings: string[];
 }
 
-// ── 4 Presets (mirror StockScreenerPanel) ──────────────────────────────────
+// ── 4 Orthogonal Presets (refined from empirical correlation findings) ────
+// v2: Removed 3 redundant momentum strategies (Triple/Pure/Avoid all had
+// ρ=0.93-0.98 with Quality+Trend). Tightened Defensive & Reversal to
+// achieve true negative correlation with the Quality+Trend "alpha" leg.
 
 const PRESETS: StrategyDef[] = [
   {
-    name: "Triple Confirmation",
-    conditions: [
-      { factor: "new_high_52w", op: ">=", value: 0.85 },
-      { factor: "rs_vs_spy", op: ">=", value: 0.05 },
-      { factor: "momentum_60d", op: ">=", value: 0.1 },
-    ],
-  },
-  {
-    name: "Pure Momentum",
-    conditions: [
-      { factor: "momentum", op: ">=", value: 0.3 },
-      { factor: "new_high_52w", op: ">=", value: 0.9 },
-      { factor: "market_cap", op: ">=", value: 20_000_000_000 },
-    ],
-  },
-  {
+    // Best momentum representative (Sharpe 1.60, IR 0.44 in 23-mo PIT test)
     name: "Quality + Trend",
     conditions: [
       { factor: "quality", op: ">=", value: 0.2 },
@@ -96,63 +84,50 @@ const PRESETS: StrategyDef[] = [
     ],
   },
   {
-    name: "Avoid Tops",
+    // Deep reversal: stocks crushed over 6 months, low volume = no panic
+    name: "Deep Reversal",
     conditions: [
-      { factor: "new_high_52w", op: ">=", value: 0.85 },
-      { factor: "rs_vs_spy", op: ">=", value: 0.03 },
-      { factor: "volume_spike_5d", op: "<=", value: 1.3 },
-    ],
-  },
-  // ── 3 ORTHOGONAL strategies (designed to LOW-correlate with momentum) ──
-  {
-    // Mean reversion: stocks that fell hard but aren't garbage
-    name: "Short-Term Reversal",
-    conditions: [
-      { factor: "momentum_60d", op: "<=", value: -0.05 },
-      { factor: "new_high_52w", op: "<=", value: 0.4 },
-      { factor: "rs_vs_spy", op: "<=", value: 0 },
+      { factor: "momentum_120d", op: "<=", value: -0.15 },
+      { factor: "new_high_52w", op: "<=", value: 0.3 },
+      { factor: "volume_spike_5d", op: "<=", value: 0.8 },
     ],
   },
   {
-    // Defensive: low vol, mid-range, no momentum spike — stable boring stocks
+    // True defensive: STRICT low-vol + no recent move + below-avg volume
     name: "True Defensive",
     conditions: [
-      { factor: "low_vol", op: ">=", value: -0.25 },
+      { factor: "low_vol", op: ">=", value: 0 },
+      { factor: "momentum_60d", op: ">=", value: -0.05 },
+      { factor: "momentum_60d", op: "<=", value: 0.05 },
       { factor: "new_high_52w", op: ">=", value: 0.4 },
       { factor: "new_high_52w", op: "<=", value: 0.7 },
-      { factor: "volume_trend_20d", op: "<=", value: 0 },
     ],
   },
   {
-    // Early breakout: just broke out but momentum hasn't yet caught up
+    // Early breakout: not yet at 52w high, volume confirming
     name: "Early Breakout",
     conditions: [
       { factor: "breakout_20d", op: ">=", value: 0 },
-      { factor: "new_high_52w", op: "<=", value: 0.8 },
-      { factor: "volume_spike_5d", op: ">=", value: 1.2 },
+      { factor: "new_high_52w", op: "<=", value: 0.7 },
+      { factor: "volume_spike_5d", op: ">=", value: 1.3 },
+      { factor: "momentum_60d", op: ">=", value: 0 },
     ],
   },
 ];
 
 const PRESET_LABELS: Record<string, { zh: string; en: string }> = {
-  "Triple Confirmation": { zh: "⭐ 三重确认", en: "⭐ Triple Confirmation" },
-  "Pure Momentum": { zh: "🚀 纯动量", en: "🚀 Pure Momentum" },
   "Quality + Trend": { zh: "🛡️ 质量+趋势", en: "🛡️ Quality + Trend" },
-  "Avoid Tops": { zh: "🎯 避免顶部", en: "🎯 Avoid Tops" },
-  "Short-Term Reversal": { zh: "🔄 短期反转", en: "🔄 Short-Term Reversal" },
+  "Deep Reversal": { zh: "🔄 深度反转", en: "🔄 Deep Reversal" },
   "True Defensive": { zh: "🛡️ 真正防守", en: "🛡️ True Defensive" },
   "Early Breakout": { zh: "📈 早期突破", en: "📈 Early Breakout" },
 };
 
-// Strategy line colors (7 distinct hues for our 7 presets)
+// Strategy line colors (4 distinct hues)
 const STRATEGY_COLORS = [
-  "rgb(34, 211, 238)", // cyan
-  "rgb(167, 139, 250)", // violet
-  "rgb(251, 191, 36)", // amber
-  "rgb(248, 113, 113)", // red
-  "rgb(94, 234, 212)", // teal
-  "rgb(244, 114, 182)", // pink
-  "rgb(132, 204, 22)", // lime
+  "rgb(34, 211, 238)", // cyan — Quality+Trend
+  "rgb(248, 113, 113)", // red — Deep Reversal
+  "rgb(167, 139, 250)", // violet — True Defensive
+  "rgb(251, 191, 36)", // amber — Early Breakout
 ];
 const ENSEMBLE_COLOR = "rgb(52, 211, 153)"; // emerald
 const BENCHMARK_COLOR = "rgb(107, 114, 128)"; // gray
