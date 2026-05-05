@@ -75,6 +75,26 @@ interface BacktestResult {
     avg_return_high: number;
   };
   honest_comparison: string;
+  min_quality_applied?: number;
+  n_signals_pre_filter?: number;
+  by_quality?: Array<{
+    range: string;
+    n: number;
+    win_rate?: number;
+    avg_return_pct?: number;
+    target_1_hit_rate?: number;
+    stop_rate?: number;
+    avg_bars_held?: number;
+  }>;
+  quality_alpha?: boolean;
+  quality_alpha_note?: string;
+  sweet_spot?: {
+    range: string;
+    n: number;
+    win_rate: number;
+    avg_return_pct: number;
+    stop_rate: number;
+  } | null;
   sample_trades: Array<{
     symbol: string;
     signal_date: string;
@@ -117,6 +137,7 @@ export default function PatternBacktestPanel() {
   const [universe, setUniverse] = useState("sp500");
   const [years, setYears] = useState(5);
   const [maxSymbols, setMaxSymbols] = useState(50);
+  const [minQuality, setMinQuality] = useState(0);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,6 +154,7 @@ export default function PatternBacktestPanel() {
           universe,
           lookback_years: years,
           max_symbols: maxSymbols,
+          min_quality: minQuality,
         }),
       });
       if (!res.ok) {
@@ -229,6 +251,34 @@ export default function PatternBacktestPanel() {
           </div>
         </div>
 
+        <div className="mt-4">
+          <label className="mb-2 flex items-center justify-between text-xs text-slate-400">
+            <span>
+              {isZh ? "最低形态质量分" : "Min Pattern Quality"}{" "}
+              <span className="text-slate-500">
+                {isZh ? "（过滤掉低质量信号）" : "(filter low-quality signals)"}
+              </span>
+            </span>
+            <span className="font-mono text-cyan-300">≥ {minQuality}</span>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={90}
+            step={5}
+            value={minQuality}
+            onChange={(e) => setMinQuality(Number(e.target.value))}
+            className="w-full accent-cyan-400"
+          />
+          <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+            <span>0</span>
+            <span>50</span>
+            <span>65</span>
+            <span>80</span>
+            <span>90</span>
+          </div>
+        </div>
+
         <button
           onClick={runBacktest}
           disabled={running}
@@ -262,13 +312,175 @@ export default function PatternBacktestPanel() {
 
 // ── Results display ──────────────────────────────────────────────────────
 
+function QualityBucketCard({ r, isZh }: { r: BacktestResult; isZh: boolean }) {
+  const buckets = r.by_quality ?? [];
+  const validBuckets = buckets.filter((b) => b.n >= 5);
+  const maxWr = validBuckets.length
+    ? Math.max(...validBuckets.map((b) => b.win_rate ?? 0))
+    : 0;
+
+  const alphaToneCls = r.quality_alpha
+    ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-300"
+    : (r.quality_alpha_note ?? "").startsWith("⚠️")
+      ? "border-amber-500/40 bg-amber-500/5 text-amber-300"
+      : "border-slate-700 bg-slate-800/30 text-slate-400";
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-cyan-400">
+        🎯 {isZh ? "质量分桶分析" : "Quality Bucket Analysis"}
+      </h4>
+
+      <div className={`mb-4 rounded border p-3 text-sm ${alphaToneCls}`}>
+        {r.quality_alpha_note ?? "—"}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="border-b border-slate-700 text-slate-400">
+            <tr>
+              <th className="px-2 py-1 text-left">
+                {isZh ? "质量分区间" : "Quality Range"}
+              </th>
+              <th className="px-2 py-1 text-right">N</th>
+              <th className="px-2 py-1 text-right">
+                {isZh ? "胜率" : "Win Rate"}
+              </th>
+              <th className="px-2 py-1 text-right">
+                {isZh ? "平均报酬" : "Avg Return"}
+              </th>
+              <th className="px-2 py-1 text-right">T1 hit</th>
+              <th className="px-2 py-1 text-right">
+                {isZh ? "止损率" : "Stop Rate"}
+              </th>
+              <th className="px-2 py-1 text-right">{isZh ? "持仓" : "Hold"}</th>
+              <th className="px-2 py-1 text-left">
+                {isZh ? "胜率分布" : "WR Bar"}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {buckets.map((b) => {
+              if (b.n === 0) {
+                return (
+                  <tr key={b.range} className="border-b border-slate-800">
+                    <td className="px-2 py-1 font-mono text-slate-500">
+                      {b.range}
+                    </td>
+                    <td
+                      className="px-2 py-1 text-center text-slate-500"
+                      colSpan={7}
+                    >
+                      {isZh ? "无样本" : "no samples"}
+                    </td>
+                  </tr>
+                );
+              }
+              const wr = b.win_rate ?? 0;
+              const isMax = wr === maxWr && b.n >= 5;
+              const wrCls =
+                wr >= 0.6
+                  ? "text-emerald-300"
+                  : wr >= 0.5
+                    ? "text-cyan-300"
+                    : wr >= 0.4
+                      ? "text-slate-300"
+                      : "text-red-300";
+              const barWidth = `${wr * 100}%`;
+              const barCls =
+                wr >= 0.6
+                  ? "bg-emerald-500"
+                  : wr >= 0.5
+                    ? "bg-cyan-500"
+                    : wr >= 0.4
+                      ? "bg-slate-500"
+                      : "bg-red-500";
+              const ret = b.avg_return_pct ?? 0;
+              return (
+                <tr
+                  key={b.range}
+                  className={`border-b border-slate-800 ${isMax ? "bg-emerald-500/5" : ""}`}
+                >
+                  <td className="px-2 py-1 font-mono text-cyan-300">
+                    {b.range}
+                    {isMax && (
+                      <span className="ml-2 rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-semibold text-emerald-300">
+                        {isZh ? "最佳" : "BEST"}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1 text-right text-slate-300">{b.n}</td>
+                  <td className={`px-2 py-1 text-right font-mono ${wrCls}`}>
+                    {(wr * 100).toFixed(1)}%
+                  </td>
+                  <td
+                    className={`px-2 py-1 text-right font-mono ${ret >= 0 ? "text-emerald-300" : "text-red-300"}`}
+                  >
+                    {ret >= 0 ? "+" : ""}
+                    {ret.toFixed(2)}%
+                  </td>
+                  <td className="px-2 py-1 text-right text-slate-300">
+                    {((b.target_1_hit_rate ?? 0) * 100).toFixed(0)}%
+                  </td>
+                  <td className="px-2 py-1 text-right text-red-300">
+                    {((b.stop_rate ?? 0) * 100).toFixed(0)}%
+                  </td>
+                  <td className="px-2 py-1 text-right text-slate-300">
+                    {(b.avg_bars_held ?? 0).toFixed(0)}
+                  </td>
+                  <td className="px-2 py-1">
+                    <div className="h-2 w-32 rounded bg-slate-800">
+                      <div
+                        className={`h-2 rounded ${barCls}`}
+                        style={{ width: barWidth }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {r.sweet_spot && (
+        <div className="mt-3 rounded border border-cyan-500/30 bg-cyan-500/5 p-3 text-xs text-cyan-200">
+          {isZh ? "🎯 最佳质量区间：" : "🎯 Sweet spot: "}
+          <span className="font-mono">{r.sweet_spot.range}</span>
+          {" — "}
+          {isZh ? "胜率 " : "WR "}
+          <span className="font-semibold">
+            {(r.sweet_spot.win_rate * 100).toFixed(1)}%
+          </span>
+          {", "}
+          {isZh ? "平均报酬 " : "avg return "}
+          <span className="font-semibold">
+            {r.sweet_spot.avg_return_pct >= 0 ? "+" : ""}
+            {r.sweet_spot.avg_return_pct.toFixed(2)}%
+          </span>
+          {", "}
+          {isZh ? "止损率 " : "stop "}
+          <span className="font-semibold">
+            {(r.sweet_spot.stop_rate * 100).toFixed(0)}%
+          </span>
+          {" (N="}
+          {r.sweet_spot.n}
+          {")"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultsDisplay({ r, isZh }: { r: BacktestResult; isZh: boolean }) {
   if (r.n_signals === 0) {
     return (
       <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 text-slate-400">
         {isZh
-          ? "未生成任何信号。请尝试更宽松的形态或更长的回测窗口。"
-          : "No signals generated. Try a different pattern or longer window."}
+          ? r.n_signals_pre_filter && r.n_signals_pre_filter > 0
+            ? `质量过滤 (≥${r.min_quality_applied}) 后无样本。原始 ${r.n_signals_pre_filter} 个信号被过滤掉。`
+            : "未生成任何信号。请尝试更宽松的形态或更长的回测窗口。"
+          : "No signals generated."}
       </div>
     );
   }
@@ -386,6 +598,10 @@ function ResultsDisplay({ r, isZh }: { r: BacktestResult; isZh: boolean }) {
         </div>
         <p className="mt-3 text-sm text-amber-200">{r.honest_comparison}</p>
       </div>
+
+      {r.by_quality && r.by_quality.length > 0 && (
+        <QualityBucketCard r={r} isZh={isZh} />
+      )}
 
       {r.sample_trades.length > 0 && (
         <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">

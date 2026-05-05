@@ -326,6 +326,8 @@ class PatternBacktestRequest(BaseModel):
     lookback_years: int = Field(default=5, ge=1, le=10)
     max_symbols: int = Field(default=50, ge=5, le=200,
                              description="Cap to keep latency reasonable")
+    min_quality: float = Field(default=0.0, ge=0.0, le=100.0,
+                               description="Minimum pattern_quality_score to include (0-100)")
 
 
 @router.post("/patterns/backtest")
@@ -363,30 +365,95 @@ def backtest_pattern(req: PatternBacktestRequest) -> dict[str, Any]:
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"{sym}: {str(exc)[:50]}")
 
+    # Apply min_quality filter
+    raw_count = len(all_trades)
+    if req.min_quality > 0:
+        all_trades = [t for t in all_trades if t["pattern_quality"] >= req.min_quality]
+
     if not all_trades:
         return {
             "pattern": req.pattern,
             "universe": req.universe,
             "n_symbols": len(universe),
             "n_signals": 0,
-            "warning": "No signals generated. Try a different pattern or longer window.",
+            "n_signals_pre_filter": raw_count,
+            "min_quality_applied": req.min_quality,
+            "warning": (
+                f"No trades passed quality≥{req.min_quality:.0f} filter "
+                f"(of {raw_count} raw signals). Try lowering min_quality."
+            )
+            if raw_count > 0
+            else "No signals generated. Try a different pattern or longer window.",
             "failures": failures[:5],
         }
 
-    n = len(all_trades)
-    wins = [t for t in all_trades if t["return_pct"] > 0]
-    win_rate = len(wins) / n
-    t1_hits = [t for t in all_trades if t["outcome"] == "target_1"]
-    t2_hits = [t for t in all_trades if t["outcome"] == "target_2"]
-    invalidations = [t for t in all_trades if t["outcome"] == "invalidation"]
-    stops = [t for t in all_trades if t["outcome"] == "stop"]
-    opens = [t for t in all_trades if t["outcome"] == "open"]
+    overall = _summarize_trades(all_trades)
 
-    avg_return = sum(t["return_pct"] for t in all_trades) / n
-    avg_bars = sum(t["bars_held"] for t in all_trades) / n
-    avg_quality = sum(t["pattern_quality"] for t in all_trades) / n
+    # Quality-bucket analysis: split into [0-50, 50-65, 65-80, 80-100]
+    bucket_defs = [(0, 50), (50, 65), (65, 80), (80, 101)]
+    by_quality: list[dict] = []
+    for lo, hi in bucket_defs:
+        bucket = [t for t in all_trades if lo <= t["pattern_quality"] < hi]
+        if not bucket:
+            by_quality.append({
+                "range": f"{lo}-{hi if hi <= 100 else 100}",
+                "n": 0,
+            })
+            continue
+        s = _summarize_trades(bucket)
+        by_quality.append({
+            "range": f"{lo}-{hi if hi <= 100 else 100}",
+            **s,
+        })
 
-    # Cai Sen book claim: 22-60% per trade across all 12 patterns
+    # Detect quality alpha: focus on buckets with statistically meaningful
+    # sample size (N≥20), and check if win-rate trends upward with quality.
+    quality_alpha = False
+    quality_alpha_note = "样本不足，无法判断"
+    valid = [b for b in by_quality if b["n"] >= 20]
+    if len(valid) >= 2:
+        wrs = [b["win_rate"] for b in valid]
+        ranges = [b["range"] for b in valid]
+        # Top bucket vs bottom bucket spread (across valid sample sizes)
+        top_wr = wrs[-1]
+        bottom_wr = wrs[0]
+        diff = top_wr - bottom_wr
+        # Check monotonic-ish: every step >= prior or within 5pp tolerance
+        steps_ok = sum(
+            1 for i in range(len(wrs) - 1) if wrs[i + 1] >= wrs[i] - 0.05
+        )
+        is_mostly_monotonic = steps_ok == len(wrs) - 1
+        if diff >= 0.10 and is_mostly_monotonic:
+            quality_alpha = True
+            quality_alpha_note = (
+                f"✅ 质量分有 alpha：胜率随质量分上升 "
+                f"({ranges[0]}={bottom_wr*100:.0f}% → "
+                f"{ranges[-1]}={top_wr*100:.0f}%；+{diff*100:.0f}pp)"
+            )
+        elif diff >= 0.10:
+            quality_alpha_note = (
+                f"⚠️ 质量分非单调（顶 {top_wr*100:.0f}% vs 底 "
+                f"{bottom_wr*100:.0f}%）— 检查中段桶"
+            )
+        else:
+            quality_alpha_note = (
+                f"❌ 质量分无 alpha：有效桶胜率在 "
+                f"{min(wrs)*100:.0f}%-{max(wrs)*100:.0f}% 内"
+            )
+
+    # Identify sweet-spot bucket: highest WR among N≥20 buckets
+    sweet_spot = None
+    if valid:
+        best = max(valid, key=lambda b: b["win_rate"])
+        sweet_spot = {
+            "range": best["range"],
+            "n": best["n"],
+            "win_rate": best["win_rate"],
+            "avg_return_pct": best["avg_return_pct"],
+            "stop_rate": best["stop_rate"],
+        }
+
+    # Cai Sen book claim
     cai_sen_low = 0.22
     cai_sen_high = 0.60
 
@@ -396,25 +463,55 @@ def backtest_pattern(req: PatternBacktestRequest) -> dict[str, Any]:
         "universe": req.universe,
         "n_symbols_tested": len(universe),
         "lookback_years": req.lookback_years,
-        "n_signals": n,
-        "n_signals_per_year": round(n / max(req.lookback_years, 1), 1),
-        "win_rate": round(win_rate, 4),
-        "target_1_hit_rate": round(len(t1_hits) / n, 4),
-        "target_2_hit_rate": round(len(t2_hits) / n, 4),
-        "invalidation_rate": round(len(invalidations) / n, 4),
-        "stop_rate": round(len(stops) / n, 4),
-        "open_rate": round(len(opens) / n, 4),
-        "avg_return_pct": round(avg_return * 100, 2),
-        "avg_bars_held": round(avg_bars, 1),
-        "avg_pattern_quality": round(avg_quality, 1),
+        "min_quality_applied": req.min_quality,
+        "n_signals_pre_filter": raw_count,
+        # Spread overall fields at top level for backwards compat
+        **{k: v for k, v in overall.items() if k != "ext"},
+        "n_signals_per_year": round(overall["n_signals"] / max(req.lookback_years, 1), 1),
         "cai_sen_book_claim": {
             "win_rate": "60%+",
             "avg_return_low": cai_sen_low,
             "avg_return_high": cai_sen_high,
         },
-        "honest_comparison": _make_comparison(win_rate, avg_return, cai_sen_low, cai_sen_high),
+        "honest_comparison": _make_comparison(
+            overall["win_rate"], overall["avg_return"], cai_sen_low, cai_sen_high
+        ),
+        "by_quality": by_quality,
+        "quality_alpha": quality_alpha,
+        "quality_alpha_note": quality_alpha_note,
+        "sweet_spot": sweet_spot,
         "sample_trades": all_trades[:30],
         "failures": failures[:5],
+    }
+
+
+def _summarize_trades(trades: list[dict]) -> dict[str, Any]:
+    """Compute summary stats for a list of trades."""
+    n = len(trades)
+    if n == 0:
+        return {"n_signals": 0, "win_rate": 0.0, "avg_return": 0.0}
+    wins = [t for t in trades if t["return_pct"] > 0]
+    t1_hits = [t for t in trades if t["outcome"] == "target_1"]
+    t2_hits = [t for t in trades if t["outcome"] == "target_2"]
+    invalidations = [t for t in trades if t["outcome"] == "invalidation"]
+    stops = [t for t in trades if t["outcome"] == "stop"]
+    opens = [t for t in trades if t["outcome"] == "open"]
+    avg_return = sum(t["return_pct"] for t in trades) / n
+    return {
+        "n_signals": n,
+        "n": n,
+        "win_rate": round(len(wins) / n, 4),
+        "target_1_hit_rate": round(len(t1_hits) / n, 4),
+        "target_2_hit_rate": round(len(t2_hits) / n, 4),
+        "invalidation_rate": round(len(invalidations) / n, 4),
+        "stop_rate": round(len(stops) / n, 4),
+        "open_rate": round(len(opens) / n, 4),
+        "avg_return": round(avg_return, 4),
+        "avg_return_pct": round(avg_return * 100, 2),
+        "avg_bars_held": round(sum(t["bars_held"] for t in trades) / n, 1),
+        "avg_pattern_quality": round(
+            sum(t["pattern_quality"] for t in trades) / n, 1
+        ),
     }
 
 
