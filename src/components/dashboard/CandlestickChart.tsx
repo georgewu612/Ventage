@@ -408,12 +408,12 @@ export function CandlestickChart({
       });
     }
 
-    // Trend channel — linear regression line ± 2σ bands (cyan)
+    // Trend channel — linear regression line ± 2σ bands (saturated cyan)
     if (showChannel && channelData) {
       const midSeries = chart.addSeries(LineSeries, {
-        color: "rgba(34, 211, 238, 0.85)",
-        lineWidth: 2,
-        lineStyle: 0,
+        color: "rgb(8, 145, 178)", // cyan-600 fully opaque
+        lineWidth: 3,
+        lineStyle: 0, // solid
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -421,8 +421,8 @@ export function CandlestickChart({
       midSeries.setData(channelData.mid as any);
 
       const upperSeries = chart.addSeries(LineSeries, {
-        color: "rgba(34, 211, 238, 0.5)",
-        lineWidth: 1,
+        color: "rgb(14, 165, 233)", // sky-500
+        lineWidth: 2,
         lineStyle: 2, // dashed
         priceLineVisible: false,
         lastValueVisible: false,
@@ -431,8 +431,8 @@ export function CandlestickChart({
       upperSeries.setData(channelData.upper as any);
 
       const lowerSeries = chart.addSeries(LineSeries, {
-        color: "rgba(34, 211, 238, 0.5)",
-        lineWidth: 1,
+        color: "rgb(14, 165, 233)", // sky-500
+        lineWidth: 2,
         lineStyle: 2,
         priceLineVisible: false,
         lastValueVisible: false,
