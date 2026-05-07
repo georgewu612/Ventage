@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CandlestickSeries,
   HistogramSeries,
@@ -9,6 +9,7 @@ import {
   type IChartApi,
 } from "lightweight-charts";
 
+import { useI18n } from "@/lib/i18n/provider";
 import type { TechnicalData } from "@/lib/hooks/useTechnicalAnalysis";
 
 export interface SRLevel {
@@ -34,16 +35,150 @@ interface Props {
   fibLevels?: FibLevel[];
 }
 
+// ── Linear regression channel (client-side) ──────────────────────────────────
+
+function computeRegressionChannel(
+  candles: { time: number; close: number }[],
+  lookback = 60,
+  bandSigma = 2,
+): {
+  mid: { time: number; value: number }[];
+  upper: { time: number; value: number }[];
+  lower: { time: number; value: number }[];
+} | null {
+  const n = candles.length;
+  if (n < 20) return null;
+  const slice = candles.slice(Math.max(0, n - lookback));
+  const m = slice.length;
+  let sumX = 0,
+    sumY = 0;
+  for (let i = 0; i < m; i++) {
+    sumX += i;
+    sumY += slice[i].close;
+  }
+  const meanX = sumX / m;
+  const meanY = sumY / m;
+  let num = 0,
+    den = 0;
+  for (let i = 0; i < m; i++) {
+    num += (i - meanX) * (slice[i].close - meanY);
+    den += (i - meanX) ** 2;
+  }
+  if (den === 0) return null;
+  const slope = num / den;
+  const intercept = meanY - slope * meanX;
+  let sumSq = 0;
+  for (let i = 0; i < m; i++) {
+    const r = slice[i].close - (slope * i + intercept);
+    sumSq += r * r;
+  }
+  const std = Math.sqrt(sumSq / m);
+  return {
+    mid: slice.map((c, i) => ({
+      time: c.time,
+      value: slope * i + intercept,
+    })),
+    upper: slice.map((c, i) => ({
+      time: c.time,
+      value: slope * i + intercept + bandSigma * std,
+    })),
+    lower: slice.map((c, i) => ({
+      time: c.time,
+      value: slope * i + intercept - bandSigma * std,
+    })),
+  };
+}
+
+// ── Toggle chip ──────────────────────────────────────────────────────────────
+
+function ToggleChip({
+  label,
+  active,
+  onClick,
+  color,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  color: "emerald" | "red" | "purple" | "violet" | "cyan" | "amber" | "slate";
+}) {
+  const colorMap: Record<string, { on: string; off: string }> = {
+    emerald: {
+      on: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-emerald-500/30 hover:text-emerald-400",
+    },
+    red: {
+      on: "bg-red-500/20 text-red-300 border-red-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-red-500/30 hover:text-red-400",
+    },
+    purple: {
+      on: "bg-purple-500/20 text-purple-300 border-purple-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-purple-500/30 hover:text-purple-400",
+    },
+    violet: {
+      on: "bg-violet-500/20 text-violet-300 border-violet-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-violet-500/30 hover:text-violet-400",
+    },
+    cyan: {
+      on: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-cyan-500/30 hover:text-cyan-400",
+    },
+    amber: {
+      on: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-amber-500/30 hover:text-amber-400",
+    },
+    slate: {
+      on: "bg-slate-500/20 text-slate-200 border-slate-500/40",
+      off: "border-slate-700 text-slate-500 hover:border-slate-400 hover:text-slate-300",
+    },
+  };
+  const cls = active ? colorMap[color].on : colorMap[color].off;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition ${cls}`}
+    >
+      {active ? "● " : "○ "}
+      {label}
+    </button>
+  );
+}
+
 export function CandlestickChart({
   data,
   height = 420,
-  showVolume = true,
-  showBollinger = true,
-  showSMA = true,
+  showVolume: defaultShowVolume = true,
+  showBollinger: defaultShowBollinger = true,
+  showSMA: defaultShowSMA = true,
   supportLevels = [],
   resistLevels = [],
   fibLevels = [],
 }: Props) {
+  const { locale } = useI18n();
+  const isZh = locale === "zh";
+
+  // Toggle state — defaults to props (or true), user overrides per session
+  const [showSupport, setShowSupport] = useState(true);
+  const [showResist, setShowResist] = useState(true);
+  const [showFib, setShowFib] = useState(true);
+  const [showChannel, setShowChannel] = useState(false);
+  const [showBB, setShowBB] = useState(defaultShowBollinger);
+  const [showSMALine, setShowSMALine] = useState(defaultShowSMA);
+  const [showVolBars, setShowVolBars] = useState(defaultShowVolume);
+
+  const channelData = useMemo(
+    () =>
+      showChannel
+        ? computeRegressionChannel(
+            data.candles.map((c) => ({ time: c.time, close: c.close })),
+            60,
+            2,
+          )
+        : null,
+    [showChannel, data.candles],
+  );
+
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -117,7 +252,7 @@ export function CandlestickChart({
     candleSeries.setData(data.candles as any);
 
     // Bollinger Bands
-    if (showBollinger && data.indicators.bb_upper.length > 0) {
+    if (showBB && data.indicators.bb_upper.length > 0) {
       const bbUpper = chart.addSeries(LineSeries, {
         color: "rgba(147,51,234,0.4)",
         lineWidth: 1,
@@ -148,7 +283,7 @@ export function CandlestickChart({
     }
 
     // SMA lines
-    if (showSMA) {
+    if (showSMALine) {
       if (data.indicators.sma_20.length > 0) {
         const sma20 = chart.addSeries(LineSeries, {
           color: "#f59e0b",
@@ -195,80 +330,119 @@ export function CandlestickChart({
     // axisLabelVisible:false prevents the right-axis label from pulling the
     // price scale to include distant levels outside the candle range.
     // weekly_confluent levels get a brighter color and solid line regardless of strength.
-    supportLevels.forEach((level) => {
-      const op = level.weekly_confluent
-        ? 1.0
-        : (strengthOpacity[level.strength] ?? 0.5);
-      const lw = level.weekly_confluent
-        ? 2
-        : (strengthWidth[level.strength] ?? 1);
-      const ls = level.weekly_confluent
-        ? 0
-        : (strengthStyle[level.strength] ?? 2);
-      candleSeries.createPriceLine({
-        price: level.price,
-        color: `rgba(16,185,129,${op})`,
-        lineWidth: lw,
-        lineStyle: ls,
-        axisLabelVisible: false,
-        title: level.weekly_confluent
-          ? `S★ ${level.price}`
-          : `S ${level.price}`,
+    if (showSupport) {
+      supportLevels.forEach((level) => {
+        const op = level.weekly_confluent
+          ? 1.0
+          : (strengthOpacity[level.strength] ?? 0.5);
+        const lw = level.weekly_confluent
+          ? 2
+          : (strengthWidth[level.strength] ?? 1);
+        const ls = level.weekly_confluent
+          ? 0
+          : (strengthStyle[level.strength] ?? 2);
+        candleSeries.createPriceLine({
+          price: level.price,
+          color: `rgba(16,185,129,${op})`,
+          lineWidth: lw,
+          lineStyle: ls,
+          axisLabelVisible: false,
+          title: level.weekly_confluent
+            ? `S★ ${level.price}`
+            : `S ${level.price}`,
+        });
       });
-    });
+    }
 
     // Resistance lines — red
-    resistLevels.forEach((level) => {
-      const op = level.weekly_confluent
-        ? 1.0
-        : (strengthOpacity[level.strength] ?? 0.5);
-      const lw = level.weekly_confluent
-        ? 2
-        : (strengthWidth[level.strength] ?? 1);
-      const ls = level.weekly_confluent
-        ? 0
-        : (strengthStyle[level.strength] ?? 2);
-      candleSeries.createPriceLine({
-        price: level.price,
-        color: `rgba(239,68,68,${op})`,
-        lineWidth: lw,
-        lineStyle: ls,
-        axisLabelVisible: false,
-        title: level.weekly_confluent
-          ? `R★ ${level.price}`
-          : `R ${level.price}`,
+    if (showResist) {
+      resistLevels.forEach((level) => {
+        const op = level.weekly_confluent
+          ? 1.0
+          : (strengthOpacity[level.strength] ?? 0.5);
+        const lw = level.weekly_confluent
+          ? 2
+          : (strengthWidth[level.strength] ?? 1);
+        const ls = level.weekly_confluent
+          ? 0
+          : (strengthStyle[level.strength] ?? 2);
+        candleSeries.createPriceLine({
+          price: level.price,
+          color: `rgba(239,68,68,${op})`,
+          lineWidth: lw,
+          lineStyle: ls,
+          axisLabelVisible: false,
+          title: level.weekly_confluent
+            ? `R★ ${level.price}`
+            : `R ${level.price}`,
+        });
       });
-    });
+    }
 
     // Fibonacci retracement levels — purple, dotted, fills mid-range gaps
     // when price has moved through a zone with no swing-pivot anchors.
-    const fibPctToOpacity: Record<string, number> = {
-      "23.6": 0.4,
-      "38.2": 0.7,
-      "50.0": 0.85, // golden zone
-      "50": 0.85,
-      "61.8": 0.7,
-      "78.6": 0.4,
-    };
-    fibLevels.forEach((fib) => {
-      const op = fibPctToOpacity[fib.pct] ?? 0.5;
-      const isGolden =
-        fib.pct === "50.0" ||
-        fib.pct === "50" ||
-        fib.pct === "38.2" ||
-        fib.pct === "61.8";
-      candleSeries.createPriceLine({
-        price: fib.price,
-        color: `rgba(168, 85, 247, ${op})`, // purple
-        lineWidth: 1,
-        lineStyle: 3, // dotted
-        axisLabelVisible: false,
-        title: isGolden ? `Fib ${fib.pct}% ★` : `Fib ${fib.pct}%`,
+    if (showFib) {
+      const fibPctToOpacity: Record<string, number> = {
+        "23.6": 0.4,
+        "38.2": 0.7,
+        "50.0": 0.85, // golden zone
+        "50": 0.85,
+        "61.8": 0.7,
+        "78.6": 0.4,
+      };
+      fibLevels.forEach((fib) => {
+        const op = fibPctToOpacity[fib.pct] ?? 0.5;
+        const isGolden =
+          fib.pct === "50.0" ||
+          fib.pct === "50" ||
+          fib.pct === "38.2" ||
+          fib.pct === "61.8";
+        candleSeries.createPriceLine({
+          price: fib.price,
+          color: `rgba(168, 85, 247, ${op})`, // purple
+          lineWidth: 1,
+          lineStyle: 3, // dotted
+          axisLabelVisible: false,
+          title: isGolden ? `Fib ${fib.pct}% ★` : `Fib ${fib.pct}%`,
+        });
       });
-    });
+    }
+
+    // Trend channel — linear regression line ± 2σ bands (cyan)
+    if (showChannel && channelData) {
+      const midSeries = chart.addSeries(LineSeries, {
+        color: "rgba(34, 211, 238, 0.85)",
+        lineWidth: 2,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      midSeries.setData(channelData.mid as any);
+
+      const upperSeries = chart.addSeries(LineSeries, {
+        color: "rgba(34, 211, 238, 0.5)",
+        lineWidth: 1,
+        lineStyle: 2, // dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      upperSeries.setData(channelData.upper as any);
+
+      const lowerSeries = chart.addSeries(LineSeries, {
+        color: "rgba(34, 211, 238, 0.5)",
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      lowerSeries.setData(channelData.lower as any);
+    }
 
     // Volume histogram
-    if (showVolume) {
+    if (showVolBars) {
       const volumeSeries = chart.addSeries(HistogramSeries, {
         priceFormat: { type: "volume" },
         priceScaleId: "volume",
@@ -315,12 +489,70 @@ export function CandlestickChart({
   }, [
     data,
     height,
-    showVolume,
-    showBollinger,
-    showSMA,
+    showVolBars,
+    showBB,
+    showSMALine,
+    showSupport,
+    showResist,
+    showFib,
+    showChannel,
+    channelData,
     supportLevels,
     resistLevels,
+    fibLevels,
   ]);
 
-  return <div ref={containerRef} className="w-full" />;
+  // ── Toggle row + chart container ──────────────────────────────────────────
+  return (
+    <div className="w-full">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-[11px] text-slate-500">
+          {isZh ? "图层" : "Layers"}:
+        </span>
+        <ToggleChip
+          label={isZh ? "支撑" : "Support"}
+          active={showSupport}
+          onClick={() => setShowSupport(!showSupport)}
+          color="emerald"
+        />
+        <ToggleChip
+          label={isZh ? "压力" : "Resistance"}
+          active={showResist}
+          onClick={() => setShowResist(!showResist)}
+          color="red"
+        />
+        <ToggleChip
+          label={isZh ? "斐波那契" : "Fibonacci"}
+          active={showFib}
+          onClick={() => setShowFib(!showFib)}
+          color="purple"
+        />
+        <ToggleChip
+          label={isZh ? "趋势通道" : "Trend Channel"}
+          active={showChannel}
+          onClick={() => setShowChannel(!showChannel)}
+          color="cyan"
+        />
+        <ToggleChip
+          label={isZh ? "布林带" : "Bollinger"}
+          active={showBB}
+          onClick={() => setShowBB(!showBB)}
+          color="violet"
+        />
+        <ToggleChip
+          label={isZh ? "均线" : "SMA"}
+          active={showSMALine}
+          onClick={() => setShowSMALine(!showSMALine)}
+          color="amber"
+        />
+        <ToggleChip
+          label={isZh ? "成交量" : "Volume"}
+          active={showVolBars}
+          onClick={() => setShowVolBars(!showVolBars)}
+          color="slate"
+        />
+      </div>
+      <div ref={containerRef} className="w-full" />
+    </div>
+  );
 }
