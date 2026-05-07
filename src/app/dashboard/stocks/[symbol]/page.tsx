@@ -838,14 +838,25 @@ function StockWorkbenchInner() {
           <div className="space-y-4 xl:col-span-2">
             {/* K-line chart */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              {/* Chart header: title + period/interval selectors */}
+              {/* Chart header: title only — period selector lives inside the
+                  CandlestickChart so it stays available in fullscreen mode. */}
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-semibold tracking-wider text-gray-400 uppercase">
                   {t("stock.chartTitle")} &mdash; {symbol}
                 </p>
-                <div className="flex items-center gap-1">
-                  {/* Period selector */}
-                  {(
+              </div>
+
+              {techLoading ? (
+                <div className="flex h-52 items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+                </div>
+              ) : techData ? (
+                <CandlestickChart
+                  data={techData}
+                  supportLevels={srSupport}
+                  resistLevels={srResist}
+                  fibLevels={fibLevels}
+                  periodSelector={(
                     [
                       { p: "1m", i: "1d", label: "1M" },
                       { p: "3m", i: "1d", label: "3M" },
@@ -874,19 +885,6 @@ function StockWorkbenchInner() {
                       </button>
                     );
                   })}
-                </div>
-              </div>
-
-              {techLoading ? (
-                <div className="flex h-52 items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
-                </div>
-              ) : techData ? (
-                <CandlestickChart
-                  data={techData}
-                  supportLevels={srSupport}
-                  resistLevels={srResist}
-                  fibLevels={fibLevels}
                 />
               ) : (
                 <div className="flex h-52 items-center justify-center text-sm text-gray-500">

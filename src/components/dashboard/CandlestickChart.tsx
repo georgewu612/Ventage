@@ -34,6 +34,13 @@ interface Props {
   supportLevels?: SRLevel[];
   resistLevels?: SRLevel[];
   fibLevels?: FibLevel[];
+  /**
+   * Optional period/interval selector node (e.g. 1M/3M/6M buttons).
+   * Rendered inside the chart's toolbar so it stays accessible in
+   * fullscreen mode. Parent typically passes the same selector it would
+   * otherwise render outside the chart.
+   */
+  periodSelector?: React.ReactNode;
 }
 
 // ── Linear regression channel (client-side) ──────────────────────────────────
@@ -155,6 +162,7 @@ export function CandlestickChart({
   supportLevels = [],
   resistLevels = [],
   fibLevels = [],
+  periodSelector,
 }: Props) {
   const { locale } = useI18n();
   const isZh = locale === "zh";
@@ -534,6 +542,11 @@ export function CandlestickChart({
 
   return (
     <div className={wrapperCls}>
+      {periodSelector && (
+        <div className="mb-2 flex items-center justify-end gap-1">
+          {periodSelector}
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-[11px] text-slate-500">
           {isZh ? "图层" : "Layers"}:
