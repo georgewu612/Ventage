@@ -512,6 +512,9 @@ def _find_sr_levels(
     2. Multi-timeframe confluence — levels confirmed on weekly chart promoted to 'key'
     3. Wick-aware touch counting — counts price approaches within cluster_pct on OHLC
     4. Round-number magnetism — levels within 0.5% of a round number get +1 touch bonus
+    5. Role-reversal detection — swing highs that broke (now below current) become
+       support; swing lows that broke (now above current) become resistance.
+       This addresses 蔡森 mid-range zones where former pivots act as memory levels.
 
     Returns (support_levels, resistance_levels) sorted nearest-first.
     Each level: {price, touch_count, strength: 'weak'|'medium'|'strong'|'key'}
@@ -520,20 +523,39 @@ def _find_sr_levels(
     avg_vol = float(volume.mean()) if volume is not None and len(volume) > 0 else 1.0
 
     # ── 1. Find local extrema with volume weighting ────────────────────────────
-    # A pivot with volume ≥ 1.5× avg is treated as 2 votes
+    # All swing points (both highs and lows) are candidates for BOTH support and
+    # resistance — current price determines which role they play. A pivot with
+    # volume ≥ 1.5× avg is treated as 2 votes.
     resist_candidates: list[float] = []
+    support_candidates: list[float] = []
+
     for i in range(window, len(high) - window):
         slice_h = high.iloc[i - window: i + window + 1]
         if float(high.iloc[i]) == float(slice_h.max()):
-            votes = 2 if (volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5) else 1
-            resist_candidates.extend([float(high.iloc[i])] * votes)
+            price = float(high.iloc[i])
+            votes = 2 if (
+                volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5
+            ) else 1
+            # Role-reversal: a swing high BELOW current becomes support,
+            # a swing high ABOVE current is classic resistance.
+            if price > current:
+                resist_candidates.extend([price] * votes)
+            else:
+                support_candidates.extend([price] * votes)
 
-    support_candidates: list[float] = []
     for i in range(window, len(low) - window):
         slice_l = low.iloc[i - window: i + window + 1]
         if float(low.iloc[i]) == float(slice_l.min()):
-            votes = 2 if (volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5) else 1
-            support_candidates.extend([float(low.iloc[i])] * votes)
+            price = float(low.iloc[i])
+            votes = 2 if (
+                volume is not None and float(volume.iloc[i]) >= avg_vol * 1.5
+            ) else 1
+            # Role-reversal: a swing low ABOVE current becomes resistance,
+            # a swing low BELOW current is classic support.
+            if price > current:
+                resist_candidates.extend([price] * votes)
+            else:
+                support_candidates.extend([price] * votes)
 
     # ── 2. Weekly-level pivot prices (for confluence boost) ───────────────────
     weekly_resist_prices: set[float] = set()
@@ -642,8 +664,8 @@ def _find_sr_levels(
         dist = lv["price"] - current
         return (order[lv["strength"]], dist)
 
-    support_levels = sorted(all_support, key=sort_key_support)[:6]
-    resist_levels  = sorted(all_resist,  key=sort_key_resist)[:6]
+    support_levels = sorted(all_support, key=sort_key_support)[:10]
+    resist_levels  = sorted(all_resist,  key=sort_key_resist)[:10]
     return support_levels, resist_levels
 
 
