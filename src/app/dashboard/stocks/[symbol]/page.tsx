@@ -683,11 +683,26 @@ function StockWorkbenchInner() {
   // S/R levels from TechnicalLevelsCard — fed into CandlestickChart
   const [srSupport, setSrSupport] = useState<SRLevel[]>([]);
   const [srResist, setSrResist] = useState<SRLevel[]>([]);
+  const [fibLevels, setFibLevels] = useState<
+    Array<{ pct: string; price: number }>
+  >([]);
   const handleLevelsLoaded = useCallback((d: TechnicalLevelsData) => {
-    // Show nearest 3 support + 3 resistance levels regardless of distance.
-    // The chart draws them with axisLabelVisible=false to avoid Y-axis stretching.
-    setSrSupport(d.support_levels.slice(0, 3));
-    setSrResist(d.resist_levels.slice(0, 3));
+    // Show nearest 8 support + 8 resistance levels for richer density.
+    // Backend caps at 10 each side; frontend used to cut at 3 which hid
+    // role-reversal mid-range levels. axisLabelVisible=false in chart
+    // prevents distant levels from stretching the Y-axis.
+    setSrSupport(d.support_levels.slice(0, 8));
+    setSrResist(d.resist_levels.slice(0, 8));
+    // Fibonacci retracements — fill mid-range gaps when price has moved
+    // through a zone with no swing-pivot anchors (e.g. AMD $215→$410 run-up).
+    const fibs = Object.entries(d.fibonacci ?? {})
+      .map(([pct, price]) => ({ pct, price: Number(price) }))
+      // Skip 0% and 100% (those are the swing high/low themselves)
+      .filter(
+        ({ pct }) =>
+          pct !== "0.0" && pct !== "100.0" && pct !== "0" && pct !== "100",
+      );
+    setFibLevels(fibs);
   }, []);
 
   const runAiAnalysis = useCallback(async () => {
@@ -871,6 +886,7 @@ function StockWorkbenchInner() {
                   data={techData}
                   supportLevels={srSupport}
                   resistLevels={srResist}
+                  fibLevels={fibLevels}
                 />
               ) : (
                 <div className="flex h-52 items-center justify-center text-sm text-gray-500">

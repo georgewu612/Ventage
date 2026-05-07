@@ -18,6 +18,11 @@ export interface SRLevel {
   weekly_confluent?: boolean;
 }
 
+export interface FibLevel {
+  pct: string; // e.g. "23.6", "38.2", "50.0", "61.8", "78.6"
+  price: number;
+}
+
 interface Props {
   data: TechnicalData;
   height?: number;
@@ -26,6 +31,7 @@ interface Props {
   showSMA?: boolean;
   supportLevels?: SRLevel[];
   resistLevels?: SRLevel[];
+  fibLevels?: FibLevel[];
 }
 
 export function CandlestickChart({
@@ -36,6 +42,7 @@ export function CandlestickChart({
   showSMA = true,
   supportLevels = [],
   resistLevels = [],
+  fibLevels = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -230,6 +237,33 @@ export function CandlestickChart({
         title: level.weekly_confluent
           ? `R★ ${level.price}`
           : `R ${level.price}`,
+      });
+    });
+
+    // Fibonacci retracement levels — purple, dotted, fills mid-range gaps
+    // when price has moved through a zone with no swing-pivot anchors.
+    const fibPctToOpacity: Record<string, number> = {
+      "23.6": 0.4,
+      "38.2": 0.7,
+      "50.0": 0.85, // golden zone
+      "50": 0.85,
+      "61.8": 0.7,
+      "78.6": 0.4,
+    };
+    fibLevels.forEach((fib) => {
+      const op = fibPctToOpacity[fib.pct] ?? 0.5;
+      const isGolden =
+        fib.pct === "50.0" ||
+        fib.pct === "50" ||
+        fib.pct === "38.2" ||
+        fib.pct === "61.8";
+      candleSeries.createPriceLine({
+        price: fib.price,
+        color: `rgba(168, 85, 247, ${op})`, // purple
+        lineWidth: 1,
+        lineStyle: 3, // dotted
+        axisLabelVisible: false,
+        title: isGolden ? `Fib ${fib.pct}% ★` : `Fib ${fib.pct}%`,
       });
     });
 
