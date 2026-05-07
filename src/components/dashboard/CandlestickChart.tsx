@@ -8,6 +8,7 @@ import {
   createChart,
   type IChartApi,
 } from "lightweight-charts";
+import { Maximize2, Minimize2, X } from "lucide-react";
 
 import { useI18n } from "@/lib/i18n/provider";
 import type { TechnicalData } from "@/lib/hooks/useTechnicalAnalysis";
@@ -166,6 +167,23 @@ export function CandlestickChart({
   const [showBB, setShowBB] = useState(defaultShowBollinger);
   const [showSMALine, setShowSMALine] = useState(defaultShowSMA);
   const [showVolBars, setShowVolBars] = useState(defaultShowVolume);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Esc to exit fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    // Lock body scroll while fullscreen
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen]);
 
   const channelData = useMemo(
     () =>
@@ -191,9 +209,15 @@ export function CandlestickChart({
       chartRef.current = null;
     }
 
+    const effectiveHeight = isFullscreen
+      ? Math.max(
+          (typeof window !== "undefined" ? window.innerHeight : 800) - 180,
+          500,
+        )
+      : height;
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height,
+      height: effectiveHeight,
       layout: {
         background: { color: "transparent" },
         textColor: "#94a3b8",
@@ -489,6 +513,7 @@ export function CandlestickChart({
   }, [
     data,
     height,
+    isFullscreen,
     showVolBars,
     showBB,
     showSMALine,
@@ -503,8 +528,12 @@ export function CandlestickChart({
   ]);
 
   // ── Toggle row + chart container ──────────────────────────────────────────
+  const wrapperCls = isFullscreen
+    ? "fixed inset-0 z-50 flex flex-col bg-slate-900 p-6 backdrop-blur"
+    : "w-full";
+
   return (
-    <div className="w-full">
+    <div className={wrapperCls}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-[11px] text-slate-500">
           {isZh ? "图层" : "Layers"}:
@@ -551,8 +580,40 @@ export function CandlestickChart({
           onClick={() => setShowVolBars(!showVolBars)}
           color="slate"
         />
+        <button
+          type="button"
+          onClick={() => setIsFullscreen((v) => !v)}
+          className="ml-auto inline-flex items-center gap-1 rounded-full border border-slate-700 px-2.5 py-0.5 text-[11px] font-medium text-slate-400 transition hover:border-cyan-500/40 hover:text-cyan-400"
+          title={isFullscreen ? "退出全屏 (Esc)" : "全屏放大"}
+        >
+          {isFullscreen ? (
+            <>
+              <Minimize2 className="h-3 w-3" />
+              {isZh ? "退出" : "Exit"}
+            </>
+          ) : (
+            <>
+              <Maximize2 className="h-3 w-3" />
+              {isZh ? "放大" : "Maximize"}
+            </>
+          )}
+        </button>
+        {isFullscreen && (
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(false)}
+            className="rounded-full p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            aria-label="Close fullscreen"
+            title="Esc"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
-      <div ref={containerRef} className="w-full" />
+      <div
+        ref={containerRef}
+        className={isFullscreen ? "w-full flex-1" : "w-full"}
+      />
     </div>
   );
 }
