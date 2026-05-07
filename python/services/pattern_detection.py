@@ -94,6 +94,11 @@ class PatternMatch:
     # forming = not yet broken neckline; confirmed = broke and held;
     # broken = was active but neckline retest failed
 
+    # 蔡森「点多为主」原则下的多点贯穿线（书 P.122 等多处强调）
+    # 每条 line 由 2+ 个枢轴点拟合而成，touch_count 表示在容差内的贯穿点数。
+    # 例：三角形上轨/下轨、头肩斜颈线、旗形上下边等。
+    auxiliary_lines: list[dict] = field(default_factory=list)
+
     def to_dict(self) -> dict:
         d = asdict(self)
         # Convert timestamps to ISO strings for JSON
@@ -105,6 +110,11 @@ class PatternMatch:
             v = p.get("date")
             if isinstance(v, pd.Timestamp):
                 p["date"] = v.isoformat()
+        for line in d.get("auxiliary_lines", []):
+            for k in ("start_date", "end_date"):
+                v = line.get(k)
+                if isinstance(v, pd.Timestamp):
+                    line[k] = v.isoformat()
         return d
 
 
@@ -171,6 +181,99 @@ def time_symmetry_score(left_days: int, right_days: int) -> float:
     return float(round(100.0 * ratio, 1))
 
 
+def best_fit_trendline(
+    candidates: list[SwingPoint],
+    *,
+    tolerance_pct: float = 0.02,
+    min_touches: int = 2,
+) -> dict | None:
+    """蔡森「点多为主」trendline finder.
+
+    Tries every pair of candidates as a candidate line (slope+intercept in
+    price-vs-bar-index space), then counts how many OTHER candidates fall
+    within `tolerance_pct` of that line. The line with the most touches wins.
+
+    Returns:
+        {
+            "slope": dprice/dbar,
+            "intercept": price at idx=0,
+            "touch_count": int (≥ min_touches),
+            "touched_indices": [pivot indices in original `candidates` list],
+            "start_idx": min idx of touched points,
+            "end_idx": max idx of touched points,
+        }
+        Or None if no line achieves min_touches.
+    """
+    if len(candidates) < min_touches:
+        return None
+
+    best: dict | None = None
+    best_count = 0
+
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            p1, p2 = candidates[i], candidates[j]
+            if p2.idx == p1.idx:
+                continue
+            slope = (p2.price - p1.price) / (p2.idx - p1.idx)
+            intercept = p1.price - slope * p1.idx
+
+            touched = []
+            for k, p in enumerate(candidates):
+                expected = slope * p.idx + intercept
+                if expected <= 0:
+                    continue
+                rel_err = abs(p.price - expected) / max(expected, 1e-9)
+                if rel_err <= tolerance_pct:
+                    touched.append(k)
+
+            if len(touched) > best_count:
+                best_count = len(touched)
+                touched_idx = sorted(candidates[k].idx for k in touched)
+                best = {
+                    "slope": float(slope),
+                    "intercept": float(intercept),
+                    "touch_count": int(len(touched)),
+                    "touched_pivot_idxs": touched_idx,
+                    "start_idx": int(touched_idx[0]),
+                    "end_idx": int(touched_idx[-1]),
+                }
+
+    if best is None or best_count < min_touches:
+        return None
+    return best
+
+
+def serialize_trendline(
+    fit: dict,
+    name: str,
+    ohlcv: pd.DataFrame,
+    *,
+    extend_bars: int = 0,
+) -> dict:
+    """Convert a trendline fit-dict to the auxiliary_lines schema.
+
+    Optionally extends the line `extend_bars` bars beyond the last touched
+    pivot so it shows as a forward-projected support/resistance.
+    """
+    n = len(ohlcv)
+    start_idx = max(0, fit["start_idx"])
+    end_idx = min(n - 1, fit["end_idx"] + extend_bars)
+    slope = fit["slope"]
+    intercept = fit["intercept"]
+    return {
+        "name": name,
+        "start_idx": int(start_idx),
+        "end_idx": int(end_idx),
+        "start_date": ohlcv.index[start_idx],
+        "end_date": ohlcv.index[end_idx],
+        "start_price": float(slope * start_idx + intercept),
+        "end_price": float(slope * end_idx + intercept),
+        "touch_count": int(fit["touch_count"]),
+        "touched_pivot_idxs": fit["touched_pivot_idxs"],
+    }
+
+
 def volume_at_breakout(
     ohlcv: pd.DataFrame, break_idx: int, lookback: int = 5, mult: float = DEFAULT_BREAKOUT_VOL_MULT
 ) -> bool:
@@ -211,6 +314,7 @@ def _make_match(
     volume_conf: bool,
     status: str,
     stop_pct: float = DEFAULT_STOP_PCT,
+    auxiliary_lines: list[dict] | None = None,
 ) -> PatternMatch:
     """Helper: build PatternMatch with universal stop + measured_move_pct."""
     if direction == "long":
@@ -237,6 +341,7 @@ def _make_match(
         time_symmetry_score=float(round(time_sym_score, 1)),
         volume_confirmation=bool(volume_conf),
         status=status,  # type: ignore[arg-type]
+        auxiliary_lines=auxiliary_lines or [],
     )
 
 
@@ -903,6 +1008,22 @@ def _detect_hs_generic(
         SwingPoint(rs.idx, rs.date, rs.price, "right_shoulder"),
     ]
 
+    # 蔡森「点多为主」: try to find a sloped neckline through ≥3 points
+    # by searching candidate opposite-side pivots between ls and rs
+    neckline_candidates = [p for p in opp if ls.idx <= p.idx <= rs.idx]
+    aux: list[dict] = []
+    if len(neckline_candidates) >= 2:
+        nl_fit = best_fit_trendline(
+            neckline_candidates, tolerance_pct=0.025, min_touches=2
+        )
+        if nl_fit is not None:
+            n_total = len(ohlcv)
+            extend = max(0, (n_total - 1) - nl_fit["end_idx"])
+            aux.append(
+                serialize_trendline(nl_fit, "sloped_neckline", ohlcv,
+                                    extend_bars=extend)
+            )
+
     return _make_match(
         pattern_name="頭肩底" if bullish else "頭肩頂",
         pattern_name_en="head_shoulders_bottom" if bullish else "head_shoulders_top",
@@ -918,6 +1039,7 @@ def _detect_hs_generic(
         time_sym_score=time_sym,
         volume_conf=vol_conf,
         status=status,
+        auxiliary_lines=aux,
     )
 
 
@@ -1094,6 +1216,9 @@ def detect_rising_flag(ohlcv: pd.DataFrame) -> PatternMatch | None:
 def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | None:
     """Converging triangle: highs declining, lows rising (or same level),
     forming a wedge. Breakout direction determines bullish/bearish.
+
+    蔡森「点多为主」: upper/lower trendlines are best-fit through ALL swing
+    highs/lows in the window — not just the first and last.
     """
     if len(ohlcv) < MIN_BARS:
         return None
@@ -1103,41 +1228,68 @@ def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | No
     if len(highs) < 2 or len(lows) < 2:
         return None
 
-    # Require ≥2 swing highs declining + ≥2 swing lows rising in last 60 bars
     recent_window = 60
     n = len(ohlcv)
     cutoff = n - recent_window
+    last_idx = n - 1
 
     rh = [h for h in highs if h.idx >= cutoff]
     rl = [low for low in lows if low.idx >= cutoff]
     if len(rh) < 2 or len(rl) < 2:
         return None
 
-    # Highs declining
-    h_slope = (rh[-1].price - rh[0].price) / max(rh[-1].idx - rh[0].idx, 1)
-    # Lows rising
-    l_slope = (rl[-1].price - rl[0].price) / max(rl[-1].idx - rl[0].idx, 1)
+    # 「点多为主」: best-fit trendlines through multiple swing points
+    upper_fit = best_fit_trendline(rh, tolerance_pct=0.025, min_touches=2)
+    lower_fit = best_fit_trendline(rl, tolerance_pct=0.025, min_touches=2)
+    if upper_fit is None or lower_fit is None:
+        # Fall back to simple endpoint connection
+        upper_fit = {
+            "slope": (rh[-1].price - rh[0].price) / max(rh[-1].idx - rh[0].idx, 1),
+            "intercept": rh[0].price
+                - ((rh[-1].price - rh[0].price) / max(rh[-1].idx - rh[0].idx, 1))
+                * rh[0].idx,
+            "touch_count": 2,
+            "touched_pivot_idxs": [rh[0].idx, rh[-1].idx],
+            "start_idx": rh[0].idx,
+            "end_idx": rh[-1].idx,
+        }
+        lower_fit = {
+            "slope": (rl[-1].price - rl[0].price) / max(rl[-1].idx - rl[0].idx, 1),
+            "intercept": rl[0].price
+                - ((rl[-1].price - rl[0].price) / max(rl[-1].idx - rl[0].idx, 1))
+                * rl[0].idx,
+            "touch_count": 2,
+            "touched_pivot_idxs": [rl[0].idx, rl[-1].idx],
+            "start_idx": rl[0].idx,
+            "end_idx": rl[-1].idx,
+        }
 
+    h_slope = upper_fit["slope"]
+    l_slope = lower_fit["slope"]
+    h_intercept = upper_fit["intercept"]
+    l_intercept = lower_fit["intercept"]
+
+    # Convergence requirement: highs declining, lows rising
     if not (h_slope < 0 and l_slope > 0):
         return None
 
-    # Triangle longest leg = first high − first low (book formula)
-    longest_leg = abs(rh[0].price - rl[0].price)
-    if longest_leg / rh[0].price < 0.10:
+    # Triangle longest leg using fitted lines (not raw endpoints)
+    early_x = max(upper_fit["start_idx"], lower_fit["start_idx"])
+    upper_at_early = h_slope * early_x + h_intercept
+    lower_at_early = l_slope * early_x + l_intercept
+    longest_leg = abs(upper_at_early - lower_at_early)
+    if longest_leg / max(upper_at_early, 1e-9) < 0.08:
         return None  # too small
 
-    # Compute current upper / lower edges by extrapolating
-    last_idx = n - 1
-    upper_edge = rh[-1].price + h_slope * (last_idx - rh[-1].idx)
-    lower_edge = rl[-1].price + l_slope * (last_idx - rl[-1].idx)
+    # Current edges (extrapolated to latest bar)
+    upper_edge = h_slope * last_idx + h_intercept
+    lower_edge = l_slope * last_idx + l_intercept
 
-    # Bias: bullish = bottom triangle (we look for upside breakout);
-    # bearish = top triangle (downside breakout)
     closes = ohlcv["Close"].astype(float).values
     break_idx = None
     if bullish:
         for i in range(rl[-1].idx + 1, n):
-            extrapolated_upper = rh[-1].price + h_slope * (i - rh[-1].idx)
+            extrapolated_upper = h_slope * i + h_intercept
             if closes[i] > extrapolated_upper:
                 break_idx = i
                 break
@@ -1148,7 +1300,7 @@ def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | No
         direction = "long"
     else:
         for i in range(rh[-1].idx + 1, n):
-            extrapolated_lower = rl[-1].price + l_slope * (i - rl[-1].idx)
+            extrapolated_lower = l_slope * i + l_intercept
             if closes[i] < extrapolated_lower:
                 break_idx = i
                 break
@@ -1159,9 +1311,11 @@ def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | No
         direction = "short"
 
     score = 0.0
-    score += 30.0 * min((len(rh) + len(rl)) / 6.0, 1.0)  # ≥4 pivots → 30
+    # Bonus for line multi-point touches (蔡森「点多为主」principle)
+    total_touches = upper_fit["touch_count"] + lower_fit["touch_count"]
+    score += 30.0 * min(total_touches / 6.0, 1.0)  # ≥6 touches → 30
     convergence = abs(h_slope) + abs(l_slope)
-    score += 25.0 * min(convergence * 100.0, 1.0)        # decent angle
+    score += 25.0 * min(convergence * 100.0, 1.0)
     span_days = (rh[-1].date - rh[0].date).days
     score += 20.0 * min(span_days / 30.0, 1.0)
     vol = ohlcv["Volume"].astype(float).values
@@ -1169,19 +1323,41 @@ def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | No
     late_vol = vol[max(n - 20, 0) :].mean()
     if early_vol > 0 and late_vol < early_vol:
         score += 15.0
-    # Position of breakout in triangle (1/2-3/4 zone)
     score += 10.0
     pattern_quality = min(score, 100.0)
 
-    time_sym = 60.0  # triangles aren't strictly symmetric
+    time_sym = 60.0
     vol_conf = volume_at_breakout(ohlcv, break_idx) if break_idx else False
     status = _classify_status(ohlcv, entry_price, direction, break_idx)
 
-    pp = [
-        SwingPoint(rh[0].idx, rh[0].date, rh[0].price, "first_high"),
-        SwingPoint(rl[0].idx, rl[0].date, rl[0].price, "first_low"),
-        SwingPoint(rh[-1].idx, rh[-1].date, rh[-1].price, "last_high"),
-        SwingPoint(rl[-1].idx, rl[-1].date, rl[-1].price, "last_low"),
+    # Mark ALL touched pivots in pivot_points (so user sees the dots on the line)
+    touched_high_idxs = set(upper_fit["touched_pivot_idxs"])
+    touched_low_idxs = set(lower_fit["touched_pivot_idxs"])
+    pp: list[SwingPoint] = []
+    for h in rh:
+        if h.idx in touched_high_idxs:
+            role = "first_high" if h.idx == upper_fit["start_idx"] else (
+                "last_high" if h.idx == upper_fit["end_idx"] else "trendline_high"
+            )
+            pp.append(SwingPoint(h.idx, h.date, h.price, role))
+    for low in rl:
+        if low.idx in touched_low_idxs:
+            role = "first_low" if low.idx == lower_fit["start_idx"] else (
+                "last_low" if low.idx == lower_fit["end_idx"] else "trendline_low"
+            )
+            pp.append(SwingPoint(low.idx, low.date, low.price, role))
+    pp.sort(key=lambda p: p.idx)
+
+    # Build auxiliary lines with extension to current bar
+    aux = [
+        serialize_trendline(
+            upper_fit, "upper_trendline", ohlcv,
+            extend_bars=last_idx - upper_fit["end_idx"],
+        ),
+        serialize_trendline(
+            lower_fit, "lower_trendline", ohlcv,
+            extend_bars=last_idx - lower_fit["end_idx"],
+        ),
     ]
 
     return _make_match(
@@ -1199,6 +1375,7 @@ def _detect_triangle(ohlcv: pd.DataFrame, *, bullish: bool) -> PatternMatch | No
         time_sym_score=time_sym,
         volume_conf=vol_conf,
         status=status,
+        auxiliary_lines=aux,
     )
 
 

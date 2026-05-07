@@ -13,6 +13,18 @@ export interface PatternPivot {
   idx: number;
 }
 
+export interface AuxiliaryLine {
+  name: string;
+  start_idx: number;
+  end_idx: number;
+  start_date: string;
+  end_date: string;
+  start_price: number;
+  end_price: number;
+  touch_count: number;
+  touched_pivot_idxs: number[];
+}
+
 export interface PatternMatch {
   pattern_name: string;
   pattern_name_en: string;
@@ -32,6 +44,7 @@ export interface PatternMatch {
   time_symmetry_score: number;
   volume_confirmation: boolean;
   status: "forming" | "confirmed" | "broken";
+  auxiliary_lines?: AuxiliaryLine[];
 }
 
 export interface PatternResponse {

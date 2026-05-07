@@ -106,6 +106,8 @@ const ROLE_LABELS: Record<string, { zh: string; en: string }> = {
   first_low: { zh: "首低点", en: "First Low" },
   last_high: { zh: "末高点", en: "Last High" },
   last_low: { zh: "末低点", en: "Last Low" },
+  trendline_high: { zh: "贯穿高点", en: "Trendline High" },
+  trendline_low: { zh: "贯穿低点", en: "Trendline Low" },
 };
 
 function roleLabel(role: string, isZh: boolean): string {
@@ -136,9 +138,32 @@ function buildPatternShapeLines(
   const lines: ShapeLine[] = [];
 
   const SHAPE_COLOR = "rgba(34, 211, 238, 0.95)"; // cyan
-  const SUPPORT_COLOR = "rgba(16, 185, 129, 0.7)"; // emerald
-  const RESIST_COLOR = "rgba(239, 68, 68, 0.7)"; // red
+  const SUPPORT_COLOR = "rgba(16, 185, 129, 0.85)"; // emerald
+  const RESIST_COLOR = "rgba(239, 68, 68, 0.85)"; // red
   const POLE_COLOR = "rgba(167, 139, 250, 0.95)"; // violet
+  const NECKLINE_COLOR = "rgba(103, 232, 249, 0.95)";
+
+  // 蔡森「点多为主」：prefer multi-point auxiliary_lines from backend
+  const aux = pattern.auxiliary_lines ?? [];
+  const auxByName = (name: string) => aux.find((a) => a.name === name);
+
+  const auxToShape = (
+    a: NonNullable<typeof aux>[number],
+    color: string,
+    width: 1 | 2 | 3 | 4,
+    style: 0 | 1 | 2 | 3 | 4,
+    titleZh: string,
+    titleEn: string,
+  ): ShapeLine => ({
+    points: [
+      { time: isoToTime(a.start_date), value: a.start_price },
+      { time: isoToTime(a.end_date), value: a.end_price },
+    ],
+    color,
+    width,
+    style,
+    title: `${isZh ? titleZh : titleEn}（${isZh ? "贯穿" : "touches"} ${a.touch_count}）`,
+  });
 
   switch (pattern.pattern_name_en) {
     case "w_bottom":
@@ -183,7 +208,7 @@ function buildPatternShapeLines(
     case "head_shoulders_bottom":
     case "head_shoulders_top":
     case "failed_breakout_hs_top": {
-      // Pattern: ls → nl_l → head → nl_r → rs (zigzag through 5 points)
+      // Pattern outline: ls → nl_l → head → nl_r → rs (5-point zigzag)
       const ls = findPivot("left_shoulder");
       const nll = findPivot("neckline_left");
       const head = findPivot("head");
@@ -202,15 +227,23 @@ function buildPatternShapeLines(
           width: 2,
           title: isZh ? "头肩形态" : "H&S Shape",
         });
-        // Sloped neckline (extends across nl_l → nl_r)
+      }
+      // 蔡森「点多为主」: prefer best-fit sloped neckline from backend
+      const slopedNl = auxByName("sloped_neckline");
+      if (slopedNl) {
+        lines.push(
+          auxToShape(slopedNl, NECKLINE_COLOR, 2, 0, "颈线", "Neckline"),
+        );
+      } else if (nll && nlr) {
+        // Fallback: simple 2-point neckline
         lines.push({
           points: [
             { time: isoToTime(nll.date), value: nll.price },
             { time: isoToTime(nlr.date), value: nlr.price },
           ],
-          color: "rgba(103, 232, 249, 0.95)",
+          color: NECKLINE_COLOR,
           width: 2,
-          style: 0, // solid
+          style: 0,
           title: isZh ? "颈线" : "Neckline",
         });
       }
@@ -281,32 +314,60 @@ function buildPatternShapeLines(
     }
     case "converging_triangle_bottom":
     case "converging_triangle_top": {
-      // Upper trendline (declining) + lower trendline (rising)
-      const fh = findPivot("first_high");
-      const lh = findPivot("last_high");
-      const fl = findPivot("first_low");
-      const ll = findPivot("last_low");
-      if (fh && lh) {
-        lines.push({
-          points: [
-            { time: isoToTime(fh.date), value: fh.price },
-            { time: isoToTime(lh.date), value: lh.price },
-          ],
-          color: RESIST_COLOR,
-          width: 2,
-          title: isZh ? "上轨（阻力）" : "Upper Trendline",
-        });
+      // 蔡森「点多为主」: use multi-point best-fit lines from backend
+      const upper = auxByName("upper_trendline");
+      const lower = auxByName("lower_trendline");
+      if (upper) {
+        lines.push(
+          auxToShape(
+            upper,
+            RESIST_COLOR,
+            2,
+            0,
+            "上轨（阻力）",
+            "Upper Trendline",
+          ),
+        );
+      } else {
+        const fh = findPivot("first_high");
+        const lh = findPivot("last_high");
+        if (fh && lh) {
+          lines.push({
+            points: [
+              { time: isoToTime(fh.date), value: fh.price },
+              { time: isoToTime(lh.date), value: lh.price },
+            ],
+            color: RESIST_COLOR,
+            width: 2,
+            title: isZh ? "上轨（阻力）" : "Upper Trendline",
+          });
+        }
       }
-      if (fl && ll) {
-        lines.push({
-          points: [
-            { time: isoToTime(fl.date), value: fl.price },
-            { time: isoToTime(ll.date), value: ll.price },
-          ],
-          color: SUPPORT_COLOR,
-          width: 2,
-          title: isZh ? "下轨（支撑）" : "Lower Trendline",
-        });
+      if (lower) {
+        lines.push(
+          auxToShape(
+            lower,
+            SUPPORT_COLOR,
+            2,
+            0,
+            "下轨（支撑）",
+            "Lower Trendline",
+          ),
+        );
+      } else {
+        const fl = findPivot("first_low");
+        const ll = findPivot("last_low");
+        if (fl && ll) {
+          lines.push({
+            points: [
+              { time: isoToTime(fl.date), value: fl.price },
+              { time: isoToTime(ll.date), value: ll.price },
+            ],
+            color: SUPPORT_COLOR,
+            width: 2,
+            title: isZh ? "下轨（支撑）" : "Lower Trendline",
+          });
+        }
       }
       break;
     }
