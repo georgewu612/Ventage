@@ -117,13 +117,17 @@ function MetricRow({
   hint?: string;
 }) {
   return (
-    <div className="flex items-baseline justify-between text-xs">
-      <span className="text-gray-500">{label}</span>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-mono font-semibold text-white tabular-nums">
+    <div className="flex items-baseline justify-between gap-2 text-xs">
+      <span className="whitespace-nowrap text-gray-500">{label}</span>
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        <span className="font-mono font-semibold whitespace-nowrap text-white tabular-nums">
           {value}
         </span>
-        {hint && <span className="text-[10px] text-gray-600">{hint}</span>}
+        {hint && (
+          <span className="text-[10px] whitespace-nowrap text-gray-600">
+            {hint}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -224,7 +228,9 @@ export function SymbolRegimeCard({ symbol }: { symbol: string }) {
           </h3>
           <span className="text-xs text-gray-500">· ${data.symbol}</span>
         </div>
-        <span className={`text-xs font-bold ${tone.text}`}>{scoreLabel}</span>
+        <span className={`text-xs font-bold whitespace-nowrap ${tone.text}`}>
+          {scoreLabel}
+        </span>
       </div>
 
       {/* Big regime label + score */}
@@ -233,10 +239,12 @@ export function SymbolRegimeCard({ symbol }: { symbol: string }) {
           <div className="flex items-center gap-2.5">
             <Icon className={`h-6 w-6 ${tone.text}`} />
             <div>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs whitespace-nowrap text-gray-500">
                 {isZh ? "当前状态" : "Current State"}
               </p>
-              <p className={`text-base font-bold ${tone.text}`}>
+              <p
+                className={`text-base font-bold whitespace-nowrap ${tone.text}`}
+              >
                 {isZh ? meta.zh : meta.en}
               </p>
             </div>

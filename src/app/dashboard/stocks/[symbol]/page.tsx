@@ -923,7 +923,7 @@ function StockWorkbenchInner() {
                     : "Six-dim engine: Regime / Volume / Chip"}
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-3 p-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 p-2 md:grid-cols-2 2xl:grid-cols-3">
                 <SymbolRegimeCard symbol={symbol} />
                 <VolumeAnalysisCard symbol={symbol} />
                 <ChipStructureCard symbol={symbol} />

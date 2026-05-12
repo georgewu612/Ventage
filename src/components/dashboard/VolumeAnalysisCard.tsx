@@ -218,12 +218,12 @@ export function VolumeAnalysisCard({
         </div>
         <div className="flex items-center gap-2">
           {data.volume_confirmed ? (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap text-emerald-300">
               <CheckCircle2 className="h-3 w-3" />
               {isZh ? "量能确认" : "Confirmed"}
             </span>
           ) : (
-            <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-300">
+            <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold whitespace-nowrap text-red-300">
               <XCircle className="h-3 w-3" />
               {isZh ? "未确认" : "Unconfirmed"}
             </span>
@@ -240,7 +240,7 @@ export function VolumeAnalysisCard({
           <p className={`text-3xl font-bold tabular-nums ${scoreColor}`}>
             {score.toFixed(0)}
           </p>
-          <p className="text-[10px] text-gray-500">/100</p>
+          <p className="text-[10px] whitespace-nowrap text-gray-500">/100</p>
         </div>
         <div className="space-y-1.5">
           <div>
@@ -248,7 +248,7 @@ export function VolumeAnalysisCard({
               {isZh ? "量能状态" : "State"}
             </p>
             <span
-              className={`inline-flex rounded-md px-2 py-0.5 text-xs font-bold ${stateMeta.cls}`}
+              className={`inline-flex rounded-md px-2 py-0.5 text-xs font-bold whitespace-nowrap ${stateMeta.cls}`}
             >
               {isZh ? stateMeta.zh : stateMeta.en}
             </span>
@@ -258,7 +258,7 @@ export function VolumeAnalysisCard({
               {isZh ? "量价关系" : "Price-Vol"}
             </p>
             <span
-              className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${
+              className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${
                 rel.tone === "emerald"
                   ? "bg-emerald-500/15 text-emerald-300"
                   : rel.tone === "red"
@@ -277,7 +277,7 @@ export function VolumeAnalysisCard({
       {/* Relative volume + rhythm */}
       <div className="mb-4 grid grid-cols-3 gap-2 text-xs">
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "相对 5 日量" : "vs 5d avg"}
           </p>
           <p className="font-mono text-base font-bold text-white tabular-nums">
@@ -285,7 +285,7 @@ export function VolumeAnalysisCard({
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "相对 20 日量" : "vs 20d avg"}
           </p>
           <p className="font-mono text-base font-bold text-white tabular-nums">
@@ -293,11 +293,11 @@ export function VolumeAnalysisCard({
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "节奏" : "Rhythm"}
           </p>
           <p
-            className={`text-base font-bold ${
+            className={`text-base font-bold whitespace-nowrap ${
               data.stage_rhythm_health === "healthy"
                 ? "text-emerald-300"
                 : data.stage_rhythm_health === "unhealthy"

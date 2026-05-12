@@ -265,7 +265,7 @@ export function ChipStructureCard({ symbol }: Props) {
           <span className="text-xs text-gray-500">· ${data.symbol}</span>
         </div>
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap ${
             posMeta.tone === "emerald"
               ? "bg-emerald-500/20 text-emerald-300"
               : posMeta.tone === "cyan"
@@ -284,9 +284,9 @@ export function ChipStructureCard({ symbol }: Props) {
       {/* Big score + visualization */}
       <div className="mb-4 flex items-stretch gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
         <CostZoneViz data={data} />
-        <div className="flex flex-1 flex-col justify-between">
+        <div className="flex min-w-0 flex-1 flex-col justify-between">
           <div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs whitespace-nowrap text-gray-500">
               {isZh ? "筹码评分" : "Chip Score"}
             </p>
             <p className={`text-3xl font-bold tabular-nums ${scoreColor}`}>
@@ -294,28 +294,30 @@ export function ChipStructureCard({ symbol }: Props) {
               <span className="ml-1 text-xs text-gray-500">/100</span>
             </p>
           </div>
-          <div className="space-y-0.5 text-[11px]">
-            <div className="flex justify-between">
-              <span className="text-gray-500">{isZh ? "当前价" : "Last"}</span>
-              <span className="font-mono font-semibold text-cyan-300 tabular-nums">
+          <div className="space-y-1 text-[11px]">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="whitespace-nowrap text-gray-500">
+                {isZh ? "当前价" : "Last"}
+              </span>
+              <span className="truncate font-mono font-semibold text-cyan-300 tabular-nums">
                 ${data.last_close.toFixed(2)}
               </span>
             </div>
             {data.cost_zone_low && data.cost_zone_high && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">
+              <div className="flex flex-col">
+                <span className="whitespace-nowrap text-gray-500">
                   {isZh ? "主成本区" : "Cost Zone"}
                 </span>
-                <span className="font-mono text-amber-300 tabular-nums">
-                  ${data.cost_zone_low.toFixed(2)}-
+                <span className="truncate font-mono text-amber-300 tabular-nums">
+                  ${data.cost_zone_low.toFixed(2)}–$
                   {data.cost_zone_high.toFixed(2)}
                 </span>
               </div>
             )}
             {data.poc_price && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">POC</span>
-                <span className="font-mono text-amber-300 tabular-nums">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="whitespace-nowrap text-gray-500">POC</span>
+                <span className="truncate font-mono text-amber-300 tabular-nums">
                   ${data.poc_price.toFixed(2)}
                 </span>
               </div>
@@ -327,7 +329,7 @@ export function ChipStructureCard({ symbol }: Props) {
       {/* 4 key metric cards */}
       <div className="mb-4 grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "上方供给" : "Overhead"}
           </p>
           <p
@@ -345,7 +347,7 @@ export function ChipStructureCard({ symbol }: Props) {
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "下方支撑" : "Support"}
           </p>
           <p
@@ -363,7 +365,7 @@ export function ChipStructureCard({ symbol }: Props) {
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "成本迁移" : "Migration"}
           </p>
           <div className="flex items-center gap-1">
@@ -392,7 +394,7 @@ export function ChipStructureCard({ symbol }: Props) {
           </div>
         </div>
         <div className="rounded-lg border border-white/10 bg-white/5 p-2.5">
-          <p className="text-[10px] text-gray-500">
+          <p className="text-[10px] whitespace-nowrap text-gray-500">
             {isZh ? "突破真空区" : "Air Pocket"}
           </p>
           <p
