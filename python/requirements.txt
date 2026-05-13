@@ -16,7 +16,7 @@ numpy>=1.24.0
 textblob>=0.17.0
 aiohttp>=3.8.0
 structlog>=23.1.0
-yfinance>=0.2.30
+yfinance>=1.3.0
 openai>=1.30.0
 # tradingagents requires Python 3.12+ (Railway already uses 3.12 — see runtime.txt + Dockerfile)
 tradingagents>=0.5.1
