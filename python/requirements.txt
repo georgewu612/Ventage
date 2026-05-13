@@ -18,8 +18,8 @@ aiohttp>=3.8.0
 structlog>=23.1.0
 yfinance>=0.2.30
 openai>=1.30.0
-# tradingagents requires Python 3.12+; install separately if available
-# tradingagents>=0.0.2
+# tradingagents requires Python 3.12+ (Railway already uses 3.12 — see runtime.txt + Dockerfile)
+tradingagents>=0.5.1
 
 # Quant Lab
 vectorbt>=0.26.0
