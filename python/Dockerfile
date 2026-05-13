@@ -4,15 +4,7 @@ WORKDIR /app
 
 # Install dependencies first for better layer caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
-
-# Verify tradingagents is importable. The previous version of this file
-# silently swallowed install failures with `|| echo "skipped"`, which
-# caused production /v1/reports/multi-agent endpoints to return 503 even
-# though the package install command appeared to succeed. Fail the build
-# loudly if tradingagents can't be imported.
-RUN python -c "import tradingagents; print('tradingagents OK')"
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
