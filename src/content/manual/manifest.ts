@@ -1,21 +1,14 @@
 /**
- * Manual content manifest.
+ * Manual content manifest — public API for the help center.
  *
- * Explicit imports of each .md file. Webpack ?raw / asset/source rule
- * (configured in next.config.ts) loads them as strings at build time, so
- * the help center has zero runtime filesystem dependencies — works on
- * Vercel serverless without any tracing config.
+ * Loads from `_generated.ts` (auto-generated from `*.md` files by
+ * `scripts/generate-manual.mjs`, which runs in npm `prebuild` + `predev`
+ * hooks).
  *
- * To add a new manual page:
- *   1. Create src/content/manual/{slug}.md
- *   2. Import + register here (just two lines)
- *   3. The help center auto-discovers it
+ * To add a new manual page: just drop a new `.md` file in this directory.
+ * The generator picks it up on next dev/build — zero code edits needed.
  */
-
-// @ts-expect-error  – .md imported as string via webpack asset/source rule
-import overview from "./00-overview.md";
-// @ts-expect-error  – same
-import l201Dashboard from "./L2-01-dashboard.md";
+import { MANUAL_FILES } from "./_generated";
 
 export interface ManualEntry {
   slug: string;
@@ -40,10 +33,9 @@ function parseEntry(slug: string, body: string): ManualEntry {
 }
 
 /** All manual entries, ordered by slug. */
-export const MANUAL_ENTRIES: ManualEntry[] = [
-  parseEntry("00-overview", overview as string),
-  parseEntry("L2-01-dashboard", l201Dashboard as string),
-].sort((a, b) => a.slug.localeCompare(b.slug));
+export const MANUAL_ENTRIES: ManualEntry[] = Object.entries(MANUAL_FILES)
+  .map(([slug, body]) => parseEntry(slug, body))
+  .sort((a, b) => a.slug.localeCompare(b.slug));
 
 /** Look up a single entry by slug (for /dashboard/help/[slug] route). */
 export function getManualBySlug(slug: string): ManualEntry | null {

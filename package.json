@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/generate-manual.mjs",
+    "prebuild": "node scripts/generate-manual.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate:manual": "node scripts/generate-manual.mjs"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.3.0",
