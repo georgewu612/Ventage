@@ -1,47 +1,33 @@
 /**
  * Help Center — single-page renderer.
  *
- * Reads docs/manual/{slug}.md at request time and renders via react-markdown.
+ * Pure server component. Reads from the static manual manifest (build-
+ * time bundled via webpack asset/source rule). Zero filesystem deps at
+ * runtime — works on Vercel without any tracing config.
  */
-import fs from "fs";
-import path from "path";
-
 import { ArrowLeft, BookOpen } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-const MANUAL_DIR = path.join(process.cwd(), "src", "content", "manual");
+import { MANUAL_ENTRIES, getManualBySlug } from "@/content/manual/manifest";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-function loadMarkdown(slug: string): string | null {
-  // Defensive: prevent path traversal
-  if (!/^[A-Za-z0-9_-]+$/.test(slug)) return null;
-  const file = path.join(MANUAL_DIR, `${slug}.md`);
-  if (!fs.existsSync(file)) return null;
-  return fs.readFileSync(file, "utf-8");
-}
-
-export async function generateStaticParams() {
-  if (!fs.existsSync(MANUAL_DIR)) return [];
-  return fs
-    .readdirSync(MANUAL_DIR)
-    .filter((f) => f.endsWith(".md") && f !== "README.md")
-    .map((f) => ({ slug: f.replace(/\.md$/, "") }));
+export function generateStaticParams() {
+  return MANUAL_ENTRIES.map((e) => ({ slug: e.slug }));
 }
 
 export default async function HelpPage({ params }: PageProps) {
   const { slug } = await params;
-  const content = loadMarkdown(slug);
-  if (content == null) notFound();
+  const entry = getManualBySlug(slug);
+  if (!entry) notFound();
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Top breadcrumb */}
       <div className="mb-6 flex items-center gap-3 text-sm">
         <Link
           href="/dashboard/help"
@@ -55,7 +41,6 @@ export default async function HelpPage({ params }: PageProps) {
         <code className="text-xs text-slate-500">{slug}</code>
       </div>
 
-      {/* Markdown content */}
       <article className="prose-help">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -153,7 +138,7 @@ export default async function HelpPage({ params }: PageProps) {
             hr: () => <hr className="my-8 border-slate-800" />,
           }}
         >
-          {content}
+          {entry.body}
         </ReactMarkdown>
       </article>
 

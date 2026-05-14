@@ -1,59 +1,15 @@
 /**
  * Help Center — index page.
  *
- * Server component that reads docs/manual/*.md at request time, parses
- * front-matter, and renders a search-friendly list. Single source of
- * truth: docs/manual/ (no file duplication).
+ * Pure server component. Reads from the static manual manifest
+ * (build-time bundled via webpack asset/source rule). Zero filesystem
+ * dependencies at runtime — works identically locally and on Vercel.
  */
-import fs from "fs";
-import path from "path";
-
-import matter from "gray-matter";
 import { BookOpen, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 import { HelpSearch } from "@/components/help/HelpSearch";
-
-const MANUAL_DIR = path.join(process.cwd(), "src", "content", "manual");
-
-interface ManualEntry {
-  slug: string;
-  title: string;
-  excerpt: string;
-  body: string;
-}
-
-function loadManualEntries(): ManualEntry[] {
-  if (!fs.existsSync(MANUAL_DIR)) return [];
-  const files = fs
-    .readdirSync(MANUAL_DIR)
-    .filter((f) => f.endsWith(".md") && f !== "README.md");
-
-  return files
-    .map((f) => {
-      const raw = fs.readFileSync(path.join(MANUAL_DIR, f), "utf-8");
-      const { content, data } = matter(raw);
-      // Extract first H1 as title, first non-heading paragraph as excerpt
-      const titleMatch = content.match(/^#\s+(.+)$/m);
-      const title =
-        (data?.title as string | undefined) ??
-        titleMatch?.[1]?.trim() ??
-        f.replace(/\.md$/, "");
-      const excerptMatch = content
-        .replace(/^#.+$/gm, "")
-        .replace(/^>.*$/gm, "")
-        .split(/\n{2,}/)
-        .find((p) => p.trim().length > 30 && !p.startsWith("---"));
-      const excerpt = (excerptMatch ?? "").replace(/\s+/g, " ").slice(0, 160);
-      return {
-        slug: f.replace(/\.md$/, ""),
-        title,
-        excerpt,
-        body: content,
-      };
-    })
-    .sort((a, b) => a.slug.localeCompare(b.slug));
-}
+import { MANUAL_ENTRIES, type ManualEntry } from "@/content/manual/manifest";
 
 function groupBySection(entries: ManualEntry[]): Record<string, ManualEntry[]> {
   const groups: Record<string, ManualEntry[]> = {
@@ -76,7 +32,7 @@ function groupBySection(entries: ManualEntry[]): Record<string, ManualEntry[]> {
 }
 
 export default function HelpIndexPage() {
-  const entries = loadManualEntries();
+  const entries = MANUAL_ENTRIES;
   const groups = groupBySection(entries);
 
   return (
@@ -90,7 +46,6 @@ export default function HelpIndexPage() {
         Ventage 全站使用教材。按模块组织 · 白话讲解 · 可搜索。
       </p>
 
-      {/* Client-side search */}
       <HelpSearch entries={entries} />
 
       <div className="mt-8 space-y-8">
@@ -136,8 +91,11 @@ export default function HelpIndexPage() {
           <code>docs/audit/PAGE_AUDIT.md</code>
         </p>
         <p className="mt-1">
-          新教材会自动在此显示。文件命名约定：
-          <code>{"{L层}-{编号}-{slug}.md"}</code>。
+          新教材：写好 .md 文件后，在
+          <code>src/content/manual/manifest.ts</code> 注册即可。
+        </p>
+        <p className="mt-1">
+          当前已收录 <strong>{entries.length}</strong> 篇 / 共 25 个页面
         </p>
       </div>
     </div>
