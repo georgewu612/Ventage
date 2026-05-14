@@ -91,8 +91,8 @@ export default function HelpIndexPage() {
           <code>docs/audit/PAGE_AUDIT.md</code>
         </p>
         <p className="mt-1">
-          新教材：写好 .md 文件后，在
-          <code>src/content/manual/manifest.ts</code> 注册即可。
+          新教材：写好 .md 文件并提交，自动出现在此处（构建时由
+          <code>scripts/generate-manual.mjs</code> 扫描收录）。
         </p>
         <p className="mt-1">
           当前已收录 <strong>{entries.length}</strong> 篇 / 共 25 个页面
