@@ -4,7 +4,6 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/generate-manual.mjs",
-    "prebuild": "node scripts/generate-manual.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
