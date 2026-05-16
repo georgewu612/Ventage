@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { BookOpen, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n/provider";
@@ -55,6 +55,13 @@ export function HelpIndex({ entries, totalPages }: Props) {
 
   return (
     <>
+      <div className="mb-8 flex items-center gap-3">
+        <BookOpen className="h-7 w-7 text-cyan-400" />
+        <h1 className="text-3xl font-bold text-white">
+          {isZh ? "帮助中心" : "Help"}
+        </h1>
+      </div>
+
       <p className="mb-6 text-slate-400">
         {isZh
           ? "Ventage 全站使用教材。按模块组织 · 白话讲解 · 可搜索。"
