@@ -1,23 +1,32 @@
 /**
  * Manual content manifest — AUTO-GENERATED, do not edit by hand.
  *
- * Source files: src/content/manual/*.md
- * Regenerate: npm run generate:manual
+ * Source files: src/content/manual/{slug}.{zh|en}.md
+ * Regenerate:   npm run generate:manual
  *
- * Why inlined here (vs separate _generated.ts or webpack loaders):
- * direct inline export is the most bundler-agnostic approach; works on
- * any Next.js bundler (Turbopack / webpack / future) without config.
+ * Locale convention: {slug}.zh.md is required, {slug}.en.md is optional.
+ * Pages without an .en.md fall back to .zh.md with a UI notice.
  */
 
 export interface ManualEntry {
   slug: string;
-  title: string;
-  excerpt: string;
-  body: string;
+  titleZh: string;
+  titleEn: string;
+  excerptZh: string;
+  excerptEn: string;
+  bodyZh: string;
+  /** Null when no .en.md exists; UI must fall back to bodyZh + show notice. */
+  bodyEn: string | null;
 }
 
-const MANUAL_FILES: Record<string, string> = {
-  "00-overview": `# Ventage 是什么 · 解决什么问题
+interface RawEntry {
+  zh: string;
+  en: string | null;
+}
+
+const MANUAL_FILES: Record<string, RawEntry> = {
+  "00-overview": {
+    zh: `# Ventage 是什么 · 解决什么问题
 
 > 5 分钟读完，理解整个平台的定位和模块组合。
 
@@ -138,7 +147,133 @@ Ventage 的所有功能遵循 4 条铁律：
 
 → 接着读 [\`L2-01-dashboard.md\`](L2-01-dashboard.md) 了解登录后的第一页
 `,
-  "L2-01-dashboard": `# L2-01 · My Desk 首页 \`/dashboard\`
+    en: `# What Is Ventage — and What Problem Does It Solve?
+
+> 5-minute read. Get the platform's positioning and module overview.
+
+---
+
+## Positioning
+
+**Ventage = an institutional-grade AI quantitative research terminal for individuals and small teams.**
+
+It compresses the workflows that hedge funds spend millions building (multi-source intelligence fusion + multi-agent research + factor research + pattern recognition + backtesting) into a single-user product.
+
+---
+
+## Pain Points We Solve
+
+| Retail / small-team pain                                           | Ventage's answer                                                                |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Too many information sources (options, insiders, dark pool, news…) | 6-dimension data fusion → single composite score + A/B/C grade                  |
+| Saw the signal but don't know where to enter                       | Cai Sen's 12 chart patterns + measured-move targets give precise price levels   |
+| Backtest looks great but real money loses                          | Point-In-Time (PIT) backtest system, zero look-ahead bias                       |
+| Don't know the current market regime                               | Regime engine auto-classifies 6 states (trending / ranging / reversal / event…) |
+| Don't know how to build a portfolio                                | AI Portfolio Builder one-click generation + AI multi-role analysis              |
+| Forget to watch existing positions                                 | Real-time alerts + trigger-condition monitoring + 5 auto-generated reports      |
+
+---
+
+## Five Functional Layers
+
+\`\`\`
+┌─────────────────────────────────────────────────────┐
+│  L1 Entry: signup / login / pricing / membership    │
+├─────────────────────────────────────────────────────┤
+│  L2 Core: My Desk + Workbench + Portfolio + Alerts  │  ← daily-use
+├─────────────────────────────────────────────────────┤
+│  L3 Strategy Research: Strategies + Quant Lab       │  ← deep research
+│                       + Signal Journal              │
+├─────────────────────────────────────────────────────┤
+│  L4 Data Intelligence: options / insider / dark     │  ← single-source drill-down
+│       pool / news / sentiment / technical /         │
+│       multi-agent                                    │
+├─────────────────────────────────────────────────────┤
+│  L5 Operations: reports / execution / admin /       │  ← system
+│       settings                                       │
+└─────────────────────────────────────────────────────┘
+\`\`\`
+
+---
+
+## Three Core Engines
+
+### 1. Trading System v2 (Multi-State Adaptive)
+
+**Six-dimension scoring:**
+
+| Dimension          | Engine                                                     |  Weight |
+| ------------------ | ---------------------------------------------------------- | ------: |
+| Market regime      | Regime Classifier (6 states: trending / ranging / etc.)    |     25% |
+| Price structure    | Cai Sen 12-pattern recognition + measured-move targets     |      8% |
+| Momentum           | RSI / MACD / EMA13-34-55                                   |     12% |
+| **Volume**         | Volume Engine (rhythm / price-vol / breakout / exhaustion) | **18%** |
+| **Chip structure** | Volume Profile + HVN/LVN + cost migration                  | **22%** |
+| Risk/reward        | Trade Manager (4 exit types + position sizing)             |     15% |
+
+Final output: 0-100 composite score + **A / B / C grade**.
+
+### 2. Factor Research System
+
+Built on the methodology of _Factor Investing: Methods and Practice_ (Shi Chuan et al., 2020):
+
+- **Cross-section sort**: rank the whole market by factor value, quintile returns
+- **Fama-MacBeth regression**: test whether factors are actually priced (Newey-West HAC-adjusted)
+- **PIT backtest**: re-screen at each month-end, zero look-ahead bias
+- **Multi-strategy ensemble**: equal-weight long-short, AQR Style Premia approach
+- **Quality bucket analysis**: verify whether \`pattern_quality_score\` carries real alpha
+
+### 3. AI Multi-Role Analysis
+
+7 virtual analysts (fundamentals / technical / sentiment / news / bull / bear / risk manager) + trader decision, simulated by a single GPT-4o call producing an investment-committee debate.
+
+Output: BUY / HOLD / SELL + conviction level + entry zone + stop-loss + first profit target.
+
+---
+
+## Recommended Reading Path
+
+| Your role          | Read in this order                                                         |
+| ------------------ | -------------------------------------------------------------------------- |
+| **First time**     | 00 Overview → L2-01 My Desk → L2-02 Workbench → walk one ticker end-to-end |
+| **Portfolio user** | L2-03 Portfolio → L2-04 AI Portfolio Builder → L2-05 Alerts                |
+| **Quant research** | L3-02 Quant Lab (6 tabs — focus on PIT backtest + Fama-MacBeth)            |
+| **Data drill**     | Any L4 page                                                                |
+| **Admin / dev**    | L5 Operations + \`docs/audit/\` internal audit                               |
+
+---
+
+## Design Principles
+
+All Ventage features follow 4 ironclad rules:
+
+1. **Honest Analysis** — even if a backtest's win rate disappoints, we report it as-is, no spin
+2. **Explainable** — no pure black boxes; every score can be traced to its sub-components
+3. **PIT (Point-In-Time)** — every backtest uses only data available at that historical moment
+4. **Zero Hallucination** — AI only summarizes; all numbers are computed in code and passed to the model
+
+---
+
+## Data Sources
+
+- **Prices**: yfinance (free) + Polygon.io (paid, optional)
+- **Fundamentals**: yfinance financial statements
+- **Options flow**: Polygon.io
+- **Insider trading**: SEC EDGAR Form 4
+- **Dark pool**: FINRA + IEX Cloud
+- **News**: in-house scraper + NewsAPI
+- **Sentiment**: custom NLP (TextBlob + financial lexicon)
+- **AI**: OpenAI GPT-4o
+
+---
+
+## Next Step
+
+→ Continue with [\`L2-01-dashboard.md\`](L2-01-dashboard.md) to learn the post-login home page.
+`,
+  },
+  "L2-01-dashboard": {
+    zh: `# L2-01 · My Desk 首页 \`/dashboard\`
 
 > 这是登录后看到的第一页。每天进 Ventage 第一眼就看这里。
 
@@ -365,22 +500,34 @@ Ventage 的所有功能遵循 4 条铁律：
 - **My Desk** = 我的工作台（区别于 Stock Workbench "单股工作台"）
 - **Regime** = 体制 / 状态（保持英文，已成行业标准词）
 `,
+    en: null,
+  },
 };
 
-function parseEntry(slug: string, body: string): ManualEntry {
-  const titleMatch = body.match(/^#\s+(.+)$/m);
-  const title = titleMatch?.[1]?.trim() ?? slug;
-  const excerptMatch = body
+function extractTitle(body: string, slug: string): string {
+  const m = body.match(/^#\s+(.+)$/m);
+  return m?.[1]?.trim() ?? slug;
+}
+
+function extractExcerpt(body: string): string {
+  const para = body
     .replace(/^#.+$/gm, "")
     .replace(/^>.*$/gm, "")
     .split(/\n{2,}/)
     .find((p) => p.trim().length > 30 && !p.startsWith("---"));
-  const excerpt = (excerptMatch ?? "").replace(/\s+/g, " ").slice(0, 160);
-  return { slug, title, excerpt, body };
+  return (para ?? "").replace(/\s+/g, " ").slice(0, 160);
 }
 
 export const MANUAL_ENTRIES: ManualEntry[] = Object.entries(MANUAL_FILES)
-  .map(([slug, body]) => parseEntry(slug, body))
+  .map(([slug, raw]) => ({
+    slug,
+    titleZh: extractTitle(raw.zh, slug),
+    titleEn: raw.en ? extractTitle(raw.en, slug) : extractTitle(raw.zh, slug),
+    excerptZh: extractExcerpt(raw.zh),
+    excerptEn: raw.en ? extractExcerpt(raw.en) : extractExcerpt(raw.zh),
+    bodyZh: raw.zh,
+    bodyEn: raw.en,
+  }))
   .sort((a, b) => a.slug.localeCompare(b.slug));
 
 export function getManualBySlug(slug: string): ManualEntry | null {

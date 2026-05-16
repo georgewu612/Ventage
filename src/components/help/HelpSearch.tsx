@@ -4,12 +4,8 @@ import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-interface ManualEntry {
-  slug: string;
-  title: string;
-  excerpt: string;
-  body: string;
-}
+import { useI18n } from "@/lib/i18n/provider";
+import type { ManualEntry } from "@/content/manual/manifest";
 
 interface Props {
   entries: ManualEntry[];
@@ -17,29 +13,33 @@ interface Props {
 
 interface Hit {
   entry: ManualEntry;
-  /** index of first match in body (for snippet generation) */
   matchIdx: number;
   snippet: string;
+  title: string;
 }
 
-function findHit(entry: ManualEntry, q: string): Hit | null {
+function findHit(
+  entry: ManualEntry,
+  q: string,
+  isZh: boolean,
+): Hit | null {
   const lowerQ = q.toLowerCase();
-  const lowerBody = entry.body.toLowerCase();
-  const titleHit = entry.title.toLowerCase().includes(lowerQ);
+  const title = isZh ? entry.titleZh : entry.titleEn;
+  const body = isZh ? entry.bodyZh : (entry.bodyEn ?? entry.bodyZh);
+  const lowerBody = body.toLowerCase();
+  const titleHit = title.toLowerCase().includes(lowerQ);
   const bodyIdx = lowerBody.indexOf(lowerQ);
-
   if (!titleHit && bodyIdx < 0) return null;
 
-  const matchIdx = bodyIdx >= 0 ? bodyIdx : 0;
   let snippet = "";
   if (bodyIdx >= 0) {
     const start = Math.max(0, bodyIdx - 50);
-    const end = Math.min(entry.body.length, bodyIdx + q.length + 80);
-    snippet = entry.body.slice(start, end).replace(/\s+/g, " ").trim();
+    const end = Math.min(body.length, bodyIdx + q.length + 80);
+    snippet = body.slice(start, end).replace(/\s+/g, " ").trim();
   } else {
-    snippet = entry.excerpt;
+    snippet = isZh ? entry.excerptZh : entry.excerptEn;
   }
-  return { entry, matchIdx, snippet };
+  return { entry, matchIdx: Math.max(bodyIdx, 0), snippet, title };
 }
 
 function highlight(text: string, q: string) {
@@ -58,16 +58,18 @@ function highlight(text: string, q: string) {
 }
 
 export function HelpSearch({ entries }: Props) {
+  const { locale } = useI18n();
+  const isZh = locale === "zh";
   const [q, setQ] = useState("");
 
   const hits = useMemo<Hit[]>(() => {
     const trimmed = q.trim();
     if (trimmed.length < 2) return [];
     return entries
-      .map((e) => findHit(e, trimmed))
+      .map((e) => findHit(e, trimmed, isZh))
       .filter((h): h is Hit => h !== null)
       .slice(0, 10);
-  }, [q, entries]);
+  }, [q, entries, isZh]);
 
   return (
     <div>
@@ -77,7 +79,11 @@ export function HelpSearch({ entries }: Props) {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索教材内容（如：信号 / 形态 / DCF）"
+          placeholder={
+            isZh
+              ? "搜索教材内容（如：信号 / 形态 / DCF）"
+              : "Search the manual (e.g. signal / pattern / DCF)"
+          }
           className="w-full rounded-lg border border-slate-700 bg-slate-900/40 py-2.5 pr-3 pl-10 text-sm text-white placeholder-slate-500 focus:border-cyan-500/50 focus:outline-none"
         />
       </div>
@@ -86,7 +92,9 @@ export function HelpSearch({ entries }: Props) {
         <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/40">
           {hits.length === 0 ? (
             <div className="p-4 text-sm text-slate-500">
-              未找到「<span className="text-slate-300">{q}</span>」相关内容
+              {isZh ? "未找到「" : "No results for «"}
+              <span className="text-slate-300">{q}</span>
+              {isZh ? "」相关内容" : "»"}
             </div>
           ) : (
             <ul className="divide-y divide-slate-800">
@@ -98,7 +106,7 @@ export function HelpSearch({ entries }: Props) {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="font-medium text-white group-hover:text-cyan-300">
-                        {highlight(h.entry.title, q)}
+                        {highlight(h.title, q)}
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs text-slate-400">
                         ... {highlight(h.snippet, q)} ...
