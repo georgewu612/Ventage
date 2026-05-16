@@ -15,13 +15,17 @@ const markdownComponents = {
     </h1>
   ),
   h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="mt-8 mb-3 text-2xl font-semibold text-cyan-300">{children}</h2>
+    <h2 className="mt-8 mb-3 text-2xl font-semibold text-cyan-300">
+      {children}
+    </h2>
   ),
   h3: ({ children }: { children?: React.ReactNode }) => (
     <h3 className="mt-6 mb-2 text-xl font-semibold text-white">{children}</h3>
   ),
   h4: ({ children }: { children?: React.ReactNode }) => (
-    <h4 className="mt-4 mb-2 text-base font-semibold text-slate-200">{children}</h4>
+    <h4 className="mt-4 mb-2 text-base font-semibold text-slate-200">
+      {children}
+    </h4>
   ),
   p: ({ children }: { children?: React.ReactNode }) => (
     <p className="mb-3 leading-relaxed text-slate-300">{children}</p>
@@ -30,7 +34,9 @@ const markdownComponents = {
     <ul className="mb-3 list-disc space-y-1 pl-6 text-slate-300">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="mb-3 list-decimal space-y-1 pl-6 text-slate-300">{children}</ol>
+    <ol className="mb-3 list-decimal space-y-1 pl-6 text-slate-300">
+      {children}
+    </ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => (
     <li className="leading-relaxed">{children}</li>
@@ -73,7 +79,9 @@ const markdownComponents = {
     </div>
   ),
   thead: ({ children }: { children?: React.ReactNode }) => (
-    <thead className="border-b border-slate-700 text-slate-400">{children}</thead>
+    <thead className="border-b border-slate-700 text-slate-400">
+      {children}
+    </thead>
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
     <th className="px-3 py-2 text-left text-xs font-semibold tracking-wider uppercase">
@@ -81,15 +89,11 @@ const markdownComponents = {
     </th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="border-b border-slate-800 px-3 py-2 text-slate-300">{children}</td>
+    <td className="border-b border-slate-800 px-3 py-2 text-slate-300">
+      {children}
+    </td>
   ),
-  a: ({
-    href,
-    children,
-  }: {
-    href?: string;
-    children?: React.ReactNode;
-  }) => (
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
     <Link
       href={href ?? "#"}
       className="text-cyan-400 underline-offset-2 hover:underline"
@@ -140,7 +144,10 @@ export function ManualPage({ entry }: { entry: ManualEntry }) {
       )}
 
       <article className="prose-help">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={markdownComponents}
+        >
           {body}
         </ReactMarkdown>
       </article>
@@ -156,7 +163,8 @@ export function ManualPage({ entry }: { entry: ManualEntry }) {
         <span>
           {isZh ? "源文件：" : "Source: "}
           <code>
-            src/content/manual/{entry.slug}.{isZh ? "zh" : entry.bodyEn ? "en" : "zh"}.md
+            src/content/manual/{entry.slug}.
+            {isZh ? "zh" : entry.bodyEn ? "en" : "zh"}.md
           </code>
         </span>
       </div>

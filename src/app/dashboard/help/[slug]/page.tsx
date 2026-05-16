@@ -8,10 +8,7 @@
 import { notFound } from "next/navigation";
 
 import { ManualPage } from "@/components/help/ManualPage";
-import {
-  MANUAL_ENTRIES,
-  getManualBySlug,
-} from "@/content/manual/manifest";
+import { MANUAL_ENTRIES, getManualBySlug } from "@/content/manual/manifest";
 
 interface PageProps {
   params: Promise<{ slug: string }>;

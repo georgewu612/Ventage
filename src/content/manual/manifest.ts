@@ -19,7 +19,10 @@ export interface ManualEntry {
   bodyEn: string | null;
 }
 
-interface RawEntry { zh: string; en: string | null }
+interface RawEntry {
+  zh: string;
+  en: string | null;
+}
 
 const MANUAL_FILES: Record<string, RawEntry> = {
   "00-overview": {

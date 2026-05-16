@@ -18,11 +18,7 @@ interface Hit {
   title: string;
 }
 
-function findHit(
-  entry: ManualEntry,
-  q: string,
-  isZh: boolean,
-): Hit | null {
+function findHit(entry: ManualEntry, q: string, isZh: boolean): Hit | null {
   const lowerQ = q.toLowerCase();
   const title = isZh ? entry.titleZh : entry.titleEn;
   const body = isZh ? entry.bodyZh : (entry.bodyEn ?? entry.bodyZh);
