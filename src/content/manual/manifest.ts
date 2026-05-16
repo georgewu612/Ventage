@@ -19,10 +19,7 @@ export interface ManualEntry {
   bodyEn: string | null;
 }
 
-interface RawEntry {
-  zh: string;
-  en: string | null;
-}
+interface RawEntry { zh: string; en: string | null }
 
 const MANUAL_FILES: Record<string, RawEntry> = {
   "00-overview": {
@@ -721,11 +718,11 @@ When you open \`/dashboard\`:
 
 ## 📝 Terminology
 
-- **Market Pulse** = 市场脉搏 (avoid "Market Regime" — too academic)
-- **High Conviction Setups** = 高置信做多机会
-- **Risk Desk** = 风险台
-- **My Desk** = 我的工作台 (distinct from Stock Workbench / 单股工作台)
-- **Regime** = 体制 / 状态 (kept in English; it's the industry-standard term)
+- **Market Pulse** — the top "regime + VIX + breadth + style + AI tone" strip. We avoid the term "Market Regime" — too academic for everyday users.
+- **High Conviction Setups** — the 5-card panel of top A-grade long ideas.
+- **Risk Desk** — the short opportunities / neutral high-score anomalies panel.
+- **My Desk** — your personal account side panel. Distinct from **Stock Workbench**, which is the per-ticker analysis page.
+- **Regime** — market state (risk_on / neutral / risk_off). Kept as English jargon; it's industry-standard.
 `,
   },
 };
