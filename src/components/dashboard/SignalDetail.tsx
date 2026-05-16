@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bot,
   Clock,
+  LineChart,
   Minus,
   TrendingDown,
   TrendingUp,
@@ -309,6 +310,20 @@ export function SignalDetail({ signal }: { signal: Signal }) {
       <p className="text-xs text-gray-500">
         {new Date(signal.created_at).toLocaleString(dateLocale)}
       </p>
+
+      {/* Primary action: open stock workbench for full 6-dimension analysis */}
+      <Link
+        href={`/dashboard/stocks/${signal.symbol}`}
+        className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-4 py-3 text-sm font-semibold text-cyan-200 transition-colors hover:bg-cyan-500/25"
+      >
+        <span className="flex items-center gap-2">
+          <LineChart className="h-4 w-4" />
+          {locale === "zh"
+            ? `进入 ${signal.symbol} 单股工作台`
+            : `Open ${signal.symbol} Stock Workbench`}
+        </span>
+        <ArrowRight className="h-4 w-4" />
+      </Link>
 
       {/* Related data link */}
       {relatedLink && (

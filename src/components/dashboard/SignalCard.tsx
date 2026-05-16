@@ -1,6 +1,7 @@
 "use client";
 
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
+import Link from "next/link";
 
 import { useI18n } from "@/lib/i18n/provider";
 
@@ -186,7 +187,18 @@ export function SignalCard({
 
       <div className="mb-3 flex items-center justify-between pt-1">
         <div className="flex items-center gap-2.5">
-          <span className="text-xl font-bold text-white">${signal.symbol}</span>
+          <Link
+            href={`/dashboard/stocks/${signal.symbol}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xl font-bold text-white underline-offset-4 hover:text-cyan-300 hover:underline"
+            title={
+              locale === "zh"
+                ? `进入 ${signal.symbol} 单股工作台`
+                : `Open ${signal.symbol} stock workbench`
+            }
+          >
+            ${signal.symbol}
+          </Link>
           <div
             className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${config.bg} ${config.color}`}
           >
